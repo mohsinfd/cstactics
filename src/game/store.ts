@@ -253,6 +253,8 @@ function getBestAiShot(
   units: Unit[],
   smokes: SmokeCloud[]
 ): { target: Unit; preview: ReturnType<typeof getShotPreview> } | null {
+  if (attacker.ammoInClip <= 0) return null;
+
   return units
     .filter((target) => target.alive && target.team !== attacker.team)
     .map((target) => ({
@@ -465,6 +467,7 @@ function createUnits(): Unit[] {
 
   const makeUnit = (team: Team, roleId: RoleId, spawn: TileCoord): Unit => {
     const role = ROLES[roleId];
+    const weapon = getDefaultWeapon(team);
     return {
       id: id++,
       team,
@@ -473,7 +476,7 @@ function createUnits(): Unit[] {
       hp: role.hp,
       maxHp: role.hp,
       position: { ...spawn },
-      weapon: getDefaultWeapon(team),
+      weapon,
       money: 800,
       ap: RULES.baseAp,
       maxAp: RULES.baseAp,
@@ -485,6 +488,8 @@ function createUnits(): Unit[] {
       smokeGrenades: roleId === 'support' ? 2 : (roleId === 'igl' || roleId === 'lurker' ? 1 : 0),
       flashbangs: roleId === 'awper' ? 0 : (roleId === 'support' ? 2 : 1),
       flashTurns: 0,
+      ammoInClip: weapon.clipSize,
+      reserveAmmo: weapon.clipSize * 3,
       facing: { x: 0, y: team === 'T' ? 1 : -1 },
     };
   };
@@ -513,6 +518,7 @@ interface GameStore extends GameState {
   plantBomb: () => void;
   defuseBomb: () => void;
   pickupBomb: () => void;
+  reloadWeapon: () => void;
   shootUnit: (targetId: number) => void;
   queueMove: (targetTile: TileCoord) => void;
   commitPlannedActions: () => void;
@@ -782,7 +788,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
           const target = targetIdx === -1 ? null : nextUnits[targetIdx];
           const attacker = nextUnits.find((candidate) => candidate.id === crossedAngle.unitId);
-          if (target?.alive && attacker?.alive) {
+          if (target?.alive && attacker?.alive && attacker.ammoInClip > 0) {
             const reactionPreview = getShotPreview(mapData, attacker, target, crossedAngle.aimBonus, contactTile, state.smokes);
             if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
               contactEvent = resolveReactionFire(mapData, attacker, target, contactTile, crossedAngle, state.smokes);
@@ -794,6 +800,14 @@ export const useGameStore = create<GameStore>((set, get) => {
                   hp: newHp,
                   alive: newHp > 0,
                   hasBomb: newHp > 0 ? target.hasBomb : false,
+                };
+              }
+              const attackerIdx = nextUnits.findIndex((candidate) => candidate.id === attacker.id);
+              if (attackerIdx !== -1) {
+                nextUnits[attackerIdx] = {
+                  ...nextUnits[attackerIdx],
+                  ammoInClip: Math.max(0, nextUnits[attackerIdx].ammoInClip - 1),
+                  shotsFiredThisTurn: nextUnits[attackerIdx].shotsFiredThisTurn + 1,
                 };
               }
               break;
@@ -906,7 +920,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (unitIdx === -1) return;
 
       const unit = units[unitIdx];
-      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam) return;
+      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam || unit.ammoInClip <= 0) return;
       if (unit.position.x === targetTile.x && unit.position.y === targetTile.y) return;
 
       const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
@@ -1258,6 +1272,59 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
+    reloadWeapon: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (selectedUnitId === null || round.phase === 'roundend') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const ammoNeeded = unit.weapon.clipSize - unit.ammoInClip;
+      if (!unit.alive || unit.team !== round.activeTeam || unit.ap <= 0 || ammoNeeded <= 0 || unit.reserveAmmo <= 0) return;
+
+      const reloadAmount = Math.min(ammoNeeded, unit.reserveAmmo);
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - 1),
+        ammoInClip: unit.ammoInClip + reloadAmount,
+        reserveAmmo: unit.reserveAmmo - reloadAmount,
+        hasMoved: true,
+      };
+
+      let nextRound = round;
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = nextUnits[unitIdx].ap > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(round, nextUnits, nextSmokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+      });
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
+    },
+
     plantBomb: () => {
       const state = get();
       if (state.isExecuting) return;
@@ -1375,7 +1442,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       const shooter = units[shooterIdx];
       const target = units[targetIdx];
-      if (!shooter.alive || !target.alive || shooter.ap <= 0) return;
+      if (!shooter.alive || !target.alive || shooter.ap <= 0 || shooter.ammoInClip <= 0) return;
       if (shooter.team !== round.activeTeam || target.team === shooter.team) return;
       if (round.phase === 'setup' && !RULES.setupFiringAllowed) return;
 
@@ -1395,6 +1462,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       nextUnits[shooterIdx] = {
         ...shooter,
         ap: Math.max(0, shooter.ap - 1),
+        ammoInClip: Math.max(0, shooter.ammoInClip - 1),
         shotsFiredThisTurn: shooter.shotsFiredThisTurn + 1,
         facing: {
           x: Math.round((target.position.x - shooter.position.x) / (distance || 1)),
@@ -1803,6 +1871,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             runtime.stopped = true;
             continue;
           }
+          if (attacker.ammoInClip <= 0) continue;
 
           const reactionPreview = getShotPreview(mapData, attacker, unit, runtime.crossedAngle.aimBonus, runtime.contactTile, nextSmokes);
           if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
@@ -1817,6 +1886,15 @@ export const useGameStore = create<GameStore>((set, get) => {
                 hp: newHp,
                 alive: newHp > 0,
                 hasBomb: newHp > 0 ? nextUnits[targetIdx].hasBomb : false,
+              };
+            }
+            const attackerIdx = nextUnits.findIndex((candidate) => candidate.id === attacker.id);
+            if (attackerIdx !== -1) {
+              nextUnits = [...nextUnits];
+              nextUnits[attackerIdx] = {
+                ...nextUnits[attackerIdx],
+                ammoInClip: Math.max(0, nextUnits[attackerIdx].ammoInClip - 1),
+                shotsFiredThisTurn: nextUnits[attackerIdx].shotsFiredThisTurn + 1,
               };
             }
             runtime.stopped = true;
@@ -2083,6 +2161,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             nextUnits[unitIdx] = {
               ...unit,
               ap: 0,
+              ammoInClip: Math.max(0, unit.ammoInClip - 1),
               shotsFiredThisTurn: unit.shotsFiredThisTurn + 1,
               hasMoved: true,
               facing: {
@@ -2162,7 +2241,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           unit = nextUnits[unitIdx];
         }
 
-        if (round.phase !== 'setup' && unit.ap > 0) {
+        if (round.phase !== 'setup' && unit.ap > 0 && unit.ammoInClip > 0) {
           const holdTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
           const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
           const laneTiles = getWatchedLane(mapData, unit.position, holdTarget, maxTiles);

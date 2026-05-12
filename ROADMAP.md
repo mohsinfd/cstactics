@@ -143,6 +143,7 @@ move, trigger contact, and freeze into a trade decision. See
   as first pass.
 - Dropped bomb and pickup. Implemented as first pass.
 - Scoreboard progression on `New Round`. Implemented as first pass.
+- Ammo consumption and reload. Implemented as first pass.
 - Save/hunt pressure.
 - Round-to-round strategic consequences.
 

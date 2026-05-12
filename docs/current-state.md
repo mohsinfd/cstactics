@@ -91,6 +91,8 @@ verbs that make those nouns matter.
   objective HUD, and T-side pickup action.
 - Round-over `New Round` advances the match score and round counter while full
   reset still starts a fresh match.
+- First-pass ammo and reload loop: shots and reaction fire consume magazine
+  ammo, empty weapons cannot shoot/hold, and reload spends AP from reserve ammo.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
@@ -100,8 +102,7 @@ verbs that make those nouns matter.
 
 - Roles exist as data and visual identity, but not yet as tactical jobs.
 - Weapons exist as data and now drive simple preview/damage resolution, but
-  ammo, reload, recoil depth, and richer per-modifier shot breakdowns are still
-  missing.
+  recoil depth and richer per-modifier shot breakdowns are still missing.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed messaging, but cover-corner fidelity is
   still first-pass.
@@ -122,7 +123,8 @@ verbs that make those nouns matter.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
 - Production-grade diagonal/corner cover fidelity.
 - Molly, HE, and production-grade utility timing.
-- Ammo and reload.
+- Production-grade ammo economy, reload timing, and weapon-specific firing
+  rules.
 - Save/hunt outcomes.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.

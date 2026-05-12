@@ -694,7 +694,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     inputMode === 'shoot' &&
     phase !== 'setup' &&
     selectedUnit.team !== unit.team &&
-    selectedUnit.ap > 0
+    selectedUnit.ap > 0 &&
+    selectedUnit.ammoInClip > 0
       ? getShotPreview(map, selectedUnit, unit)
       : null;
   const isVisibleTarget = Boolean(shotPreview?.hasLineOfSight);

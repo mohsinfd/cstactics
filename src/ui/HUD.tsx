@@ -747,6 +747,7 @@ function SelectedUnitPanel() {
   const plantBomb = useGameStore((s) => s.plantBomb);
   const defuseBomb = useGameStore((s) => s.defuseBomb);
   const pickupBomb = useGameStore((s) => s.pickupBomb);
+  const reloadWeapon = useGameStore((s) => s.reloadWeapon);
   const inputMode = useGameStore((s) => s.inputMode);
   const setInputMode = useGameStore((s) => s.setInputMode);
   const shootUnit = useGameStore((s) => s.shootUnit);
@@ -773,6 +774,8 @@ function SelectedUnitPanel() {
   const topShotPreview = shotOptions[0]?.preview ?? null;
   const shootingDisabledReason = unit.ap <= 0
     ? 'No AP remaining.'
+    : unit.ammoInClip <= 0
+      ? 'Magazine empty.'
     : (phase === 'setup' && !RULES.setupFiringAllowed)
       ? 'Setup phase: no firing.'
       : visibleTargets.length > 0 && shotOptions.length === 0
@@ -793,6 +796,13 @@ function SelectedUnitPanel() {
       ? 'Setup phase: no utility.'
       : unit.flashbangs <= 0
         ? 'No flashes remaining.'
+        : null;
+  const reloadDisabledReason = unit.ap <= 0
+    ? 'No AP remaining.'
+    : unit.ammoInClip >= unit.weapon.clipSize
+      ? 'Magazine full.'
+      : unit.reserveAmmo <= 0
+        ? 'No reserve ammo.'
         : null;
   const plantSite = getPlantSite(map, unit.position);
   const plantDisabledReason = unit.team !== 'T'
@@ -874,6 +884,7 @@ function SelectedUnitPanel() {
         <StatBox label="AP" value={`${unit.ap}/${unit.maxAp}`} highlight={unit.ap > 0} />
         <StatBox label="MOB" value={unit.role.mobility} />
         <StatBox label="AIM" value={unit.role.baseAim} />
+        <StatBox label="AMO" value={`${unit.ammoInClip}/${unit.reserveAmmo}`} highlight={unit.ammoInClip > 0} />
         <StatBox label="SMK" value={unit.smokeGrenades} highlight={unit.smokeGrenades > 0} />
         <StatBox label={unit.flashTurns > 0 ? 'FLD' : 'FLS'} value={unit.flashTurns > 0 ? 'YES' : unit.flashbangs} highlight={unit.flashTurns > 0 || unit.flashbangs > 0} />
         <StatBox label="$" value={unit.money} />
@@ -897,7 +908,7 @@ function SelectedUnitPanel() {
         {unit.role.abilityName}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(54px, 1fr))', gap: 6, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(72px, 1fr))', gap: 6, marginTop: 10 }}>
         <button
           onClick={() => setInputMode('move')}
           disabled={unit.ap <= 0}
@@ -936,14 +947,14 @@ function SelectedUnitPanel() {
         </button>
         <button
           onClick={() => setInputMode(inputMode === 'hold_angle' ? 'move' : 'hold_angle')}
-          disabled={unit.ap <= 0}
+          disabled={unit.ap <= 0 || unit.ammoInClip <= 0}
           style={{
             padding: '7px 8px',
             borderRadius: 4,
             border: `1px solid ${inputMode === 'hold_angle' ? '#ff4e6aaa' : '#333'}`,
             background: inputMode === 'hold_angle' ? 'rgba(255,78,106,0.22)' : 'rgba(255,255,255,0.03)',
-            color: unit.ap > 0 ? '#f5f5f5' : '#666',
-            cursor: unit.ap > 0 ? 'pointer' : 'default',
+            color: unit.ap > 0 && unit.ammoInClip > 0 ? '#f5f5f5' : '#666',
+            cursor: unit.ap > 0 && unit.ammoInClip > 0 ? 'pointer' : 'default',
             fontSize: 10,
             fontWeight: 850,
             letterSpacing: 0.8,
@@ -987,6 +998,25 @@ function SelectedUnitPanel() {
           }}
         >
           Flash
+        </button>
+        <button
+          onClick={reloadWeapon}
+          disabled={Boolean(reloadDisabledReason)}
+          title={reloadDisabledReason ?? 'Reload weapon'}
+          style={{
+            padding: '7px 8px',
+            borderRadius: 4,
+            border: `1px solid ${reloadDisabledReason ? '#333' : '#8bd3ffaa'}`,
+            background: reloadDisabledReason ? 'rgba(255,255,255,0.03)' : 'rgba(139,211,255,0.18)',
+            color: reloadDisabledReason ? '#666' : '#d8ecff',
+            cursor: reloadDisabledReason ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 850,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+          }}
+        >
+          Reload
         </button>
       </div>
 
@@ -1081,6 +1111,11 @@ function SelectedUnitPanel() {
       {inputMode === 'shoot' && shootingDisabledReason && (
         <div style={{ color: '#706f6a', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Shoot disabled: {shootingDisabledReason}
+        </div>
+      )}
+      {reloadDisabledReason && unit.ammoInClip <= 0 && (
+        <div style={{ color: '#6f7e8e', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Reload: {reloadDisabledReason}
         </div>
       )}
       {smokeDisabledReason && inputMode === 'smoke' && (

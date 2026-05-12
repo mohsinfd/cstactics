@@ -251,6 +251,8 @@ export interface Unit {
   smokeGrenades: number;
   flashbangs: number;
   flashTurns: number;
+  ammoInClip: number;
+  reserveAmmo: number;
   // Visual state
   facing: TileCoord;        // direction unit is looking
 }

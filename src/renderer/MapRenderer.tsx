@@ -1571,7 +1571,7 @@ function ShotPreviewOverlay() {
   const shots = useMemo(() => {
     if (selectedUnitId === null || inputMode !== 'shoot') return [];
     const shooter = units.find((unit) => unit.id === selectedUnitId);
-    if (!shooter || !shooter.alive || shooter.ap <= 0) return [];
+    if (!shooter || !shooter.alive || shooter.ap <= 0 || shooter.ammoInClip <= 0) return [];
 
     return units
       .filter((unit) => unit.alive && unit.team !== shooter.team)
