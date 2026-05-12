@@ -50,6 +50,7 @@ export interface HeldAngle {
 
 export type CoverLabel = 'open' | 'half' | 'full';
 export type CoverState = 'protected' | 'flanked' | 'exposed';
+export type CoverQuality = 'none' | 'direct' | 'corner';
 
 export interface CombatEvent {
   id: string;
@@ -71,6 +72,7 @@ export interface CombatEvent {
   flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
   aimBonus: number;
   tile: TileCoord;
   summary: string;

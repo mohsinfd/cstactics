@@ -42,8 +42,12 @@ const ROLE_ICONS: Record<string, string> = {
   lurker: 'LRK',
 };
 
-function getCoverStateLabel(preview: Pick<ShotPreview, 'coverState' | 'coverLabel'>): string {
-  if (preview.coverState === 'protected') return `${preview.coverLabel} cover`;
+function getCoverStateLabel(preview: Pick<ShotPreview, 'coverState' | 'coverLabel' | 'coverQuality'>): string {
+  if (preview.coverState === 'protected') {
+    return preview.coverQuality === 'corner'
+      ? `${preview.coverLabel} corner`
+      : `${preview.coverLabel} cover`;
+  }
   if (preview.coverState === 'flanked') return 'flanked';
   return 'exposed';
 }
@@ -193,7 +197,7 @@ function ContactBreakPanel() {
         {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.killed ? 'elimination' : event.hit ? `${event.damage} damage` : 'miss'}
       </div>
       <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
+        {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
       </div>
     </div>
   );
@@ -376,7 +380,7 @@ function CombatLogPanel() {
               textTransform: 'uppercase',
               marginTop: 1,
             }}>
-              {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` fls -${formatPenalty(event.flashPenalty)}` : ''}{targetHp}
+              {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {getCoverStateLabel(event)} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` fls -${formatPenalty(event.flashPenalty)}` : ''}{targetHp}
             </div>
           </div>
         );
@@ -1592,7 +1596,7 @@ function TileInfo() {
         <TileBadge color={apColor} label={actionEconomy} subdued={!movementTile} />
         <TileBadge color={cover.color} label={`${cover.label} +${cover.value}`} />
         {topIncomingThreat && !watchedBy && (
-          <TileBadge color={getCoverStateColor(topIncomingThreat.preview)} label={`${topIncomingThreat.preview.hitChance}% ${topIncomingThreat.preview.coverState}`} />
+          <TileBadge color={getCoverStateColor(topIncomingThreat.preview)} label={`${topIncomingThreat.preview.hitChance}% ${getCoverStateLabel(topIncomingThreat.preview)}`} />
         )}
       </div>
 

@@ -945,7 +945,7 @@ function HoveredTileHighlight() {
   const isThreatened = knownThreats.length > 0;
   const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
   const threatLabel = topKnownThreat?.coverState === 'protected'
-    ? 'COVER'
+    ? topKnownThreat.coverQuality === 'corner' ? 'CORNER' : 'COVER'
     : topKnownThreat?.coverState === 'flanked'
       ? 'FLANK'
       : 'OPEN';
@@ -1598,7 +1598,7 @@ function ShotPreviewOverlay() {
         ];
         const color = preview.hitChance >= 65 ? '#58ff9a' : preview.hitChance >= 35 ? '#ffd166' : '#ff6b82';
         const coverLabel = preview.coverState === 'protected'
-          ? preview.coverLabel.toUpperCase()
+          ? preview.coverQuality === 'corner' ? 'CORNER' : preview.coverLabel.toUpperCase()
           : preview.coverState.toUpperCase();
 
         return (

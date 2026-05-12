@@ -109,6 +109,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Landmark cover silhouettes and destination risk card. Implemented.
 - Protected/flanked/exposed shot and movement warnings. Implemented as a
   first-pass directional cover readout.
+- Corner-weighted cover penalties and corner labels. Implemented as a first-pass
+  cover fidelity improvement.
 - Procedural shot/contact audio cues. Implemented.
 - First-pass elimination clarity: kill-aware combat log, shot marker, tracer
   label, casualty marker, and stronger kill audio. Implemented.
@@ -116,8 +118,8 @@ move, trigger contact, and freeze into a trade decision. See
   Implemented as a first pass.
 - Basic CT auto-response. Implemented as a scripted/simple opponent pass for
   testing the one-player loop.
-- Next: tighten cover-corner fidelity, improve hit/death presentation, then
-  build true simultaneous order timing.
+- Next: improve hit/death presentation, then build true simultaneous order
+  timing.
 
 ### Milestone C: Utility Timing
 

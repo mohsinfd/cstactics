@@ -1,6 +1,6 @@
 import { RULES } from './config/rules';
 import { hasLineOfSight } from './los';
-import type { CombatEvent, CoverLabel, CoverState, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
+import type { CombatEvent, CoverLabel, CoverQuality, CoverState, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
 
 export interface ShotPreview {
   hasLineOfSight: boolean;
@@ -16,6 +16,7 @@ export interface ShotPreview {
   flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
   staticCoverPenalty: number;
   directionalCoverPenalty: number;
   unclampedHitChance: number;
@@ -28,6 +29,7 @@ export interface CoverProfile {
   effectiveCoverPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -66,34 +68,56 @@ function getCoverPenaltyAt(map: MapData, tile: TileCoord): number {
   return 0;
 }
 
-function getCoverDirections(attacker: TileCoord, target: TileCoord): TileCoord[] {
-  const dx = attacker.x - target.x;
-  const dy = attacker.y - target.y;
-  if (dx === 0 && dy === 0) return [];
+const CARDINAL_COVER_DIRECTIONS: TileCoord[] = [
+  { x: 0, y: -1 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+];
 
-  if (Math.abs(dx) > Math.abs(dy) * 1.35) {
-    return [{ x: Math.sign(dx), y: 0 }];
-  }
-
-  if (Math.abs(dy) > Math.abs(dx) * 1.35) {
-    return [{ x: 0, y: Math.sign(dy) }];
-  }
-
-  return [
-    { x: Math.sign(dx), y: 0 },
-    { x: 0, y: Math.sign(dy) },
-  ].filter((dir) => dir.x !== 0 || dir.y !== 0);
+interface DirectionalCoverResult {
+  penalty: number;
+  label: CoverLabel;
+  quality: CoverQuality;
 }
 
-export function getDirectionalCoverPenalty(
+function getDirectionalCover(
   map: MapData,
-  attackerTile: TileCoord,
-  targetTile: TileCoord
-): number {
-  return getCoverDirections(attackerTile, targetTile).reduce((best, dir) => {
-    const coverTile = { x: targetTile.x + dir.x, y: targetTile.y + dir.y };
-    return Math.max(best, getCoverPenaltyAt(map, coverTile));
-  }, 0);
+  attacker: TileCoord,
+  target: TileCoord
+): DirectionalCoverResult {
+  const dx = attacker.x - target.x;
+  const dy = attacker.y - target.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return { penalty: 0, label: 'open', quality: 'none' };
+
+  const facing = { x: dx / length, y: dy / length };
+  let weightedPenalty = 0;
+  let strongestRawPenalty = 0;
+  let directCover = false;
+
+  for (const dir of CARDINAL_COVER_DIRECTIONS) {
+    const facingDot = dir.x * facing.x + dir.y * facing.y;
+    if (facingDot < 0.38) continue;
+
+    const coverTile = { x: target.x + dir.x, y: target.y + dir.y };
+    const rawPenalty = getCoverPenaltyAt(map, coverTile);
+    if (rawPenalty <= 0) continue;
+
+    const isDirect = facingDot >= 0.82;
+    const angleWeight = isDirect ? 1 : 0.65;
+    weightedPenalty += rawPenalty * angleWeight;
+    strongestRawPenalty = Math.max(strongestRawPenalty, rawPenalty);
+    directCover ||= isDirect;
+  }
+
+  if (weightedPenalty <= 0) return { penalty: 0, label: 'open', quality: 'none' };
+
+  return {
+    penalty: Math.min(RULES.fullCoverAimPenalty, weightedPenalty),
+    label: getCoverLabel(strongestRawPenalty),
+    quality: directCover ? 'direct' : 'corner',
+  };
 }
 
 function getCoverLabel(coverPenalty: number): CoverLabel {
@@ -108,8 +132,8 @@ export function getCoverProfile(
   targetTile: TileCoord
 ): CoverProfile {
   const staticCoverPenalty = getStaticCoverPenalty(map, targetTile);
-  const directionalCoverPenalty = getDirectionalCoverPenalty(map, attackerTile, targetTile);
-  const coverState: CoverState = directionalCoverPenalty > 0
+  const directionalCover = getDirectionalCover(map, attackerTile, targetTile);
+  const coverState: CoverState = directionalCover.penalty > 0
     ? 'protected'
     : staticCoverPenalty > 0
       ? 'flanked'
@@ -117,10 +141,11 @@ export function getCoverProfile(
 
   return {
     staticCoverPenalty,
-    directionalCoverPenalty,
-    effectiveCoverPenalty: directionalCoverPenalty * 0.5,
-    coverLabel: getCoverLabel(directionalCoverPenalty),
+    directionalCoverPenalty: directionalCover.penalty,
+    effectiveCoverPenalty: directionalCover.penalty * 0.5,
+    coverLabel: directionalCover.label,
     coverState,
+    coverQuality: directionalCover.quality,
   };
 }
 
@@ -175,6 +200,7 @@ export function getShotPreview(
     flashPenalty,
     coverLabel: cover.coverLabel,
     coverState: cover.coverState,
+    coverQuality: cover.coverQuality,
     staticCoverPenalty: cover.staticCoverPenalty,
     directionalCoverPenalty: cover.directionalCoverPenalty,
     unclampedHitChance,
@@ -198,7 +224,9 @@ export function resolveShot(
   const targetHpAfter = hit ? Math.max(0, targetHpBefore - damage) : targetHpBefore;
   const killed = targetHpBefore > 0 && targetHpAfter === 0;
   const coverText = preview.coverState === 'protected'
-    ? `${preview.coverLabel} cover`
+    ? preview.coverQuality === 'corner'
+      ? `${preview.coverLabel} corner`
+      : `${preview.coverLabel} cover`
     : preview.coverState;
   const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
   const summary = killed
@@ -227,6 +255,7 @@ export function resolveShot(
     flashPenalty: preview.flashPenalty,
     coverLabel: preview.coverLabel,
     coverState: preview.coverState,
+    coverQuality: preview.coverQuality,
     aimBonus,
     tile: { ...targetTile },
     summary,

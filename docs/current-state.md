@@ -52,6 +52,8 @@ verbs that make those nouns matter.
   it is between shooter and target.
 - Shot previews now distinguish protected, flanked, and exposed targets instead
   of treating all nearby cover as equal.
+- Directional cover now weighs corner/diagonal protection lower than direct
+  face cover and labels corner protection in previews.
 - Visible target cards, tile risk cards, contact breaks, and combat logs show
   compact aim breakdowns with range and cover modifiers.
 - Movement danger overlays now separate exposed/flanked danger from protected
@@ -108,8 +110,8 @@ verbs that make those nouns matter.
 - Weapons exist as data and now drive simple preview/damage resolution, but
   recoil depth and richer per-modifier shot breakdowns are still missing.
 - Cover exists as static geometry/readout and now contributes to directional shot
-  penalties with protected/flanked/exposed messaging, but cover-corner fidelity is
-  still first-pass.
+  penalties with protected/flanked/exposed/corner messaging, but production cover
+  fidelity is still first-pass.
 - Bomb state now supports a first playable plant/defuse/drop/pickup loop, but
   save/hunt logic is still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
@@ -126,7 +128,8 @@ verbs that make those nouns matter.
   markers.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
-- Production-grade diagonal/corner cover fidelity.
+- Production-grade cover fidelity for complex geometry, peeking, and multi-tile
+  objects.
 - Molly, HE, and production-grade utility timing.
 - Production-grade ammo economy, reload timing, and weapon-specific firing
   rules.
