@@ -141,7 +141,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Bomb plant/defuse pressure. Implemented as first pass.
 - Elimination, defuse, detonation, and time-expiry round outcomes. Implemented
   as first pass.
-- Dropped bomb, pickup, save/hunt pressure.
+- Dropped bomb and pickup. Implemented as first pass.
+- Save/hunt pressure.
 - Round-to-round strategic consequences.
 
 ## Priority Rules

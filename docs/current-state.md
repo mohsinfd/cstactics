@@ -87,6 +87,8 @@ verbs that make those nouns matter.
   post-plant timer pressure, round-end state, bomb marker, and objective HUD.
 - First-pass round outcomes for elimination, bomb detonation, defuse, and round
   timer expiry, with a round-over panel and `New Round` reset.
+- Dropped bomb and pickup loop: killing the carrier leaves an objective marker,
+  objective HUD, and T-side pickup action.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
@@ -101,8 +103,8 @@ verbs that make those nouns matter.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed messaging, but cover-corner fidelity is
   still first-pass.
-- Bomb state now supports a first playable plant/defuse loop, but dropped bomb,
-  pickup, score progression, and save/hunt logic are still missing.
+- Bomb state now supports a first playable plant/defuse/drop/pickup loop, but
+  score progression and save/hunt logic are still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, but not yet a
   full multi-order CS timeline with utility offsets and simultaneous beats.
@@ -119,7 +121,7 @@ verbs that make those nouns matter.
 - Production-grade diagonal/corner cover fidelity.
 - Molly, HE, and production-grade utility timing.
 - Ammo and reload.
-- Dropped bomb, bomb pickup, scoreboard progression, and save/hunt outcomes.
+- Scoreboard progression and save/hunt outcomes.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
 - Real synchronized execute timeline.

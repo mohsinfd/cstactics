@@ -324,7 +324,7 @@ function CombatLogPanel() {
   const round = useGameStore((s) => s.round);
   if (combatLog.length === 0) return null;
 
-  const hasObjectivePanel = round.bombPlanted || round.phase === 'roundend';
+  const hasObjectivePanel = round.bombPlanted || round.phase === 'roundend' || (!round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition));
 
   return (
     <div style={{
@@ -382,13 +382,16 @@ function CombatLogPanel() {
 function BombObjectivePanel() {
   const round = useGameStore((s) => s.round);
   const initGame = useGameStore((s) => s.initGame);
-  if (!round.bombPlanted && round.phase !== 'roundend') return null;
+  const bombDropped = !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition);
+  if (!round.bombPlanted && round.phase !== 'roundend' && !bombDropped) return null;
 
   const isRoundOver = round.phase === 'roundend';
   const winner = round.roundWinner;
   const title = isRoundOver
     ? `${winner ?? '?'} SIDE WINS`
-    : 'BOMB PLANTED';
+    : bombDropped
+      ? 'BOMB DROPPED'
+      : 'BOMB PLANTED';
   const subtitle = isRoundOver
     ? (round.winReason === 'defuse'
       ? 'Defuse successful'
@@ -399,8 +402,10 @@ function BombObjectivePanel() {
           : round.winReason === 'timeexpiry'
             ? 'Round timer expired'
             : 'Round complete')
-    : `${round.bombTimer} turns until detonation`;
-  const accent = winner === 'CT' ? '#65b7ff' : '#ff4e6a';
+    : bombDropped
+      ? 'Recover before planting'
+      : `${round.bombTimer} turns until detonation`;
+  const accent = bombDropped ? '#ffd166' : (winner === 'CT' ? '#65b7ff' : '#ff4e6a');
 
   return (
     <div style={{
@@ -741,6 +746,7 @@ function SelectedUnitPanel() {
   const finishUnit = useGameStore((s) => s.finishUnit);
   const plantBomb = useGameStore((s) => s.plantBomb);
   const defuseBomb = useGameStore((s) => s.defuseBomb);
+  const pickupBomb = useGameStore((s) => s.pickupBomb);
   const inputMode = useGameStore((s) => s.inputMode);
   const setInputMode = useGameStore((s) => s.setInputMode);
   const shootUnit = useGameStore((s) => s.shootUnit);
@@ -812,8 +818,19 @@ function SelectedUnitPanel() {
         : unit.ap < defuseCost
           ? `${defuseCost} AP required.`
           : null;
+  const bombDropped = !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition);
+  const pickupDisabledReason = unit.team !== 'T'
+    ? 'Only T side can recover the bomb.'
+    : !bombDropped
+      ? 'Bomb is not dropped.'
+      : !round.bombPosition || tileDistance(unit.position, round.bombPosition) > 1.5
+        ? 'Move onto the dropped bomb.'
+        : unit.ap < RULES.bombPickupCost
+          ? `${RULES.bombPickupCost} AP required.`
+          : null;
   const showPlantAction = unit.hasBomb;
   const showDefuseAction = round.bombPlanted && unit.team === 'CT';
+  const showPickupAction = bombDropped && unit.team === 'T' && !unit.hasBomb;
 
   return (
     <div style={{
@@ -973,8 +990,8 @@ function SelectedUnitPanel() {
         </button>
       </div>
 
-      {(showPlantAction || showDefuseAction) && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 7 }}>
+      {(showPlantAction || showDefuseAction || showPickupAction) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 6, marginTop: 7 }}>
           {showPlantAction && (
             <button
               onClick={plantBomb}
@@ -1015,6 +1032,27 @@ function SelectedUnitPanel() {
               }}
             >
               Defuse
+            </button>
+          )}
+          {showPickupAction && (
+            <button
+              onClick={pickupBomb}
+              disabled={Boolean(pickupDisabledReason)}
+              title={pickupDisabledReason ?? 'Recover the dropped bomb'}
+              style={{
+                padding: '7px 8px',
+                borderRadius: 4,
+                border: `1px solid ${pickupDisabledReason ? '#333' : '#ffd166aa'}`,
+                background: pickupDisabledReason ? 'rgba(255,255,255,0.03)' : 'rgba(255,209,102,0.2)',
+                color: pickupDisabledReason ? '#666' : '#fff1b5',
+                cursor: pickupDisabledReason ? 'default' : 'pointer',
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.8,
+                textTransform: 'uppercase',
+              }}
+            >
+              Pickup
             </button>
           )}
         </div>
@@ -1063,6 +1101,11 @@ function SelectedUnitPanel() {
       {showDefuseAction && defuseDisabledReason && round.bombPlanted && unit.team === 'CT' && (
         <div style={{ color: '#6f7e8e', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Defuse disabled: {defuseDisabledReason}
+        </div>
+      )}
+      {showPickupAction && pickupDisabledReason && (
+        <div style={{ color: '#837849', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Pickup disabled: {pickupDisabledReason}
         </div>
       )}
       {topShotPreview && !shootingDisabledReason && (

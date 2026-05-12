@@ -465,11 +465,12 @@ function PlantedBombMarker() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  if (!round.bombPlanted || !round.bombPosition) return null;
+  const isDropped = !round.bombPlanted && round.bombCarrierId === null;
+  if ((!round.bombPlanted && !isDropped) || !round.bombPosition) return null;
 
   const [wx, , wz] = tileWorld(round.bombPosition.x, round.bombPosition.y, ts);
   const isDefused = round.bombDefused;
-  const color = isDefused ? '#65b7ff' : '#ff4e6a';
+  const color = isDefused ? '#65b7ff' : (isDropped ? '#ffd166' : '#ff4e6a');
 
   return (
     <group position={[wx, FLOOR_H + 0.18, wz]} raycast={() => null}>
@@ -479,7 +480,7 @@ function PlantedBombMarker() {
       </mesh>
       <mesh position={[0, 0.13, 0]} castShadow>
         <boxGeometry args={[0.42, 0.22, 0.28]} />
-        <meshStandardMaterial color="#2b1714" roughness={0.58} emissive={isDefused ? '#123252' : '#6b120e'} emissiveIntensity={0.32} />
+        <meshStandardMaterial color="#2b1714" roughness={0.58} emissive={isDefused ? '#123252' : (isDropped ? '#5a3d10' : '#6b120e')} emissiveIntensity={0.32} />
       </mesh>
       <mesh position={[0.13, 0.26, 0.02]}>
         <sphereGeometry args={[0.045, 8, 6]} />
@@ -489,14 +490,14 @@ function PlantedBombMarker() {
         position={[0, 0.08, ts * 0.64]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.22}
-        color={isDefused ? '#d8ecff' : '#ffd7dd'}
+        color={isDefused ? '#d8ecff' : (isDropped ? '#fff1b5' : '#ffd7dd')}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.03}
         outlineColor="#100709"
         font={undefined}
       >
-        {isDefused ? 'DEFUSED' : `${round.bombTimer}T`}
+        {isDefused ? 'DEFUSED' : (isDropped ? 'DROPPED' : `${round.bombTimer}T`)}
       </Text>
     </group>
   );

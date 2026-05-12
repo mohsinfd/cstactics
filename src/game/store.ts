@@ -281,6 +281,21 @@ function canReachBomb(unit: Unit, bombPosition: TileCoord | null): boolean {
   return tileDistance(unit.position, bombPosition) <= 1.5;
 }
 
+function applyBombDrop(round: RoundState, units: Unit[]): RoundState {
+  if (round.phase === 'roundend' || round.bombPlanted || round.bombDefused || round.bombCarrierId === null) {
+    return round;
+  }
+
+  const carrier = units.find((unit) => unit.id === round.bombCarrierId);
+  if (!carrier || (carrier.alive && carrier.hasBomb)) return round;
+
+  return {
+    ...round,
+    bombCarrierId: null,
+    bombPosition: { ...carrier.position },
+  };
+}
+
 function applyEliminationOutcome(round: RoundState, units: Unit[]): RoundState {
   if (round.phase === 'roundend') return round;
 
@@ -424,7 +439,7 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
     winReason = 'timeexpiry';
   }
 
-  const outcomeRound = applyEliminationOutcome({
+  const possessionRound = applyBombDrop({
     ...round,
     activeTeam: nextTeam,
     turn: nextTurn,
@@ -434,6 +449,7 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
     winReason,
     roundTimer: nextRoundTimer,
   }, newUnits);
+  const outcomeRound = applyEliminationOutcome(possessionRound, newUnits);
 
   return {
     units: newUnits,
@@ -496,6 +512,7 @@ interface GameStore extends GameState {
   throwFlash: (targetTile: TileCoord) => void;
   plantBomb: () => void;
   defuseBomb: () => void;
+  pickupBomb: () => void;
   shootUnit: (targetId: number) => void;
   queueMove: (targetTile: TileCoord) => void;
   commitPlannedActions: () => void;
@@ -775,6 +792,7 @@ export const useGameStore = create<GameStore>((set, get) => {
                   ...target,
                   hp: newHp,
                   alive: newHp > 0,
+                  hasBomb: newHp > 0 ? target.hasBomb : false,
                 };
               }
               break;
@@ -804,10 +822,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         : selectedUnitId;
       let movementTiles: MovementTile[] = [];
       let walkableTiles: TileCoord[] = [];
-      let nextRound = round;
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
       let nextSmokes = state.smokes;
 
-      if (contactEvent) {
+      if (nextRound.phase === 'roundend') {
+        nextSelectedUnitId = null;
+      } else if (contactEvent) {
         nextSelectedUnitId = nextUnits[finalUnitIdx].alive
           ? unit.id
           : getFirstAvailableUnitId(nextUnits, round.activeTeam);
@@ -833,12 +853,14 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
       }
 
-      const preferredSelectedUnitId = getPreferredSelection(
-        nextUnits,
-        nextRound,
-        contactEvent ? nextSelectedUnitId : get().selectedUnitId,
-        nextSelectedUnitId
-      );
+      const preferredSelectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : getPreferredSelection(
+          nextUnits,
+          nextRound,
+          contactEvent ? nextSelectedUnitId : get().selectedUnitId,
+          nextSelectedUnitId
+        );
       const movement = getMovementForSelection(nextUnits, preferredSelectedUnitId, mapData, nextRound);
       movementTiles = movement.movementTiles;
       walkableTiles = movement.walkableTiles;
@@ -1173,6 +1195,68 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
+    pickupBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (
+        selectedUnitId === null ||
+        round.bombPlanted ||
+        round.bombCarrierId !== null ||
+        !round.bombPosition ||
+        round.phase === 'roundend'
+      ) return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      if (!unit.alive || unit.team !== 'T' || unit.team !== round.activeTeam) return;
+      if (!canReachBomb(unit, round.bombPosition) || unit.ap < RULES.bombPickupCost) return;
+
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - RULES.bombPickupCost),
+        hasBomb: true,
+      };
+
+      let nextRound: RoundState = {
+        ...round,
+        bombCarrierId: unit.id,
+        bombPosition: null,
+      };
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = nextUnits[unitIdx].ap > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(nextRound, nextUnits, nextSmokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+      });
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
+    },
+
     plantBomb: () => {
       const state = get();
       if (state.isExecuting) return;
@@ -1305,6 +1389,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         ...target,
         hp: newTargetHp,
         alive: newTargetHp > 0,
+        hasBomb: newTargetHp > 0 ? target.hasBomb : false,
       };
       nextUnits[shooterIdx] = {
         ...shooter,
@@ -1316,7 +1401,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         },
       };
 
-      let nextRound = applyEliminationOutcome(round, nextUnits);
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
       let nextSmokes = state.smokes;
       let nextSelectedUnitId = nextRound.phase === 'roundend'
         ? null
@@ -1730,6 +1815,7 @@ export const useGameStore = create<GameStore>((set, get) => {
                 ...nextUnits[targetIdx],
                 hp: newHp,
                 alive: newHp > 0,
+                hasBomb: newHp > 0 ? nextUnits[targetIdx].hasBomb : false,
               };
             }
             runtime.stopped = true;
@@ -1757,7 +1843,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         };
       }
 
-      let nextRound = applyEliminationOutcome(round, nextUnits);
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
       let selectedUnitId = nextRound.phase === 'roundend'
         ? null
         : contactEvent
@@ -1991,6 +2077,7 @@ export const useGameStore = create<GameStore>((set, get) => {
               ...nextUnits[targetIdx],
               hp: newTargetHp,
               alive: newTargetHp > 0,
+              hasBomb: newTargetHp > 0 ? nextUnits[targetIdx].hasBomb : false,
             };
             nextUnits[unitIdx] = {
               ...unit,
