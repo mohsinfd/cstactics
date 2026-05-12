@@ -25,6 +25,7 @@ import { getCalloutLabels } from '../game/maps/inferno';
 import type { CoverObject, FlashBurst, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
+import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
 import { getWatchedLane, hasLineOfSight } from '../game/los';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
@@ -1283,10 +1284,11 @@ function PlannedActionPreview() {
   const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const timelineActions = sortPlannedActionsByBeat(plannedActions);
 
   return (
     <>
-      {plannedActions.map((action, index) => {
+      {timelineActions.map((action, index) => {
         const unit = units.find((u) => u.id === action.unitId);
         const isMove = action.kind === 'move';
         const isWatched = isMove && phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
@@ -1298,6 +1300,7 @@ function PlannedActionPreview() {
         const utilityColor = action.kind === 'flash' ? '#fff1a8' : '#c5d1df';
         const color = !isMove ? utilityColor : (isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166')));
         const label = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
+        const beat = getPlannedActionBeat(action);
         const points = [action.from, ...action.path].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
           return [wx, FLOOR_H + 0.24 + index * 0.012, wz];
@@ -1314,7 +1317,7 @@ function PlannedActionPreview() {
               </mesh>
               <SafeText
                 position={[0, 0, 0.04]}
-                fontSize={0.24}
+                fontSize={0.18}
                 color="#101318"
                 anchorX="center"
                 anchorY="middle"
@@ -1322,7 +1325,7 @@ function PlannedActionPreview() {
                 outlineColor={color}
                 font={undefined}
               >
-                {label}
+                {`${beat.timeLabel}\n${label}`}
               </SafeText>
             </group>
           </group>

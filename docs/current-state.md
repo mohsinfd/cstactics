@@ -30,7 +30,11 @@ verbs that make those nouns matter.
 - Planning mode that queues move orders.
 - Planning mode can queue first-pass smoke and flash orders, resolving utility
   before movement during `Run Execute`.
+- Execute queue now shows first-pass CS timing beats: utility at `0.0s` and
+  movement/swing orders at `0.6s`.
 - Planned path/destination previews for queued move orders.
+- Planned map markers include timing labels so board state matches the execute
+  queue.
 - Queued move rows and planned destination markers show `WATCH` or `DANGER`
   when the planned route/destination is risky.
 - Command bar with planning, execute, and end-turn controls.
@@ -115,8 +119,9 @@ verbs that make those nouns matter.
 - Bomb state now supports a first playable plant/defuse/drop/pickup loop, but
   save/hunt logic is still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
-- Planning exists for movement with a first-pass ticked execute, but not yet a
-  full multi-order CS timeline with utility offsets and simultaneous beats.
+- Planning exists for movement with a first-pass ticked execute and visible
+  timing beats, but not yet a full multi-order CS timeline with editable offsets
+  and simultaneous combat beats.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 

@@ -104,6 +104,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Shoot-mode line-of-fire overlay. Implemented.
 - Automatic shoot-mode trade prompt after contact break. Implemented.
 - First-pass ticked movement/contact resolution. Implemented.
+- First-pass execute beat UI: utility at `0.0s`, movement/swing at `0.6s`, with
+  matching queue rows and map markers. Implemented.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -118,8 +120,8 @@ move, trigger contact, and freeze into a trade decision. See
   Implemented as a first pass.
 - Basic CT auto-response. Implemented as a scripted/simple opponent pass for
   testing the one-player loop.
-- Next: improve hit/death presentation, then build true simultaneous order
-  timing.
+- Next: improve hit/death presentation, then replace fixed execute beats with
+  editable timeline offsets.
 
 ### Milestone C: Utility Timing
 
@@ -138,6 +140,7 @@ move, trigger contact, and freeze into a trade decision. See
 - Interrupt resolution on contact, death, bomb event, or major utility effect.
   First pass implemented for held-angle contact.
 - Show a compact execute timeline: `0.0 smoke`, `0.5 flash`, `0.7 entry swing`.
+  First-pass fixed beat UI is implemented.
 
 ### Milestone E: CS Match Loop
 

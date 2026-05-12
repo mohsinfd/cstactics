@@ -17,6 +17,7 @@ import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
+import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
 
 const PHASE_LABELS: Record<string, string> = {
   buy: 'BUY PHASE',
@@ -484,6 +485,7 @@ function ExecutePlanner() {
   const phase = useGameStore((s) => s.round.phase);
   const clearPlannedActions = useGameStore((s) => s.clearPlannedActions);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
+  const timelineActions = sortPlannedActionsByBeat(plannedActions);
 
   if (!planningMode && plannedActions.length === 0) return null;
 
@@ -492,7 +494,7 @@ function ExecutePlanner() {
       position: 'absolute',
       top: 132,
       left: 20,
-      width: 220,
+      width: 260,
       background: 'rgba(8, 8, 12, 0.9)',
       border: `1px solid ${planningMode ? `${teamColor}88` : '#2a2f3a'}`,
       borderRadius: 6,
@@ -532,8 +534,22 @@ function ExecutePlanner() {
 
       {plannedActions.length > 0 && (
         <>
+          <div style={{
+            display: 'flex',
+            gap: 6,
+            marginTop: 8,
+            color: '#7d8798',
+            fontSize: 9,
+            fontWeight: 850,
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+          }}>
+            <span style={{ color: '#d8c170' }}>0.0s Utility</span>
+            <span style={{ color: '#4b5362' }}>-&gt;</span>
+            <span style={{ color: '#58ff9a' }}>0.6s Swing</span>
+          </div>
           <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
-            {plannedActions.map((action) => {
+            {timelineActions.map((action) => {
               const unit = units.find((u) => u.id === action.unitId);
               const isMove = action.kind === 'move';
               const isWatched = isMove && phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
@@ -545,6 +561,7 @@ function ExecutePlanner() {
               const utilityColor = action.kind === 'flash' ? '#fff1a8' : '#c5d1df';
               const statusColor = !isMove ? utilityColor : (isWatched ? '#ff6b82' : (isDanger ? '#ff9d3d' : (action.apCost <= 1 ? '#58ff9a' : '#f2c94c')));
               const statusLabel = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
+              const beat = getPlannedActionBeat(action);
               return (
                 <div
                   key={action.id}
@@ -558,6 +575,19 @@ function ExecutePlanner() {
                     paddingTop: 4,
                   }}
                 >
+                  <span style={{
+                    color: statusColor,
+                    border: `1px solid ${statusColor}55`,
+                    background: `${statusColor}12`,
+                    borderRadius: 3,
+                    padding: '2px 4px',
+                    fontSize: 8,
+                    fontWeight: 900,
+                    minWidth: 32,
+                    textAlign: 'center',
+                  }}>
+                    {beat.timeLabel}
+                  </span>
                   <span style={{ color: teamColor, fontWeight: 800, minWidth: 28 }}>
                     {ROLE_ICONS[unit?.role.id ?? 'entry']}
                   </span>
@@ -565,7 +595,7 @@ function ExecutePlanner() {
                     {unit?.name ?? 'Unit'} {action.kind === 'move' ? 'move' : action.kind}
                   </span>
                   <span style={{ color: statusColor, fontWeight: 800 }}>
-                    {statusLabel}
+                    {beat.phaseLabel}/{statusLabel}
                   </span>
                 </div>
               );
