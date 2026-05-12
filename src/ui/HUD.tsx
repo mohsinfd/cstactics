@@ -195,7 +195,7 @@ function ContactBreakPanel() {
         {target?.name ?? event.targetName} stopped at {tileLabel}
       </div>
       <div style={{ color: '#8e7d82', fontSize: 10, lineHeight: 1.35, marginTop: 3 }}>
-        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.killed ? 'elimination' : event.hit ? `${event.damage} damage` : 'miss'}
+        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.killed ? 'elimination' : event.critical ? 'headshot' : event.hit ? `${event.damage} damage` : 'miss'}
       </div>
       <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
@@ -356,8 +356,8 @@ function CombatLogPanel() {
         Contact
       </div>
       {combatLog.slice(0, 3).map((event) => {
-        const resultLabel = event.killed ? 'KILL' : event.hit ? 'HIT' : 'MISS';
-        const resultColor = event.killed ? '#ffffff' : event.hit ? '#ffdadf' : '#aaa';
+        const resultLabel = event.killed ? (event.critical ? 'HS KILL' : 'KILL') : event.critical ? 'HEADSHOT' : event.hit ? 'HIT' : 'MISS';
+        const resultColor = event.killed || event.critical ? '#ffffff' : event.hit ? '#ffdadf' : '#aaa';
         const targetHp = event.hit ? ` | hp ${event.targetHpBefore}->${event.targetHpAfter}` : '';
 
         return (
@@ -1185,7 +1185,7 @@ function SelectedUnitPanel() {
       )}
       {topShotPreview && !shootingDisabledReason && (
         <div style={{ color: '#b8a45b', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
-          Best shot: {topShotPreview.hitChance}% / {topShotPreview.damage} dmg / {getCoverStateLabel(topShotPreview)}
+          Best shot: {topShotPreview.hitChance}% / {topShotPreview.damage} dmg / HS {topShotPreview.critChance}% for {topShotPreview.critDamage} / {getCoverStateLabel(topShotPreview)}
         </div>
       )}
       {shotOptions.length > 0 && !shootingDisabledReason && (
@@ -1252,7 +1252,7 @@ function SelectedUnitPanel() {
                 letterSpacing: 0.4,
                 textTransform: 'uppercase',
               }}>
-                Base {getBaseShotAim(preview)} | Range -{formatPenalty(preview.rangePenalty)} | Cover -{formatPenalty(preview.coverPenalty)}{preview.flashPenalty > 0 ? ` | Flash -${formatPenalty(preview.flashPenalty)}` : ''} | {getCoverStateLabel(preview)}
+                Base {getBaseShotAim(preview)} | Range -{formatPenalty(preview.rangePenalty)} | Cover -{formatPenalty(preview.coverPenalty)} | HS {preview.critChance}%/{preview.critDamage}{preview.flashPenalty > 0 ? ` | Flash -${formatPenalty(preview.flashPenalty)}` : ''} | {getCoverStateLabel(preview)}
               </span>
             </button>
           ))}

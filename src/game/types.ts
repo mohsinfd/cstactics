@@ -62,6 +62,8 @@ export interface CombatEvent {
   targetName: string;
   hitChance: number;
   hit: boolean;
+  critical: boolean;
+  critChance: number;
   damage: number;
   targetHpBefore: number;
   targetHpAfter: number;

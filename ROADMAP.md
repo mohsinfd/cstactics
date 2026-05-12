@@ -96,6 +96,8 @@ move, trigger contact, and freeze into a trade decision. See
   queued movement.
 - Freeze when first contact happens. Implemented as an immediate contact break.
 - Basic hit chance and damage resolver for reaction fire. Implemented.
+- Weapon crit/headshot chance and crit damage in previews/resolution.
+  Implemented as a first pass.
 - Contact banner/interrupt state after first visible threat or damage.
   Implemented.
 - Destination exposure readout and board-level hit/miss marker. Implemented.
@@ -208,8 +210,8 @@ Work:
 - Line of sight through walls and cover.
 - Shoot action with aim preview before commit.
 - Damage, headshot/crit, death, and kill feed.
-  First-pass death markers and kill feed clarity are implemented; headshot/crit
-  logic is still pending.
+  First-pass death markers, headshot/crit, and kill feed clarity are
+  implemented.
 - Cover penalties and range penalties.
 - Basic VFX: tracer, hit marker, damage number, death fade.
 - Combat action panel for selected units.

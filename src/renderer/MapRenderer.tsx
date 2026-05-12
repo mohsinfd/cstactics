@@ -1483,8 +1483,8 @@ function CombatEventMarker() {
   if (!event) return null;
 
   const [wx, , wz] = tileWorld(event.tile.x, event.tile.y, ts);
-  const color = event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#d8c170';
-  const label = event.killed ? 'KILL' : event.hit ? `-${event.damage}` : 'MISS';
+  const color = event.critical || event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#d8c170';
+  const label = event.critical ? 'HS' : event.killed ? 'KILL' : event.hit ? `-${event.damage}` : 'MISS';
 
   return (
     <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
@@ -1495,8 +1495,8 @@ function CombatEventMarker() {
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={event.killed ? 0.38 : 0.36}
-        color={event.killed ? '#ffffff' : event.hit ? '#ffd7dd' : '#fff1b5'}
+        fontSize={event.critical ? 0.44 : event.killed ? 0.38 : 0.36}
+        color={event.critical || event.killed ? '#ffffff' : event.hit ? '#ffd7dd' : '#fff1b5'}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
@@ -1524,8 +1524,8 @@ function CombatTracerOverlay() {
   const [sx, , sz] = tileWorld(attacker.position.x, attacker.position.y, ts);
   const targetTile = target?.position ?? event.tile;
   const [tx, , tz] = tileWorld(targetTile.x, targetTile.y, ts);
-  const color = event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#fff1b5';
-  const label = event.killed ? 'ELIM' : event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
+  const color = event.critical || event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#fff1b5';
+  const label = event.critical ? 'HEADSHOT' : event.killed ? 'ELIM' : event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
   const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
   const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
   const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];

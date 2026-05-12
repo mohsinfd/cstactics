@@ -48,6 +48,8 @@ verbs that make those nouns matter.
 - Minimal direct Shoot action with setup-phase disabled reason.
 - Shared shot preview/resolution math for visible targets, hit chance, and
   damage.
+- First-pass headshot/critical system uses weapon crit chance and crit damage in
+  shot previews and combat resolution.
 - Selected-unit target list for visible enemies, including out-of-range
   distinction.
 - Shootable target rings and hit-chance labels in shoot mode.
@@ -60,6 +62,7 @@ verbs that make those nouns matter.
   face cover and labels corner protection in previews.
 - Visible target cards, tile risk cards, contact breaks, and combat logs show
   compact aim breakdowns with range and cover modifiers.
+- Visible target cards show headshot chance/damage before the player fires.
 - Movement danger overlays now separate exposed/flanked danger from protected
   contested tiles.
 - Combat log panel for hit/miss/damage feedback.
@@ -129,8 +132,7 @@ verbs that make those nouns matter.
 
 - Directional/production-grade line-of-sight solver.
 - Full shot preview breakdown before commit.
-- Crit/headshot logic and richer kill feed beyond first-pass elimination
-  markers.
+- Richer kill feed beyond first-pass headshot and elimination markers.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
 - Production-grade cover fidelity for complex geometry, peeking, and multi-tile

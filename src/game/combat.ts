@@ -7,6 +7,8 @@ export interface ShotPreview {
   inRange: boolean;
   distance: number;
   hitChance: number;
+  critChance: number;
+  critDamage: number;
   damage: number;
   baseAim: number;
   weaponAim: number;
@@ -181,6 +183,7 @@ export function getShotPreview(
     1,
     Math.round(attacker.weapon.baseDamage - Math.max(0, distance - attacker.weapon.rangeOptimal) * attacker.weapon.damageFalloffPerTile)
   );
+  const critDamage = Math.max(damage, attacker.weapon.critDamage);
   const reasons: string[] = [];
   if (!hasLos) reasons.push('No line of sight');
   if (!inRange) reasons.push('Out of range');
@@ -191,6 +194,8 @@ export function getShotPreview(
     inRange,
     distance,
     hitChance,
+    critChance: attacker.weapon.critChance,
+    critDamage,
     damage,
     baseAim: attacker.role.baseAim,
     weaponAim: attacker.weapon.baseAim,
@@ -219,7 +224,8 @@ export function resolveShot(
 ): CombatEvent {
   const preview = getShotPreview(map, attacker, target, aimBonus, targetTile, smokes);
   const hit = Math.random() * 100 < preview.hitChance;
-  const damage = hit ? preview.damage : 0;
+  const critical = hit && Math.random() * 100 < preview.critChance;
+  const damage = hit ? (critical ? preview.critDamage : preview.damage) : 0;
   const targetHpBefore = target.hp;
   const targetHpAfter = hit ? Math.max(0, targetHpBefore - damage) : targetHpBefore;
   const killed = targetHpBefore > 0 && targetHpAfter === 0;
@@ -229,11 +235,18 @@ export function resolveShot(
       : `${preview.coverLabel} cover`
     : preview.coverState;
   const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
-  const summary = killed
-    ? `${attacker.name} eliminates ${target.name} through ${coverText}${flashText}`
-    : hit
-      ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`
-      : `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
+  let summary: string;
+  if (killed && critical) {
+    summary = `${attacker.name} headshots and eliminates ${target.name} through ${coverText}${flashText}`;
+  } else if (killed) {
+    summary = `${attacker.name} eliminates ${target.name} through ${coverText}${flashText}`;
+  } else if (critical) {
+    summary = `${attacker.name} headshots ${target.name} for ${damage} through ${coverText}${flashText}`;
+  } else if (hit) {
+    summary = `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`;
+  } else {
+    summary = `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
+  }
 
   return {
     id: `${Date.now()}:${attacker.id}:${target.id}`,
@@ -245,6 +258,8 @@ export function resolveShot(
     targetName: target.name,
     hitChance: preview.hitChance,
     hit,
+    critical,
+    critChance: preview.critChance,
     damage,
     targetHpBefore,
     targetHpAfter,
