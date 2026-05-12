@@ -40,8 +40,8 @@ import { getWatchedLane } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
 
-const EXECUTION_STEP_MS = 165;
-const AI_EXECUTION_STEP_MS = 70;
+const EXECUTION_STEP_MS = 95;
+const AI_EXECUTION_STEP_MS = 55;
 const AI_THINK_MS = 180;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS = 2;

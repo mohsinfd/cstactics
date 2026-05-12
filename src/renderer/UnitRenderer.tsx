@@ -91,12 +91,12 @@ const ROLE_CONFIG: Record<RoleId, {
   lurker:  { weaponLen: 0.9,  bodyScale: 0.96, hasScope: false, hasAntenna: false, accent: '#c084fc', baseShape: 'stealth' },
 };
 
-const MOVE_STEP_SECONDS = 0.16;
+const MOVE_STEP_SECONDS = 0.19;
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
-function easeInOutSine(t: number): number {
-  return -(Math.cos(Math.PI * t) - 1) / 2;
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 function dampAngle(current: number, target: number, lambda: number, delta: number): number {
@@ -746,7 +746,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         } else {
           movement.from.copy(groupRef.current.position);
           movement.to.copy(targetPosition);
-          movement.duration = THREE.MathUtils.clamp(tileDistance * MOVE_STEP_SECONDS, 0.08, 0.22);
+          movement.duration = THREE.MathUtils.clamp(tileDistance * MOVE_STEP_SECONDS, 0.12, 0.28);
         }
       }
 
@@ -756,7 +756,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           0,
           1
         );
-        const easedProgress = easeInOutSine(progress);
+        const easedProgress = easeOutCubic(progress);
         groupRef.current.position.lerpVectors(movement.from, movement.to, easedProgress);
         isMoving = progress < 1;
       } else {

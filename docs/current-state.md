@@ -65,8 +65,11 @@ verbs that make those nouns matter.
 - Contact Drill prototype scenario for testing the Banana hold/crossing loop.
 - Pointer hover updates are gated by tile to reduce redundant path recalculation
   during dragging.
+- Wheel/trackpad scroll pans the tactical board by default; modified wheel and
+  view buttons handle zoom.
 - Planned movement resolves in short visible ticks and interrupts on held-angle
-  contact.
+  contact. Unit interpolation now advances through smaller, overlapping ticks
+  for smoother motion.
 - Angled orthographic tactical camera with explicit `lookAt` orientation so the
   board reliably appears on first load.
 - Landmark cover silhouettes for Inferno readability: Banana Car, Logs,

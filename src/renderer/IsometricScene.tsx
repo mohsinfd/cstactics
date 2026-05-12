@@ -7,7 +7,7 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -68,6 +68,63 @@ export function IsometricScene() {
     [cameraTarget]
   );
 
+  const panCamera = useCallback((screenX: number, screenY: number, scale: number | null = null) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    camera.updateMatrixWorld();
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    right.y = 0;
+    up.y = 0;
+    right.normalize();
+    up.normalize();
+
+    const worldScale = scale ?? Math.max(1.2, 20 / camera.zoom);
+    const delta = right.multiplyScalar(screenX * worldScale).add(up.multiplyScalar(screenY * worldScale));
+    camera.position.add(delta);
+    controls.target.add(delta);
+    controls.update();
+  }, []);
+
+  const zoomCamera = useCallback((factor: number) => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+
+    camera.zoom = THREE.MathUtils.clamp(
+      camera.zoom * factor,
+      CAMERA_PRESET.minZoom,
+      CAMERA_PRESET.maxZoom
+    );
+    camera.updateProjectionMatrix();
+    controlsRef.current?.update();
+  }, []);
+
+  const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const unitScale = event.deltaMode === 1
+      ? 16
+      : event.deltaMode === 2
+        ? window.innerHeight
+        : 1;
+    const deltaX = event.deltaX * unitScale;
+    const deltaY = event.deltaY * unitScale;
+
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      zoomCamera(deltaY < 0 ? 1.14 : 1 / 1.14);
+      return;
+    }
+
+    const horizontal = event.shiftKey && Math.abs(deltaX) < 1 ? deltaY : deltaX;
+    const vertical = event.shiftKey && Math.abs(deltaX) < 1 ? 0 : deltaY;
+    const camera = cameraRef.current;
+    const panScale = camera ? THREE.MathUtils.clamp(0.62 / camera.zoom, 0.035, 0.14) : 0.08;
+    panCamera(-horizontal, vertical, panScale);
+  }, [panCamera, zoomCamera]);
+
   useLayoutEffect(() => {
     if (cameraRef.current) {
       cameraRef.current.lookAt(targetVector);
@@ -88,34 +145,14 @@ export function IsometricScene() {
   }, []);
 
   useEffect(() => {
-    const panCamera = (screenX: number, screenY: number) => {
-      const camera = cameraRef.current;
-      const controls = controlsRef.current;
-      if (!camera || !controls) return;
-
-      camera.updateMatrixWorld();
-      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-      right.y = 0;
-      up.y = 0;
-      right.normalize();
-      up.normalize();
-
-      const step = Math.max(1.2, 20 / camera.zoom);
-      const delta = right.multiplyScalar(screenX * step).add(up.multiplyScalar(screenY * step));
-      camera.position.add(delta);
-      controls.target.add(delta);
-      controls.update();
-    };
-
     const applyCameraCommand = (command: CameraCommand) => {
       const camera = cameraRef.current;
       if (!camera) return;
 
       if (command === 'zoom-in') {
-        camera.zoom = Math.min(CAMERA_PRESET.maxZoom, camera.zoom * 1.22);
+        zoomCamera(1.22);
       } else if (command === 'zoom-out') {
-        camera.zoom = Math.max(CAMERA_PRESET.minZoom, camera.zoom / 1.22);
+        zoomCamera(1 / 1.22);
       } else if (command === 'reset') {
         camera.position.set(...cameraPosition);
         camera.zoom = CAMERA_PRESET.zoom;
@@ -141,7 +178,7 @@ export function IsometricScene() {
 
     window.addEventListener('cs2-camera-command', onCameraCommand);
     return () => window.removeEventListener('cs2-camera-command', onCameraCommand);
-  }, [cameraPosition, targetVector]);
+  }, [cameraPosition, panCamera, targetVector, zoomCamera]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -210,6 +247,7 @@ export function IsometricScene() {
         transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
+      onWheel={handleWheel}
     >
       <color attach="background" args={['#10131a']} />
 
@@ -230,7 +268,7 @@ export function IsometricScene() {
         }}
         enableRotate={false}
         enablePan
-        enableZoom
+        enableZoom={false}
         enableDamping
         dampingFactor={0.12}
         minZoom={CAMERA_PRESET.minZoom}

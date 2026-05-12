@@ -104,6 +104,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Shoot-mode line-of-fire overlay. Implemented.
 - Automatic shoot-mode trade prompt after contact break. Implemented.
 - First-pass ticked movement/contact resolution. Implemented.
+- Smoother movement cadence and wheel/trackpad map panning. Implemented as a
+  first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
 - Protected/flanked/exposed shot and movement warnings. Implemented as a
   first-pass directional cover readout.
