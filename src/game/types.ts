@@ -62,6 +62,9 @@ export interface CombatEvent {
   hitChance: number;
   hit: boolean;
   damage: number;
+  targetHpBefore: number;
+  targetHpAfter: number;
+  killed: boolean;
   distance: number;
   rangePenalty: number;
   coverPenalty: number;

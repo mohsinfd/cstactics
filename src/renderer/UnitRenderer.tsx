@@ -18,8 +18,7 @@
 //   Active team units glow subtly, inactive team dimmed
 //   Units bob/step while moving between tiles
 //
-// Missing: firing animation, hit/death states, and final authored sprite/model
-// assets.
+// Missing: firing animation and final authored sprite/model assets.
 // ============================================================
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import * as THREE from 'three';
@@ -1208,10 +1207,82 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   );
 }
 
+function CasualtyMarker({ unit }: { unit: Unit }) {
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const wx = (map.width - 1 - unit.position.x) * ts + ts / 2;
+  const wz = unit.position.y * ts + ts / 2;
+  const palette = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
+  const accent = ROLE_CONFIG[unit.role.id].accent;
+  const angle = Math.atan2(-unit.facing.x, unit.facing.y);
+
+  return (
+    <group position={[wx, 0.055, wz]} rotation={[0, angle, 0]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ts * 0.22, ts * 0.36, 28]} />
+        <meshBasicMaterial color={palette.accent} transparent opacity={0.38} side={THREE.DoubleSide} />
+      </mesh>
+
+      <mesh position={[0, 0.025, 0]} rotation={[Math.PI / 2, 0, 0.18]} castShadow>
+        <capsuleGeometry args={[0.12, 0.55, 4, 8]} />
+        <meshStandardMaterial
+          color={palette.vestDark}
+          roughness={0.78}
+          metalness={0.02}
+          transparent
+          opacity={0.86}
+        />
+      </mesh>
+      <mesh position={[0.2, 0.03, -0.08]} rotation={[Math.PI / 2, 0, -0.35]} castShadow>
+        <capsuleGeometry args={[0.045, 0.34, 3, 6]} />
+        <meshStandardMaterial color={palette.pants} roughness={0.8} transparent opacity={0.78} />
+      </mesh>
+      <mesh position={[-0.2, 0.03, 0.07]} rotation={[Math.PI / 2, 0, 0.35]} castShadow>
+        <capsuleGeometry args={[0.045, 0.34, 3, 6]} />
+        <meshStandardMaterial color={palette.pants} roughness={0.8} transparent opacity={0.78} />
+      </mesh>
+
+      <Line
+        points={[
+          [-0.36, 0.09, -0.36],
+          [0.36, 0.09, 0.36],
+        ]}
+        color="#ff6b82"
+        lineWidth={2}
+      />
+      <Line
+        points={[
+          [-0.36, 0.09, 0.36],
+          [0.36, 0.09, -0.36],
+        ]}
+        color="#ff6b82"
+        lineWidth={2}
+      />
+
+      <SafeText
+        position={[0, 0.1, -0.55]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.18}
+        color={accent}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.025}
+        outlineColor="#09090f"
+        font={undefined}
+      >
+        {ROLE_TAGS[unit.role.id] || 'OUT'}
+      </SafeText>
+    </group>
+  );
+}
+
 export function UnitRenderer() {
   const units = useGameStore((s) => s.units);
   return (
     <group>
+      {units.filter((u) => !u.alive).map((unit) => (
+        <CasualtyMarker key={`dead-${unit.id}`} unit={unit} />
+      ))}
       {units.filter((u) => u.alive).map((unit) => (
         <SoldierFigure key={unit.id} unit={unit} />
       ))}

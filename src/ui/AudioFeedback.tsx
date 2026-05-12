@@ -89,6 +89,10 @@ function playCombatCue(event: CombatEvent): void {
 
   if (event.hit) {
     playTone(ctx, now + 0.045, event.damage >= 45 ? 70 : 92, 0.16, 0.055, 'sine');
+    if (event.killed) {
+      playTone(ctx, now + 0.12, 48, 0.24, 0.06, 'sawtooth');
+      playNoiseBurst(ctx, now + 0.1, 0.15, 0.035);
+    }
   } else {
     playTone(ctx, now + 0.055, 310, 0.07, 0.018, 'triangle');
   }

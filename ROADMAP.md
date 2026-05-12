@@ -110,12 +110,14 @@ move, trigger contact, and freeze into a trade decision. See
 - Protected/flanked/exposed shot and movement warnings. Implemented as a
   first-pass directional cover readout.
 - Procedural shot/contact audio cues. Implemented.
+- First-pass elimination clarity: kill-aware combat log, shot marker, tracer
+  label, casualty marker, and stronger kill audio. Implemented.
 - Procedural movement, selection, planning, AI response, and turn feedback audio.
   Implemented as a first pass.
 - Basic CT auto-response. Implemented as a scripted/simple opponent pass for
   testing the one-player loop.
-- Next: tighten cover-corner fidelity, add richer shot VFX, then build true
-  simultaneous order timing.
+- Next: tighten cover-corner fidelity, improve hit/death presentation, then
+  build true simultaneous order timing.
 
 ### Milestone C: Utility Timing
 
@@ -201,6 +203,8 @@ Work:
 - Line of sight through walls and cover.
 - Shoot action with aim preview before commit.
 - Damage, headshot/crit, death, and kill feed.
+  First-pass death markers and kill feed clarity are implemented; headshot/crit
+  logic is still pending.
 - Cover penalties and range penalties.
 - Basic VFX: tracer, hit marker, damage number, death fade.
 - Combat action panel for selected units.

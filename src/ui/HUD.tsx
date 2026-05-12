@@ -190,7 +190,7 @@ function ContactBreakPanel() {
         {target?.name ?? event.targetName} stopped at {tileLabel}
       </div>
       <div style={{ color: '#8e7d82', fontSize: 10, lineHeight: 1.35, marginTop: 3 }}>
-        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.hit ? `${event.damage} damage` : 'miss'}
+        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.killed ? 'elimination' : event.hit ? `${event.damage} damage` : 'miss'}
       </div>
       <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
@@ -350,31 +350,37 @@ function CombatLogPanel() {
       }}>
         Contact
       </div>
-      {combatLog.slice(0, 3).map((event) => (
-        <div key={event.id} style={{ color: '#ccc', fontSize: 10, lineHeight: 1.35 }}>
-          <div>
-            <span style={{ color: event.hit ? '#ffdadf' : '#aaa', fontWeight: 800 }}>
-              {event.hit ? 'HIT' : 'MISS'}
-            </span>
-            <span style={{ color: '#666', marginLeft: 6 }}>
-              {event.hitChance}%
-            </span>
-            <span style={{ marginLeft: 6 }}>
-              {event.summary}
-            </span>
+      {combatLog.slice(0, 3).map((event) => {
+        const resultLabel = event.killed ? 'KILL' : event.hit ? 'HIT' : 'MISS';
+        const resultColor = event.killed ? '#ffffff' : event.hit ? '#ffdadf' : '#aaa';
+        const targetHp = event.hit ? ` | hp ${event.targetHpBefore}->${event.targetHpAfter}` : '';
+
+        return (
+          <div key={event.id} style={{ color: '#ccc', fontSize: 10, lineHeight: 1.35 }}>
+            <div>
+              <span style={{ color: resultColor, fontWeight: 900 }}>
+                {resultLabel}
+              </span>
+              <span style={{ color: '#666', marginLeft: 6 }}>
+                {event.hitChance}%
+              </span>
+              <span style={{ marginLeft: 6 }}>
+                {event.summary}
+              </span>
+            </div>
+            <div style={{
+              color: event.killed ? '#ff6b82' : event.coverState === 'exposed' ? '#ff9ba9' : '#756870',
+              fontSize: 8,
+              fontWeight: 800,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              marginTop: 1,
+            }}>
+              {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` fls -${formatPenalty(event.flashPenalty)}` : ''}{targetHp}
+            </div>
           </div>
-          <div style={{
-            color: event.coverState === 'exposed' ? '#ff9ba9' : '#756870',
-            fontSize: 8,
-            fontWeight: 800,
-            letterSpacing: 0.5,
-            textTransform: 'uppercase',
-            marginTop: 1,
-          }}>
-            {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` fls -${formatPenalty(event.flashPenalty)}` : ''}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

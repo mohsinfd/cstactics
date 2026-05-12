@@ -194,13 +194,18 @@ export function resolveShot(
   const preview = getShotPreview(map, attacker, target, aimBonus, targetTile, smokes);
   const hit = Math.random() * 100 < preview.hitChance;
   const damage = hit ? preview.damage : 0;
+  const targetHpBefore = target.hp;
+  const targetHpAfter = hit ? Math.max(0, targetHpBefore - damage) : targetHpBefore;
+  const killed = targetHpBefore > 0 && targetHpAfter === 0;
   const coverText = preview.coverState === 'protected'
     ? `${preview.coverLabel} cover`
     : preview.coverState;
   const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
-  const summary = hit
-    ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`
-    : `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
+  const summary = killed
+    ? `${attacker.name} eliminates ${target.name} through ${coverText}${flashText}`
+    : hit
+      ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`
+      : `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
 
   return {
     id: `${Date.now()}:${attacker.id}:${target.id}`,
@@ -213,6 +218,9 @@ export function resolveShot(
     hitChance: preview.hitChance,
     hit,
     damage,
+    targetHpBefore,
+    targetHpAfter,
+    killed,
     distance: preview.distance,
     rangePenalty: preview.rangePenalty,
     coverPenalty: preview.coverPenalty,

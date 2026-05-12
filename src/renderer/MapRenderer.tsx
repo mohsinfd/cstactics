@@ -1466,8 +1466,8 @@ function CombatEventMarker() {
 
     const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
     const progress = THREE.MathUtils.clamp(elapsed / 1.6, 0, 1);
-    const lift = event.hit ? progress * 0.62 : progress * 0.32;
-    const pulse = 1 + Math.sin(progress * Math.PI) * (event.hit ? 0.34 : 0.18);
+    const lift = event.killed ? progress * 0.82 : event.hit ? progress * 0.62 : progress * 0.32;
+    const pulse = 1 + Math.sin(progress * Math.PI) * (event.killed ? 0.46 : event.hit ? 0.34 : 0.18);
     const opacity = Math.max(0, 0.92 * (1 - progress));
 
     groupRef.current.position.y = FLOOR_H + 0.5 + lift;
@@ -1480,8 +1480,8 @@ function CombatEventMarker() {
   if (!event) return null;
 
   const [wx, , wz] = tileWorld(event.tile.x, event.tile.y, ts);
-  const color = event.hit ? '#ff4e6a' : '#d8c170';
-  const label = event.hit ? `-${event.damage}` : 'MISS';
+  const color = event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#d8c170';
+  const label = event.killed ? 'KILL' : event.hit ? `-${event.damage}` : 'MISS';
 
   return (
     <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
@@ -1492,8 +1492,8 @@ function CombatEventMarker() {
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.36}
-        color={event.hit ? '#ffd7dd' : '#fff1b5'}
+        fontSize={event.killed ? 0.38 : 0.36}
+        color={event.killed ? '#ffffff' : event.hit ? '#ffd7dd' : '#fff1b5'}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
@@ -1521,8 +1521,8 @@ function CombatTracerOverlay() {
   const [sx, , sz] = tileWorld(attacker.position.x, attacker.position.y, ts);
   const targetTile = target?.position ?? event.tile;
   const [tx, , tz] = tileWorld(targetTile.x, targetTile.y, ts);
-  const color = event.hit ? '#ff4e6a' : '#fff1b5';
-  const label = event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
+  const color = event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#fff1b5';
+  const label = event.killed ? 'ELIM' : event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
   const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
   const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
   const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];

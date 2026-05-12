@@ -57,11 +57,15 @@ verbs that make those nouns matter.
 - Movement danger overlays now separate exposed/flanked danger from protected
   contested tiles.
 - Combat log panel for hit/miss/damage feedback.
+- Combat events now track target HP before/after a hit and flag eliminations.
+- First-pass kill feed clarity: combat log, contact break copy, shot marker, and
+  tracer labels distinguish eliminations from normal hits.
+- Dead units now leave a small team/role casualty marker on the tactical board.
 - Contact Break panel for reaction-fire interrupts.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
-  animation.
+  animation, including a stronger elimination state.
 - Procedural shot/contact audio cues play for direct fire, reaction fire, hits,
-  and misses.
+  misses, and eliminations.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
   the immediate trade decision.
 - Contact Drill prototype scenario for testing the Banana hold/crossing loop.
@@ -118,7 +122,8 @@ verbs that make those nouns matter.
 
 - Directional/production-grade line-of-sight solver.
 - Full shot preview breakdown before commit.
-- Crit/headshot logic and richer kill feed.
+- Crit/headshot logic and richer kill feed beyond first-pass elimination
+  markers.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
 - Production-grade diagonal/corner cover fidelity.
