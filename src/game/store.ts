@@ -12,7 +12,8 @@
 //     first contact vertical slice
 //   - "End Turn" advances to next team / next turn
 //
-// Missing: generic action pipeline, utility, plant/defuse, AI, and economy.
+// Missing: generic action pipeline, queued utility timing, ammo/reload,
+// production AI, and economy.
 // ============================================================
 import { create } from 'zustand';
 import type {
@@ -30,13 +31,14 @@ import type {
   FeedbackEvent,
   FeedbackEventType,
   SmokeCloud,
+  FlashBurst,
 } from './types';
 import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
 import { getDefaultWeapon } from './config/weapons';
 import { RULES } from './config/rules';
 import { findPath, getMovementTiles } from './pathfinding';
-import { getWatchedLane } from './los';
+import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
 
@@ -46,6 +48,10 @@ const AI_THINK_MS = 180;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS = 2;
 const SMOKE_DURATION_TURNS = 4;
+const FLASH_THROW_RANGE = 12;
+const FLASH_RADIUS = 5;
+const FLASH_DURATION_TURNS = 1;
+const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
 
 let feedbackSequence = 0;
@@ -303,10 +309,14 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   }
 
   const newUnits = units.map((u) => {
-    if (u.team === nextTeam && u.alive) {
-      return { ...u, ap: u.maxAp, hasMoved: false, shotsFiredThisTurn: 0 };
+    const flashTurns = u.team === round.activeTeam
+      ? Math.max(0, u.flashTurns - 1)
+      : u.flashTurns;
+    const nextUnit = flashTurns !== u.flashTurns ? { ...u, flashTurns } : u;
+    if (nextUnit.team === nextTeam && nextUnit.alive) {
+      return { ...nextUnit, ap: nextUnit.maxAp, hasMoved: false, shotsFiredThisTurn: 0 };
     }
-    return u;
+    return nextUnit;
   });
 
   const nextSmokes = nextTeam === 'T'
@@ -365,6 +375,8 @@ function createUnits(): Unit[] {
       hasBomb: false,
       hasDefuseKit: team === 'CT' && (roleId === 'support' || roleId === 'igl'),
       smokeGrenades: roleId === 'support' ? 2 : (roleId === 'igl' || roleId === 'lurker' ? 1 : 0),
+      flashbangs: roleId === 'awper' ? 0 : (roleId === 'support' ? 2 : 1),
+      flashTurns: 0,
       facing: { x: 0, y: team === 'T' ? 1 : -1 },
     };
   };
@@ -389,6 +401,7 @@ interface GameStore extends GameState {
   setInputMode: (mode: InputMode) => void;
   holdAngle: (targetTile: TileCoord) => void;
   throwSmoke: (targetTile: TileCoord) => void;
+  throwFlash: (targetTile: TileCoord) => void;
   plantBomb: () => void;
   defuseBomb: () => void;
   shootUnit: (targetId: number) => void;
@@ -456,6 +469,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     inputMode: 'move',
     heldAngles: [],
     smokes: [],
+    flashBursts: [],
     combatLog: [],
     feedbackEvents: [],
     aiStatus: null,
@@ -536,7 +550,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         return;
       }
 
-      if (state.inputMode === 'smoke' || state.inputMode === 'hold_angle') {
+      if (state.inputMode === 'smoke' || state.inputMode === 'flash' || state.inputMode === 'hold_angle') {
         set({ hoveredTile: tile, pathPreview: [] });
         return;
       }
@@ -923,6 +937,105 @@ export const useGameStore = create<GameStore>((set, get) => {
           team: unit.team,
           unitId: unit.id,
           intensity: 1,
+        }),
+      });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+    },
+
+    throwFlash: (targetTile) => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, map: mapData, round } = state;
+      if (selectedUnitId === null) return;
+
+      const unitIdx = units.findIndex((u) => u.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam || unit.flashbangs <= 0) return;
+      if (round.phase === 'setup' && !RULES.setupUtilityAllowed) return;
+      if (!mapData.grid[targetTile.y]?.[targetTile.x]?.walkable) return;
+      if (tileDistance(unit.position, targetTile) > FLASH_THROW_RANGE) return;
+
+      const affectedUnitIds = units
+        .filter((candidate) => (
+          candidate.alive &&
+          candidate.team !== unit.team &&
+          tileDistance(candidate.position, targetTile) <= FLASH_RADIUS &&
+          hasLineOfSight(mapData, targetTile, candidate.position, state.smokes)
+        ))
+        .map((candidate) => candidate.id);
+
+      const dx = targetTile.x - unit.position.x;
+      const dy = targetTile.y - unit.position.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      let nextUnits = units.map((candidate, index) => {
+        if (index === unitIdx) {
+          return {
+            ...candidate,
+            ap: Math.max(0, candidate.ap - 1),
+            flashbangs: Math.max(0, candidate.flashbangs - 1),
+            hasMoved: true,
+            facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+          };
+        }
+
+        if (affectedUnitIds.includes(candidate.id)) {
+          return {
+            ...candidate,
+            flashTurns: Math.max(candidate.flashTurns, FLASH_DURATION_TURNS),
+          };
+        }
+
+        return candidate;
+      });
+
+      const newAp = nextUnits[unitIdx].ap;
+      const flashBurst: FlashBurst = {
+        id: `${Date.now()}:${unit.id}:flash`,
+        ownerId: unit.id,
+        team: unit.team,
+        position: { ...targetTile },
+        radius: FLASH_RADIUS,
+        affectedUnitIds,
+        createdAt: Date.now(),
+      };
+
+      let nextRound = round;
+      let nextSelectedUnitId: number | null = newAp > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+      let nextSmokes = state.smokes;
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(round, nextUnits, state.smokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+        flashBursts: [
+          flashBurst,
+          ...state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000),
+        ].slice(0, FLASH_BURST_LOG_LIMIT),
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'flash_throw', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
         }),
       });
       if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
@@ -1784,6 +1897,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         heldAngles: [],
         smokes: [],
+        flashBursts: [],
         combatLog: [],
         feedbackEvents: [],
         aiStatus: null,
@@ -1860,6 +1974,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         heldAngles: [heldAngle],
         smokes: [],
+        flashBursts: [],
         combatLog: [],
         feedbackEvents: [],
         aiStatus: null,

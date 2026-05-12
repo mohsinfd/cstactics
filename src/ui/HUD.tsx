@@ -193,7 +193,7 @@ function ContactBreakPanel() {
         {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.hit ? `${event.damage} damage` : 'miss'}
       </div>
       <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}
+        {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
       </div>
     </div>
   );
@@ -371,7 +371,7 @@ function CombatLogPanel() {
             textTransform: 'uppercase',
             marginTop: 1,
           }}>
-            {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}
+            {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` fls -${formatPenalty(event.flashPenalty)}` : ''}
           </div>
         </div>
       ))}
@@ -742,12 +742,19 @@ function SelectedUnitPanel() {
         : shotOptions.length === 0
         ? 'No visible enemy.'
         : null;
-  const utilityDisabledReason = unit.ap <= 0
+  const smokeDisabledReason = unit.ap <= 0
     ? 'No AP remaining.'
     : (phase === 'setup' && !RULES.setupUtilityAllowed)
       ? 'Setup phase: no utility.'
       : unit.smokeGrenades <= 0
         ? 'No smokes remaining.'
+        : null;
+  const flashDisabledReason = unit.ap <= 0
+    ? 'No AP remaining.'
+    : (phase === 'setup' && !RULES.setupUtilityAllowed)
+      ? 'Setup phase: no utility.'
+      : unit.flashbangs <= 0
+        ? 'No flashes remaining.'
         : null;
   const plantSite = getPlantSite(map, unit.position);
   const plantDisabledReason = unit.team !== 'T'
@@ -782,7 +789,7 @@ function SelectedUnitPanel() {
       background: 'rgba(8, 8, 12, 0.94)',
       border: `1px solid ${teamColor}33`,
       borderLeft: `3px solid ${teamColor}`,
-      borderRadius: 6, padding: '12px 16px', minWidth: 200,
+      borderRadius: 6, padding: '12px 16px', minWidth: 260,
       pointerEvents: 'auto',
     }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
@@ -819,6 +826,7 @@ function SelectedUnitPanel() {
         <StatBox label="MOB" value={unit.role.mobility} />
         <StatBox label="AIM" value={unit.role.baseAim} />
         <StatBox label="SMK" value={unit.smokeGrenades} highlight={unit.smokeGrenades > 0} />
+        <StatBox label={unit.flashTurns > 0 ? 'FLD' : 'FLS'} value={unit.flashTurns > 0 ? 'YES' : unit.flashbangs} highlight={unit.flashTurns > 0 || unit.flashbangs > 0} />
         <StatBox label="$" value={unit.money} />
       </div>
 
@@ -840,7 +848,7 @@ function SelectedUnitPanel() {
         {unit.role.abilityName}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(54px, 1fr))', gap: 6, marginTop: 10 }}>
         <button
           onClick={() => setInputMode('move')}
           disabled={unit.ap <= 0}
@@ -897,14 +905,14 @@ function SelectedUnitPanel() {
         </button>
         <button
           onClick={() => setInputMode(inputMode === 'smoke' ? 'move' : 'smoke')}
-          disabled={Boolean(utilityDisabledReason)}
+          disabled={Boolean(smokeDisabledReason)}
           style={{
             padding: '7px 8px',
             borderRadius: 4,
             border: `1px solid ${inputMode === 'smoke' ? '#c5d1dfaa' : '#333'}`,
             background: inputMode === 'smoke' ? 'rgba(197,209,223,0.2)' : 'rgba(255,255,255,0.03)',
-            color: utilityDisabledReason ? '#666' : '#f5f5f5',
-            cursor: utilityDisabledReason ? 'default' : 'pointer',
+            color: smokeDisabledReason ? '#666' : '#f5f5f5',
+            cursor: smokeDisabledReason ? 'default' : 'pointer',
             fontSize: 10,
             fontWeight: 850,
             letterSpacing: 0.8,
@@ -912,6 +920,24 @@ function SelectedUnitPanel() {
           }}
         >
           Smoke
+        </button>
+        <button
+          onClick={() => setInputMode(inputMode === 'flash' ? 'move' : 'flash')}
+          disabled={Boolean(flashDisabledReason)}
+          style={{
+            padding: '7px 8px',
+            borderRadius: 4,
+            border: `1px solid ${inputMode === 'flash' ? '#fff1a8aa' : '#333'}`,
+            background: inputMode === 'flash' ? 'rgba(255,241,168,0.2)' : 'rgba(255,255,255,0.03)',
+            color: flashDisabledReason ? '#666' : '#fff7d0',
+            cursor: flashDisabledReason ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 850,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+          }}
+        >
+          Flash
         </button>
       </div>
 
@@ -977,14 +1003,24 @@ function SelectedUnitPanel() {
           Click a tile within 12 tiles to block line of sight.
         </div>
       )}
+      {inputMode === 'flash' && (
+        <div style={{ color: '#d8c170', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Click a tile within 12 tiles. Enemies in the burst take a major aim penalty.
+        </div>
+      )}
       {inputMode === 'shoot' && shootingDisabledReason && (
         <div style={{ color: '#706f6a', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Shoot disabled: {shootingDisabledReason}
         </div>
       )}
-      {utilityDisabledReason && inputMode === 'smoke' && (
+      {smokeDisabledReason && inputMode === 'smoke' && (
         <div style={{ color: '#707985', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
-          Smoke disabled: {utilityDisabledReason}
+          Smoke disabled: {smokeDisabledReason}
+        </div>
+      )}
+      {flashDisabledReason && inputMode === 'flash' && (
+        <div style={{ color: '#837849', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Flash disabled: {flashDisabledReason}
         </div>
       )}
       {showPlantAction && plantDisabledReason && unit.hasBomb && (
@@ -1066,7 +1102,7 @@ function SelectedUnitPanel() {
                 letterSpacing: 0.4,
                 textTransform: 'uppercase',
               }}>
-                Base {getBaseShotAim(preview)} | Range -{formatPenalty(preview.rangePenalty)} | Cover -{formatPenalty(preview.coverPenalty)} | {getCoverStateLabel(preview)}
+                Base {getBaseShotAim(preview)} | Range -{formatPenalty(preview.rangePenalty)} | Cover -{formatPenalty(preview.coverPenalty)}{preview.flashPenalty > 0 ? ` | Flash -${formatPenalty(preview.flashPenalty)}` : ''} | {getCoverStateLabel(preview)}
               </span>
             </button>
           ))}

@@ -138,6 +138,13 @@ function playFeedbackCue(event: FeedbackEvent): void {
     return;
   }
 
+  if (event.type === 'flash_throw') {
+    playUiTick(ctx, now, 620, 0.018 * intensity);
+    playTone(ctx, now + 0.02, 1240, 0.09, 0.018 * intensity, 'triangle');
+    playNoiseBurst(ctx, now + 0.035, 0.05, 0.025 * intensity);
+    return;
+  }
+
   if (event.type === 'turn_change' || event.type === 'ai_start' || event.type === 'ai_end') {
     playUiTick(ctx, now, event.type === 'ai_end' ? 260 : 210, 0.02 * intensity);
     playUiTick(ctx, now + 0.055, event.type === 'ai_end' ? 360 : 300, 0.014 * intensity);

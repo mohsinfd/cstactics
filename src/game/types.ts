@@ -23,7 +23,7 @@ export interface MovementTile extends TileCoord {
 }
 
 export type PlannedActionKind = 'move';
-export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke';
+export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke' | 'flash';
 
 export interface PlannedAction {
   id: string;
@@ -65,6 +65,7 @@ export interface CombatEvent {
   distance: number;
   rangePenalty: number;
   coverPenalty: number;
+  flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
   aimBonus: number;
@@ -79,6 +80,7 @@ export type FeedbackEventType =
   | 'move_complete'
   | 'hold_angle'
   | 'smoke_throw'
+  | 'flash_throw'
   | 'turn_change'
   | 'ai_start'
   | 'ai_end';
@@ -104,6 +106,16 @@ export interface SmokeCloud {
   position: TileCoord;
   radius: number;
   remainingTurns: number;
+}
+
+export interface FlashBurst {
+  id: string;
+  ownerId: number;
+  team: Team;
+  position: TileCoord;
+  radius: number;
+  affectedUnitIds: number[];
+  createdAt: number;
 }
 
 export type TileType = 'floor' | 'wall' | 'cover_half' | 'cover_full' | 'bombsite_a' | 'bombsite_b' | 'spawn_t' | 'spawn_ct' | 'out_of_bounds';
@@ -237,6 +249,8 @@ export interface Unit {
   hasBomb: boolean;
   hasDefuseKit: boolean;
   smokeGrenades: number;
+  flashbangs: number;
+  flashTurns: number;
   // Visual state
   facing: TileCoord;        // direction unit is looking
 }
@@ -289,6 +303,7 @@ export interface GameState {
   inputMode: InputMode;
   heldAngles: HeldAngle[];
   smokes: SmokeCloud[];
+  flashBursts: FlashBurst[];
   combatLog: CombatEvent[];
   feedbackEvents: FeedbackEvent[];
   aiStatus: AiStatus | null;

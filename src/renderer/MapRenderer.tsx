@@ -14,7 +14,7 @@
 // - LOS shot previews and watched-lane overlays
 // - Interactive invisible plane for click/hover
 //
-// Missing: flash/molly utility volumes, richer animation, and final art assets.
+// Missing: molly/HE utility volumes, richer animation, and final art assets.
 // ============================================================
 import { Suspense, useMemo, useCallback, useRef, type ComponentProps } from 'react';
 import * as THREE from 'three';
@@ -22,10 +22,10 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
-import type { CoverObject, MapData, TileCoord } from '../game/types';
+import type { CoverObject, FlashBurst, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
-import { getWatchedLane } from '../game/los';
+import { getWatchedLane, hasLineOfSight } from '../game/los';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
@@ -60,8 +60,11 @@ const MOVE_TWO_AP_COLOR = '#f7cf5f';
 const MOVE_BOUNDARY_COLOR = '#9dfcff';
 const THREAT_COLOR = '#ff8a3d';
 const SMOKE_PREVIEW_COLOR = '#c5d1df';
+const FLASH_PREVIEW_COLOR = '#fff1a8';
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS_TILES = 2;
+const FLASH_THROW_RANGE = 12;
+const FLASH_RADIUS_TILES = 5;
 const KEY_CALLOUTS = new Set([
   'T Spawn',
   'Upper Banana',
@@ -394,6 +397,65 @@ function SmokeLayer() {
           </group>
         );
       })}
+    </>
+  );
+}
+
+function FlashBurstMarker({ burst }: { burst: FlashBurst }) {
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const discMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const [wx, , wz] = tileWorld(burst.position.x, burst.position.y, ts);
+  const radius = burst.radius * ts;
+
+  useFrame(() => {
+    const age = performance.now() - burst.createdAt;
+    const progress = THREE.MathUtils.clamp(age / 1400, 0, 1);
+    const opacity = Math.max(0, 0.42 * (1 - progress));
+    const scale = 0.55 + progress * 0.65;
+    if (groupRef.current) groupRef.current.scale.setScalar(scale);
+    if (discMaterialRef.current) discMaterialRef.current.opacity = opacity;
+    if (ringMaterialRef.current) ringMaterialRef.current.opacity = Math.max(0, 0.86 * (1 - progress));
+  });
+
+  return (
+    <group ref={groupRef} position={[wx, FLOOR_H + 0.32, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius, 44]} />
+        <meshBasicMaterial ref={discMaterialRef} color="#fff3b0" transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.16, radius, 48]} />
+        <meshBasicMaterial ref={ringMaterialRef} color="#fff8df" transparent opacity={0.86} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0.04, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.34}
+        color="#2a2110"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.04}
+        outlineColor="#fff4c2"
+        font={undefined}
+      >
+        {burst.affectedUnitIds.length > 0 ? `FLASH ${burst.affectedUnitIds.length}` : 'FLASH'}
+      </SafeText>
+    </group>
+  );
+}
+
+function FlashLayer() {
+  const flashBursts = useGameStore((s) => s.flashBursts);
+  if (flashBursts.length === 0) return null;
+
+  return (
+    <>
+      {flashBursts.map((burst) => (
+        <FlashBurstMarker key={burst.id} burst={burst} />
+      ))}
     </>
   );
 }
@@ -856,10 +918,14 @@ function HoveredTileHighlight() {
     return movementTiles.find((tile) => tile.x === hoveredTile.x && tile.y === hoveredTile.y) ?? null;
   }, [hoveredTile, movementTiles, selectedUnitId]);
 
-  if (!hoveredTile || !hoveredMovementTile) return null;
+  const isSmokeMode = inputMode === 'smoke';
+  const isFlashMode = inputMode === 'flash';
+  const isUtilityMode = isSmokeMode || isFlashMode;
+
+  if (!hoveredTile || (!hoveredMovementTile && !isUtilityMode)) return null;
 
   const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
-  const isOneAp = hoveredMovementTile.apCost <= 1;
+  const isOneAp = (hoveredMovementTile?.apCost ?? 2) <= 1;
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId);
   const crossedHeldAngles = selectedUnit
     && phase !== 'setup'
@@ -877,15 +943,15 @@ function HoveredTileHighlight() {
   const isWatched = crossedHeldAngles.length > 0;
   const isThreatened = knownThreats.length > 0;
   const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
-  const isSmokeMode = inputMode === 'smoke';
   const threatLabel = topKnownThreat?.coverState === 'protected'
     ? 'COVER'
     : topKnownThreat?.coverState === 'flanked'
       ? 'FLANK'
       : 'OPEN';
-  const label = isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP')));
+  const label = isFlashMode ? 'FLASH' : (isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP'))));
   const smokeColor = '#b9c6d8';
-  const displayColor = isSmokeMode ? smokeColor : color;
+  const flashColor = '#fff1a8';
+  const displayColor = isFlashMode ? flashColor : (isSmokeMode ? smokeColor : color);
   const coverEdges = getCoverEdges(map, hoveredTile);
 
   return (
@@ -911,7 +977,7 @@ function HoveredTileHighlight() {
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.035}
-        outlineColor={isSmokeMode ? '#3f4a58' : '#f8f3dc'}
+        outlineColor={isFlashMode ? '#6d5720' : (isSmokeMode ? '#3f4a58' : '#f8f3dc')}
         font={undefined}
       >
         {label}
@@ -977,6 +1043,61 @@ function SmokeTargetPreview() {
         font={undefined}
       >
         {valid ? 'SMOKE' : 'NO THROW'}
+      </SafeText>
+    </group>
+  );
+}
+
+function FlashTargetPreview() {
+  const hoveredTile = useGameStore((s) => s.hoveredTile);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const units = useGameStore((s) => s.units);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (!hoveredTile || selectedUnitId === null || inputMode !== 'flash') return null;
+  const unit = units.find((candidate) => candidate.id === selectedUnitId);
+  if (!unit) return null;
+
+  const tile = map.grid[hoveredTile.y]?.[hoveredTile.x];
+  const inRange = gridDistance(unit.position, hoveredTile) <= FLASH_THROW_RANGE;
+  const valid = Boolean(tile?.walkable && inRange && unit.flashbangs > 0 && unit.ap > 0);
+  const affectedEnemies = valid
+    ? units.filter((candidate) => (
+      candidate.alive &&
+      candidate.team !== unit.team &&
+      gridDistance(candidate.position, hoveredTile) <= FLASH_RADIUS_TILES &&
+      hasLineOfSight(map, hoveredTile, candidate.position, smokes)
+    ))
+    : [];
+  const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
+  const radius = FLASH_RADIUS_TILES * ts;
+  const color = valid ? FLASH_PREVIEW_COLOR : '#ff6b6b';
+
+  return (
+    <group position={[wx, FLOOR_H + 0.3, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius, 44]} />
+        <meshBasicMaterial color={color} transparent opacity={valid ? 0.14 : 0.08} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.9, radius, 44]} />
+        <meshBasicMaterial color={color} transparent opacity={0.84} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0.03, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.28}
+        color={valid ? '#fff8d8' : '#ffd1d1'}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.04}
+        outlineColor="#201905"
+        font={undefined}
+      >
+        {valid ? `FLASH ${affectedEnemies.length}` : 'NO THROW'}
       </SafeText>
     </group>
   );
@@ -1511,6 +1632,7 @@ function InteractiveFloor() {
   const queueMove = useGameStore((s) => s.queueMove);
   const holdAngle = useGameStore((s) => s.holdAngle);
   const throwSmoke = useGameStore((s) => s.throwSmoke);
+  const throwFlash = useGameStore((s) => s.throwFlash);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const hoverTile = useGameStore((s) => s.hoverTile);
   const planningMode = useGameStore((s) => s.planningMode);
@@ -1533,6 +1655,8 @@ function InteractiveFloor() {
           holdAngle({ x: tileX, y: tileY });
         } else if (inputMode === 'smoke') {
           throwSmoke({ x: tileX, y: tileY });
+        } else if (inputMode === 'flash') {
+          throwFlash({ x: tileX, y: tileY });
         } else if (unitOnTile && unitOnTile.team === round.activeTeam) {
           selectUnit(unitOnTile.id);
         } else {
@@ -1545,7 +1669,7 @@ function InteractiveFloor() {
         }
       }
     },
-    [ts, map.width, map.height, moveUnit, queueMove, holdAngle, throwSmoke, selectUnit, planningMode, inputMode]
+    [ts, map.width, map.height, moveUnit, queueMove, holdAngle, throwSmoke, throwFlash, selectUnit, planningMode, inputMode]
   );
 
   const handlePointerMove = useCallback(
@@ -1600,10 +1724,12 @@ export function MapRenderer() {
       <CalloutLabels />
       <PlantedBombMarker />
       <SmokeLayer />
+      <FlashLayer />
       <WalkableHighlight />
       <ThreatenedMovementOverlay />
       <HoveredTileHighlight />
       <SmokeTargetPreview />
+      <FlashTargetPreview />
       <PathPreview />
       <PlannedActionPreview />
       <HeldAngleOverlay />

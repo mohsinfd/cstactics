@@ -77,6 +77,12 @@ verbs that make those nouns matter.
   and pillars.
 - Basic CT auto-response: CT can run a short automated turn after T passes,
   repositioning toward holds, taking obvious shots, and setting held angles.
+- First-pass smoke utility that blocks line of sight with target preview,
+  duration, board volume, and audio feedback.
+- First-pass flash utility with target preview, burst marker, affected-count
+  readout, and aim penalty that weakens direct shots and held-angle reactions.
+- Bomb plant and defuse actions with site validation, kit-aware defuse cost,
+  post-plant timer pressure, round-end state, bomb marker, and objective HUD.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
@@ -91,10 +97,14 @@ verbs that make those nouns matter.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed messaging, but cover-corner fidelity is
   still first-pass.
-- Bomb state exists as data, but plant/defuse actions are not implemented.
+- Bomb state now supports a first playable plant/defuse loop, but dropped bomb,
+  pickup, elimination/time wins, round reset flow, and save/hunt logic are still
+  missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, but not yet a
   full multi-order CS timeline with utility offsets and simultaneous beats.
+- Utility exists as immediate smoke/flash actions, but not yet as queued
+  timeline orders with pop timing, bounces, molly/HE, or richer counterplay.
 
 ## Not Implemented Yet
 
@@ -104,9 +114,9 @@ verbs that make those nouns matter.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
 - Production-grade diagonal/corner cover fidelity.
-- Smoke, flash, molly, HE, or utility timing.
+- Molly, HE, and production-grade utility timing.
 - Ammo and reload.
-- Plant, defuse, dropped bomb, or bomb timer pressure.
+- Dropped bomb, bomb pickup, elimination wins, timeout wins, and round reset.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
 - Real synchronized execute timeline.

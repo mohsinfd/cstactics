@@ -119,10 +119,11 @@ move, trigger contact, and freeze into a trade decision. See
 
 ### Milestone C: Utility Timing
 
+- Smoke and flash as immediate tactical actions. Implemented as first pass.
 - Smoke, flash, molly, and HE as planned orders.
 - Timeline offsets: flash pops before entry swing, smoke blooms before cross,
   molly denies retake path.
-- Utility preview volumes on the map.
+- Utility preview volumes on the map. Implemented for smoke/flash first pass.
 
 ### Milestone D: Resolution Timeline
 
@@ -135,7 +136,8 @@ move, trigger contact, and freeze into a trade decision. See
 ### Milestone E: CS Match Loop
 
 - Buy phase, economy, weapons, armor, kit, utility loadout.
-- Bomb plant/defuse/save/hunt pressure.
+- Bomb plant/defuse pressure. Implemented as first pass.
+- Dropped bomb, pickup, save/hunt pressure.
 - Round-to-round strategic consequences.
 
 ## Priority Rules

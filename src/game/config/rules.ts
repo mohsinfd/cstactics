@@ -35,4 +35,7 @@ export const RULES = {
   // Cover
   halfCoverAimPenalty: 20,
   fullCoverAimPenalty: 40,
+
+  // Utility
+  flashAimPenalty: 45,
 } as const;

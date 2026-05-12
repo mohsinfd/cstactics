@@ -13,6 +13,7 @@ export interface ShotPreview {
   aimBonus: number;
   rangePenalty: number;
   coverPenalty: number;
+  flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
   staticCoverPenalty: number;
@@ -136,13 +137,15 @@ export function getShotPreview(
   const inRange = distance <= attacker.weapon.rangeMax;
   const rangePenalty = Math.max(0, distance - attacker.weapon.rangeOptimal) * 4;
   const cover = getCoverProfile(map, attacker.position, targetTile);
+  const flashPenalty = attacker.flashTurns > 0 ? RULES.flashAimPenalty : 0;
   const unclampedHitChance = Math.round(
     attacker.role.baseAim +
     attacker.weapon.baseAim -
     70 +
     aimBonus -
     rangePenalty -
-    cover.effectiveCoverPenalty
+    cover.effectiveCoverPenalty -
+    flashPenalty
   );
   const hitChance = clamp(
     unclampedHitChance,
@@ -156,6 +159,7 @@ export function getShotPreview(
   const reasons: string[] = [];
   if (!hasLos) reasons.push('No line of sight');
   if (!inRange) reasons.push('Out of range');
+  if (flashPenalty > 0) reasons.push('Attacker flashed');
 
   return {
     hasLineOfSight: hasLos,
@@ -168,6 +172,7 @@ export function getShotPreview(
     aimBonus,
     rangePenalty,
     coverPenalty: cover.effectiveCoverPenalty,
+    flashPenalty,
     coverLabel: cover.coverLabel,
     coverState: cover.coverState,
     staticCoverPenalty: cover.staticCoverPenalty,
@@ -192,9 +197,10 @@ export function resolveShot(
   const coverText = preview.coverState === 'protected'
     ? `${preview.coverLabel} cover`
     : preview.coverState;
+  const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
   const summary = hit
-    ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}`
-    : `${attacker.name} misses ${target.name} through ${coverText}`;
+    ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`
+    : `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
 
   return {
     id: `${Date.now()}:${attacker.id}:${target.id}`,
@@ -210,6 +216,7 @@ export function resolveShot(
     distance: preview.distance,
     rangePenalty: preview.rangePenalty,
     coverPenalty: preview.coverPenalty,
+    flashPenalty: preview.flashPenalty,
     coverLabel: preview.coverLabel,
     coverState: preview.coverState,
     aimBonus,
