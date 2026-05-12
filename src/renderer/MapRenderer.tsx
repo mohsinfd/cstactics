@@ -1287,14 +1287,16 @@ function PlannedActionPreview() {
     <>
       {plannedActions.map((action, index) => {
         const unit = units.find((u) => u.id === action.unitId);
-        const isWatched = phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
-        const isDanger = Boolean(unit && phase !== 'setup' && units.some((enemy) => {
+        const isMove = action.kind === 'move';
+        const isWatched = isMove && phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
+        const isDanger = Boolean(isMove && unit && phase !== 'setup' && units.some((enemy) => {
           if (!enemy.alive || enemy.team === action.team) return false;
           const preview = getShotPreview(map, enemy, unit, 0, action.target, smokes);
           return preview.hasLineOfSight && preview.inRange;
         }));
-        const color = isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166'));
-        const label = isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`);
+        const utilityColor = action.kind === 'flash' ? '#fff1a8' : '#c5d1df';
+        const color = !isMove ? utilityColor : (isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166')));
+        const label = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
         const points = [action.from, ...action.path].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
           return [wx, FLOOR_H + 0.24 + index * 0.012, wz];

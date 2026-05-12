@@ -22,7 +22,7 @@ export interface MovementTile extends TileCoord {
   apCost: number;
 }
 
-export type PlannedActionKind = 'move';
+export type PlannedActionKind = 'move' | 'smoke' | 'flash';
 export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke' | 'flash';
 
 export interface PlannedAction {

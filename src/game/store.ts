@@ -281,6 +281,62 @@ function canReachBomb(unit: Unit, bombPosition: TileCoord | null): boolean {
   return tileDistance(unit.position, bombPosition) <= 1.5;
 }
 
+function isUtilityAction(action: PlannedAction): boolean {
+  return action.kind === 'smoke' || action.kind === 'flash';
+}
+
+function createUtilityPlan(
+  state: GameState,
+  kind: 'smoke' | 'flash',
+  targetTile: TileCoord,
+  throwRange: number
+): {
+  plannedActions: PlannedAction[];
+  selectedUnitId: number | null;
+  movementTiles: MovementTile[];
+  walkableTiles: TileCoord[];
+} | null {
+  const { selectedUnitId, units, map: mapData, round } = state;
+  if (selectedUnitId === null) return null;
+
+  const unit = units.find((candidate) => candidate.id === selectedUnitId);
+  if (!unit || !unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam) return null;
+  if (round.phase === 'setup' && !RULES.setupUtilityAllowed) return null;
+  if (!mapData.grid[targetTile.y]?.[targetTile.x]?.walkable) return null;
+  if (tileDistance(unit.position, targetTile) > throwRange) return null;
+
+  const charges = kind === 'smoke' ? unit.smokeGrenades : unit.flashbangs;
+  if (charges <= 0) return null;
+
+  const existingPlans = state.plannedActions.filter((action) => action.unitId !== unit.id);
+  const plannedAction: PlannedAction = {
+    id: `${unit.id}:${kind}`,
+    unitId: unit.id,
+    team: unit.team,
+    kind,
+    from: { ...unit.position },
+    target: { ...targetTile },
+    path: [],
+    apCost: 1,
+    summary: `${unit.name} ${kind} ${mapData.grid[targetTile.y]?.[targetTile.x]?.label ?? 'tile'}`,
+  };
+  const plannedActions = [...existingPlans, plannedAction];
+  const nextSelectedUnitId = getNextUnplannedUnitId(
+    units,
+    round.activeTeam,
+    unit.id,
+    plannedActions
+  ) ?? unit.id;
+  const movement = getMovementForSelection(units, nextSelectedUnitId, mapData, round);
+
+  return {
+    plannedActions,
+    selectedUnitId: nextSelectedUnitId,
+    movementTiles: movement.movementTiles,
+    walkableTiles: movement.walkableTiles,
+  };
+}
+
 function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []): {
   round: RoundState;
   units: Unit[];
@@ -872,6 +928,26 @@ export const useGameStore = create<GameStore>((set, get) => {
     throwSmoke: (targetTile) => {
       const state = get();
       if (state.isExecuting) return;
+      if (state.planningMode) {
+        const plan = createUtilityPlan(state, 'smoke', targetTile, SMOKE_THROW_RANGE);
+        if (!plan) return;
+        const unit = state.units.find((candidate) => candidate.id === state.selectedUnitId);
+        set({
+          plannedActions: plan.plannedActions,
+          selectedUnitId: plan.selectedUnitId,
+          movementTiles: plan.movementTiles,
+          walkableTiles: plan.walkableTiles,
+          hoveredTile: null,
+          pathPreview: [],
+          inputMode: 'move',
+          feedbackEvents: appendFeedback(state.feedbackEvents, 'plan_add', {
+            team: unit?.team,
+            unitId: unit?.id,
+            intensity: 0.7,
+          }),
+        });
+        return;
+      }
       const { selectedUnitId, units, map: mapData, round } = state;
       if (selectedUnitId === null) return;
 
@@ -945,6 +1021,26 @@ export const useGameStore = create<GameStore>((set, get) => {
     throwFlash: (targetTile) => {
       const state = get();
       if (state.isExecuting) return;
+      if (state.planningMode) {
+        const plan = createUtilityPlan(state, 'flash', targetTile, FLASH_THROW_RANGE);
+        if (!plan) return;
+        const unit = state.units.find((candidate) => candidate.id === state.selectedUnitId);
+        set({
+          plannedActions: plan.plannedActions,
+          selectedUnitId: plan.selectedUnitId,
+          movementTiles: plan.movementTiles,
+          walkableTiles: plan.walkableTiles,
+          hoveredTile: null,
+          pathPreview: [],
+          inputMode: 'move',
+          feedbackEvents: appendFeedback(state.feedbackEvents, 'plan_add', {
+            team: unit?.team,
+            unitId: unit?.id,
+            intensity: 0.75,
+          }),
+        });
+        return;
+      }
       const { selectedUnitId, units, map: mapData, round } = state;
       if (selectedUnitId === null) return;
 
@@ -1229,7 +1325,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (!isInRange) return;
 
       const existingPlans = state.plannedActions.filter((action) => action.unitId !== unit.id);
-      const plannedMovingUnitIds = new Set(existingPlans.map((action) => action.unitId));
+      const plannedMovingUnitIds = new Set(existingPlans.filter((action) => action.kind === 'move').map((action) => action.unitId));
       const duplicateTarget = existingPlans.some(
         (action) => action.target.x === targetTile.x && action.target.y === targetTile.y
       );
@@ -1294,9 +1390,13 @@ export const useGameStore = create<GameStore>((set, get) => {
       const activePlans = state.plannedActions.filter((action) => action.team === round.activeTeam);
       if (activePlans.length === 0) return;
 
-      const movingUnitIds = new Set(activePlans.map((action) => action.unitId));
+      const utilityPlans = activePlans.filter(isUtilityAction);
+      const movePlans = activePlans.filter((action) => action.kind === 'move');
+      const movingUnitIds = new Set(movePlans.map((action) => action.unitId));
       const claimedTargets = new Set<string>();
       let nextUnits = [...state.units];
+      let nextSmokes = state.smokes;
+      let nextFlashBursts = state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000);
       let contactEvent: CombatEvent | null = null;
       let consumedHeldAngleId: string | null = null;
       const runtimes: Array<{
@@ -1309,7 +1409,131 @@ export const useGameStore = create<GameStore>((set, get) => {
         stopped: boolean;
       }> = [];
 
-      for (const action of activePlans) {
+      set({
+        planningMode: false,
+        isExecuting: true,
+        hoveredTile: null,
+        movementTiles: [],
+        walkableTiles: [],
+        pathPreview: [],
+        inputMode: 'move',
+      });
+
+      let utilityExecuted = false;
+      for (const action of utilityPlans) {
+        const unitIdx = nextUnits.findIndex((unit) => unit.id === action.unitId);
+        if (unitIdx === -1) continue;
+
+        const unit = nextUnits[unitIdx];
+        if (!unit.alive || unit.ap < action.apCost) continue;
+        if (!mapData.grid[action.target.y]?.[action.target.x]?.walkable) continue;
+        if (round.phase === 'setup' && !RULES.setupUtilityAllowed) continue;
+
+        const throwRange = action.kind === 'smoke' ? SMOKE_THROW_RANGE : FLASH_THROW_RANGE;
+        if (tileDistance(unit.position, action.target) > throwRange) continue;
+
+        if (action.kind === 'smoke' && unit.smokeGrenades <= 0) continue;
+        if (action.kind === 'flash' && unit.flashbangs <= 0) continue;
+
+        const dx = action.target.x - unit.position.x;
+        const dy = action.target.y - unit.position.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        if (action.kind === 'smoke') {
+          nextUnits = [...nextUnits];
+          nextUnits[unitIdx] = {
+            ...unit,
+            ap: Math.max(0, unit.ap - action.apCost),
+            smokeGrenades: Math.max(0, unit.smokeGrenades - 1),
+            hasMoved: true,
+            facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+          };
+          nextSmokes = [
+            ...nextSmokes,
+            {
+              id: `${Date.now()}:${unit.id}:planned-smoke`,
+              ownerId: unit.id,
+              team: unit.team,
+              position: { ...action.target },
+              radius: SMOKE_RADIUS,
+              remainingTurns: SMOKE_DURATION_TURNS,
+            },
+          ];
+          utilityExecuted = true;
+          set({
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'smoke_throw', {
+              team: unit.team,
+              unitId: unit.id,
+              intensity: 1,
+            }),
+          });
+        }
+
+        if (action.kind === 'flash') {
+          const affectedUnitIds = nextUnits
+            .filter((candidate) => (
+              candidate.alive &&
+              candidate.team !== unit.team &&
+              tileDistance(candidate.position, action.target) <= FLASH_RADIUS &&
+              hasLineOfSight(mapData, action.target, candidate.position, nextSmokes)
+            ))
+            .map((candidate) => candidate.id);
+
+          nextUnits = nextUnits.map((candidate, index) => {
+            if (index === unitIdx) {
+              return {
+                ...candidate,
+                ap: Math.max(0, candidate.ap - action.apCost),
+                flashbangs: Math.max(0, candidate.flashbangs - 1),
+                hasMoved: true,
+                facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+              };
+            }
+
+            if (affectedUnitIds.includes(candidate.id)) {
+              return {
+                ...candidate,
+                flashTurns: Math.max(candidate.flashTurns, FLASH_DURATION_TURNS),
+              };
+            }
+
+            return candidate;
+          });
+          nextFlashBursts = [
+            {
+              id: `${Date.now()}:${unit.id}:planned-flash`,
+              ownerId: unit.id,
+              team: unit.team,
+              position: { ...action.target },
+              radius: FLASH_RADIUS,
+              affectedUnitIds,
+              createdAt: Date.now(),
+            },
+            ...nextFlashBursts,
+          ].slice(0, FLASH_BURST_LOG_LIMIT);
+          utilityExecuted = true;
+          set({
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'flash_throw', {
+              team: unit.team,
+              unitId: unit.id,
+              intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
+            }),
+          });
+        }
+      }
+
+      if (utilityExecuted) {
+        set({
+          units: nextUnits,
+          smokes: nextSmokes,
+          flashBursts: nextFlashBursts,
+          hoveredTile: null,
+          pathPreview: [],
+        });
+        await wait(EXECUTION_STEP_MS * 2);
+      }
+
+      for (const action of movePlans) {
         const unitIdx = nextUnits.findIndex((unit) => unit.id === action.unitId);
         if (unitIdx === -1) continue;
 
@@ -1353,18 +1577,34 @@ export const useGameStore = create<GameStore>((set, get) => {
       }
 
       if (runtimes.length === 0) {
+        let nextRound = round;
+        let selectedUnitId = getFirstAvailableUnitId(nextUnits, round.activeTeam);
+        if (selectedUnitId === null) {
+          const advanced = advanceTurn(round, nextUnits, nextSmokes);
+          nextUnits = advanced.units;
+          nextRound = advanced.round;
+          nextSmokes = advanced.smokes;
+          selectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+        }
+        const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, nextRound);
         set({
-          planningMode: false,
+          units: nextUnits,
+          round: nextRound,
+          selectedUnitId,
+          movementTiles: movement.movementTiles,
+          walkableTiles: movement.walkableTiles,
           plannedActions: [],
           pathPreview: [],
           isExecuting: false,
+          inputMode: 'move',
+          smokes: nextSmokes,
+          flashBursts: nextFlashBursts,
         });
+        if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
         return;
       }
 
       set({
-        planningMode: false,
-        isExecuting: true,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -1440,9 +1680,9 @@ export const useGameStore = create<GameStore>((set, get) => {
             continue;
           }
 
-          const reactionPreview = getShotPreview(mapData, attacker, unit, runtime.crossedAngle.aimBonus, runtime.contactTile, state.smokes);
+          const reactionPreview = getShotPreview(mapData, attacker, unit, runtime.crossedAngle.aimBonus, runtime.contactTile, nextSmokes);
           if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
-            contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, state.smokes);
+            contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, nextSmokes);
             consumedHeldAngleId = runtime.crossedAngle.id;
             const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (targetIdx !== -1 && contactEvent.hit) {
@@ -1480,12 +1720,11 @@ export const useGameStore = create<GameStore>((set, get) => {
       }
 
       let nextRound = round;
-      let nextSmokes = state.smokes;
       let selectedUnitId = contactEvent
         ? (nextUnits.find((unit) => unit.id === contactEvent!.targetId && unit.alive)?.id ?? getFirstAvailableUnitId(nextUnits, round.activeTeam))
         : getFirstAvailableUnitId(nextUnits, round.activeTeam);
       if (!contactEvent && selectedUnitId === null) {
-        const advanced = advanceTurn(round, nextUnits, state.smokes);
+        const advanced = advanceTurn(round, nextUnits, nextSmokes);
         nextUnits = advanced.units;
         nextRound = advanced.round;
         nextSmokes = advanced.smokes;
@@ -1519,6 +1758,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           angle.id !== consumedHeldAngleId
         )),
         smokes: nextSmokes,
+        flashBursts: nextFlashBursts,
         combatLog,
         feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
           team: round.activeTeam,

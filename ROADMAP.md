@@ -120,6 +120,8 @@ move, trigger contact, and freeze into a trade decision. See
 ### Milestone C: Utility Timing
 
 - Smoke and flash as immediate tactical actions. Implemented as first pass.
+- Queue smoke/flash in planning mode and resolve utility before movement.
+  Implemented as first pass.
 - Smoke, flash, molly, and HE as planned orders.
 - Timeline offsets: flash pops before entry swing, smoke blooms before cross,
   molly denies retake path.

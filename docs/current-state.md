@@ -28,6 +28,8 @@ verbs that make those nouns matter.
 - Movement range tiles visible to known enemies receive a danger tint.
 - Player hover/selection feedback with tactical brackets and facing arcs.
 - Planning mode that queues move orders.
+- Planning mode can queue first-pass smoke and flash orders, resolving utility
+  before movement during `Run Execute`.
 - Planned path/destination previews for queued move orders.
 - Queued move rows and planned destination markers show `WATCH` or `DANGER`
   when the planned route/destination is risky.
@@ -103,8 +105,8 @@ verbs that make those nouns matter.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, but not yet a
   full multi-order CS timeline with utility offsets and simultaneous beats.
-- Utility exists as immediate smoke/flash actions, but not yet as queued
-  timeline orders with pop timing, bounces, molly/HE, or richer counterplay.
+- Utility exists as immediate and first-pass queued smoke/flash actions, but not
+  yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 
 ## Not Implemented Yet
 
