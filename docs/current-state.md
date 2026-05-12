@@ -77,6 +77,8 @@ verbs that make those nouns matter.
 - Contact Break panel for reaction-fire interrupts.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
+- First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit
+  shock, and casualty death pulse.
 - Procedural shot/contact audio cues play for direct fire, reaction fire, hits,
   misses, and eliminations.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
@@ -126,8 +128,8 @@ verbs that make those nouns matter.
 - Roles exist as data, visual identity, and first-pass loadout identity, but not
   yet as full tactical jobs.
 - Weapons exist as data and now drive simple preview/damage/headshot/AP-cost
-  resolution, but recoil depth and richer per-modifier shot breakdowns are still
-  missing.
+  resolution and first-pass shot presentation, but deeper weapon recoil rules
+  and richer per-modifier shot breakdowns are still missing.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed/corner messaging, but production cover
   fidelity is still first-pass.

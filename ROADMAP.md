@@ -122,8 +122,10 @@ move, trigger contact, and freeze into a trade decision. See
   Implemented as a first pass.
 - Basic CT auto-response. Implemented as a scripted/simple opponent pass for
   testing the one-player loop.
-- Next: improve hit/death presentation, then replace fixed execute beats with
-  editable timeline offsets.
+- First-pass hit/death presentation VFX: shooter recoil, muzzle flash, target hit
+  shock, and casualty death pulse. Implemented.
+- Next: replace fixed execute beats with editable timeline offsets, then deepen
+  damage numbers and per-weapon shot feel.
 
 ### Milestone C: Utility Timing
 
@@ -215,7 +217,8 @@ Work:
   First-pass death markers, headshot/crit, and kill feed clarity are
   implemented.
 - Cover penalties and range penalties.
-- Basic VFX: tracer, hit marker, damage number, death fade.
+- Basic VFX: tracer, hit marker, muzzle flash, shooter recoil, target hit shock,
+  and death pulse. Implemented as first pass. Damage numbers are still pending.
 - Combat action panel for selected units.
 
 Acceptance:

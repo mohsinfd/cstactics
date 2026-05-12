@@ -668,14 +668,29 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const phase = useGameStore((s) => s.round.phase);
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
+  const latestCombatEvent = useGameStore((s) => s.combatLog[0]);
   const ts = map.tileSize;
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
   const weaponRef = useRef<THREE.Group>(null);
+  const muzzleFlashRef = useRef<THREE.Group>(null);
+  const muzzleMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const muzzleLightRef = useRef<THREE.PointLight>(null);
+  const hitFlashRef = useRef<THREE.Group>(null);
+  const hitMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const hitRingMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
   const glowRef = useRef<THREE.Mesh>(null);
   const hasInitialPosition = useRef(false);
+  const combatFxRef = useRef({
+    id: '',
+    startedAt: 0,
+    isAttacker: false,
+    isTarget: false,
+    wasHit: false,
+    wasCritical: false,
+  });
   const movementRef = useRef({
     from: new THREE.Vector3(),
     to: new THREE.Vector3(),
@@ -729,6 +744,29 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   }, [angle, targetKey, targetPosition]);
 
   useFrame((state, delta) => {
+    let shotPulse = 0;
+    let hitPulse = 0;
+    if (latestCombatEvent && combatFxRef.current.id !== latestCombatEvent.id) {
+      combatFxRef.current = {
+        id: latestCombatEvent.id,
+        startedAt: state.clock.elapsedTime,
+        isAttacker: latestCombatEvent.attackerId === unit.id,
+        isTarget: latestCombatEvent.targetId === unit.id,
+        wasHit: latestCombatEvent.hit,
+        wasCritical: latestCombatEvent.critical,
+      };
+    }
+
+    if (combatFxRef.current.id) {
+      const elapsed = state.clock.elapsedTime - combatFxRef.current.startedAt;
+      if (combatFxRef.current.isAttacker) {
+        shotPulse = Math.max(0, 1 - elapsed / 0.26);
+      }
+      if (combatFxRef.current.isTarget && combatFxRef.current.wasHit) {
+        hitPulse = Math.max(0, 1 - elapsed / 0.58);
+      }
+    }
+
     let isMoving = false;
     if (groupRef.current) {
       const movement = movementRef.current;
@@ -805,7 +843,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (weaponRef.current) {
       weaponRef.current.rotation.x = THREE.MathUtils.damp(
         weaponRef.current.rotation.x,
-        isMoving ? Math.sin(walkPhase + 0.8) * 0.055 : 0,
+        (isMoving ? Math.sin(walkPhase + 0.8) * 0.055 : 0) - shotPulse * 0.22,
         14,
         delta
       );
@@ -815,6 +853,43 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         14,
         delta
       );
+      weaponRef.current.position.z = THREE.MathUtils.damp(
+        weaponRef.current.position.z,
+        0.22 - shotPulse * 0.14,
+        22,
+        delta
+      );
+    }
+
+    if (bodyRef.current && hitPulse > 0) {
+      bodyRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 54) * hitPulse * 0.055;
+    } else if (bodyRef.current) {
+      bodyRef.current.rotation.z = THREE.MathUtils.damp(bodyRef.current.rotation.z, 0, 18, delta);
+    }
+
+    if (muzzleFlashRef.current) {
+      muzzleFlashRef.current.visible = shotPulse > 0.02;
+      muzzleFlashRef.current.scale.setScalar(0.35 + shotPulse * (combatFxRef.current.wasCritical ? 1.35 : 1));
+    }
+    if (muzzleMaterialRef.current) {
+      muzzleMaterialRef.current.opacity = Math.min(0.92, shotPulse);
+      muzzleMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : '#ffd166');
+    }
+    if (muzzleLightRef.current) {
+      muzzleLightRef.current.intensity = shotPulse * (combatFxRef.current.wasCritical ? 2.2 : 1.35);
+    }
+
+    if (hitFlashRef.current) {
+      hitFlashRef.current.visible = hitPulse > 0.02;
+      hitFlashRef.current.scale.setScalar(0.7 + hitPulse * (combatFxRef.current.wasCritical ? 1.2 : 0.78));
+    }
+    if (hitMaterialRef.current) {
+      hitMaterialRef.current.opacity = Math.min(0.58, hitPulse * 0.58);
+      hitMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : '#ff4e6a');
+    }
+    if (hitRingMaterialRef.current) {
+      hitRingMaterialRef.current.opacity = Math.min(0.82, hitPulse * 0.82);
+      hitRingMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : '#ff6b82');
     }
 
     if (glowRef.current && isSelected) {
@@ -1105,6 +1180,20 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               <meshStandardMaterial color="#1a1a1a" roughness={0.3} metalness={0.6} />
             </mesh>
           )}
+          <group ref={muzzleFlashRef} position={[0, 0, rc.weaponLen * 0.72]} visible={false} raycast={() => null}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <coneGeometry args={[0.16, 0.34, 8]} />
+              <meshBasicMaterial
+                ref={muzzleMaterialRef}
+                color="#ffd166"
+                transparent
+                opacity={0}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <pointLight ref={muzzleLightRef} color="#ffd166" intensity={0} distance={2.3} decay={2} />
+          </group>
         </group>
 
         {/* === IGL ANTENNA === */}
@@ -1187,6 +1276,31 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         )}
         </group>
 
+        <group ref={hitFlashRef} visible={false} raycast={() => null}>
+          <mesh position={[0, 0.88 * s, 0]}>
+            <sphereGeometry args={[0.38 * s, 14, 8]} />
+            <meshBasicMaterial
+              ref={hitMaterialRef}
+              color="#ff4e6a"
+              transparent
+              opacity={0}
+              wireframe
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.44, 0.72, 34]} />
+            <meshBasicMaterial
+              ref={hitRingMaterialRef}
+              color="#ff6b82"
+              transparent
+              opacity={0}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+
         {/* === HP BAR (selected only) === */}
         {isSelected && (
           <group position={[0, 1.78 * s, 0]} rotation={[0, -angle, 0]}>
@@ -1209,15 +1323,75 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
 function CasualtyMarker({ unit }: { unit: Unit }) {
   const map = useGameStore((s) => s.map);
+  const latestCombatEvent = useGameStore((s) => s.combatLog[0]);
   const ts = map.tileSize;
   const wx = (map.width - 1 - unit.position.x) * ts + ts / 2;
   const wz = unit.position.y * ts + ts / 2;
   const palette = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
   const accent = ROLE_CONFIG[unit.role.id].accent;
   const angle = Math.atan2(-unit.facing.x, unit.facing.y);
+  const deathPulseRef = useRef({ id: '', startedAt: 0, critical: false });
+  const deathRingRef = useRef<THREE.MeshBasicMaterial>(null);
+  const deathShockRef = useRef<THREE.MeshBasicMaterial>(null);
+  const deathGroupRef = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    if (
+      latestCombatEvent?.killed &&
+      latestCombatEvent.targetId === unit.id &&
+      deathPulseRef.current.id !== latestCombatEvent.id
+    ) {
+      deathPulseRef.current = {
+        id: latestCombatEvent.id,
+        startedAt: state.clock.elapsedTime,
+        critical: latestCombatEvent.critical,
+      };
+    }
+
+    const elapsed = state.clock.elapsedTime - deathPulseRef.current.startedAt;
+    const pulse = deathPulseRef.current.id ? Math.max(0, 1 - elapsed / 1.15) : 0;
+    const color = deathPulseRef.current.critical ? '#ffffff' : '#ff4e6a';
+
+    if (deathGroupRef.current) {
+      deathGroupRef.current.scale.setScalar(0.7 + (1 - pulse) * 1.35);
+      deathGroupRef.current.visible = pulse > 0.02;
+    }
+    if (deathRingRef.current) {
+      deathRingRef.current.opacity = pulse * 0.72;
+      deathRingRef.current.color.set(color);
+    }
+    if (deathShockRef.current) {
+      deathShockRef.current.opacity = pulse * 0.28;
+      deathShockRef.current.color.set(color);
+    }
+  });
 
   return (
     <group position={[wx, 0.055, wz]} rotation={[0, angle, 0]} raycast={() => null}>
+      <group ref={deathGroupRef} visible={false}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.58, 0.88, 42]} />
+          <meshBasicMaterial
+            ref={deathRingRef}
+            color="#ff4e6a"
+            transparent
+            opacity={0}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.72, 42]} />
+          <meshBasicMaterial
+            ref={deathShockRef}
+            color="#ff4e6a"
+            transparent
+            opacity={0}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[ts * 0.22, ts * 0.36, 28]} />
         <meshBasicMaterial color={palette.accent} transparent opacity={0.38} side={THREE.DoubleSide} />

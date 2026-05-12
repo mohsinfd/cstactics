@@ -78,6 +78,8 @@ These are important, but they should stack on top of the first contact loop.
 - Shot previews and contact logs show range and directional cover modifiers,
   including protected, flanked, and exposed states. Implemented.
 - Direct/reaction shots have procedural audio cues. Implemented.
+- Direct/reaction shots have first-pass visual feedback: shooter recoil, muzzle
+  flash, target hit shock, and casualty death pulse. Implemented.
 - The game pauses after contact instead of blindly continuing. Implemented as a
   contact break with immediate movement stop and automatic shoot-mode trade
   prompt.
@@ -91,9 +93,8 @@ These are important, but they should stack on top of the first contact loop.
   recoil/ammo, and final clamped/unclamped aim.
 - Harden directional cover further: diagonal corners and tighter cover-corner
   fidelity.
-- Add richer shot VFX and damage numbers so contact reads without scanning the
-  HUD.
-- Make board-level combat markers animated and temporary instead of persistent
-  until the next event.
+- Add floating damage numbers and tune VFX timing so contact reads without
+  scanning the HUD.
+- Keep polishing board-level combat markers for multi-shot/timeline resolution.
 - Build true simultaneous multi-order resolution with timing offsets for
   flashes, entries, trades, and utility.
