@@ -994,7 +994,7 @@ function SelectedUnitPanel() {
             textTransform: 'uppercase',
           }}
         >
-          Shoot
+          Shoot {shotApCost}AP
         </button>
         <button
           onClick={() => setInputMode(inputMode === 'hold_angle' ? 'move' : 'hold_angle')}
@@ -1012,7 +1012,7 @@ function SelectedUnitPanel() {
             textTransform: 'uppercase',
           }}
         >
-          Hold
+          Hold 1AP
         </button>
         <button
           onClick={() => setInputMode(inputMode === 'smoke' ? 'move' : 'smoke')}
@@ -1030,7 +1030,7 @@ function SelectedUnitPanel() {
             textTransform: 'uppercase',
           }}
         >
-          Smoke
+          Smoke 1AP
         </button>
         <button
           onClick={() => setInputMode(inputMode === 'flash' ? 'move' : 'flash')}
@@ -1048,7 +1048,7 @@ function SelectedUnitPanel() {
             textTransform: 'uppercase',
           }}
         >
-          Flash
+          Flash 1AP
         </button>
         <button
           onClick={reloadWeapon}
@@ -1067,7 +1067,7 @@ function SelectedUnitPanel() {
             textTransform: 'uppercase',
           }}
         >
-          Reload
+          Reload 1AP
         </button>
       </div>
 

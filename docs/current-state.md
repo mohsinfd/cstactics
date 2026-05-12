@@ -23,6 +23,8 @@ verbs that make those nouns matter.
 - XCOM-style movement boundary outlines for 1 AP / 2 AP decisions.
 - Weapon shot AP costs: pistols, SMGs, and melee cost 1 AP to fire; rifles and
   snipers cost 2 AP.
+- Selected-unit action buttons show AP costs for shooting, holding, utility, and
+  reload actions.
 - Hovered tile path preview, AP cost, shot-remains/full-commit badge, and
   destination cover readout.
 - Destination risk card that groups AP, cover, and threat/contact state.
