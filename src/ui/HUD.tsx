@@ -104,6 +104,25 @@ function getDestinationCover(map: MapData, tile: TileCoord): {
   return { label: 'OPEN', value: 0, color: '#ff6b6b' };
 }
 
+function isInsideZone(tile: TileCoord, zone: { min: TileCoord; max: TileCoord }): boolean {
+  return tile.x >= zone.min.x &&
+    tile.x <= zone.max.x &&
+    tile.y >= zone.min.y &&
+    tile.y <= zone.max.y;
+}
+
+function getPlantSite(map: MapData, tile: TileCoord): 'A' | 'B' | null {
+  if (isInsideZone(tile, map.plantZones.A)) return 'A';
+  if (isInsideZone(tile, map.plantZones.B)) return 'B';
+  return null;
+}
+
+function tileDistance(a: TileCoord, b: TileCoord): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 export function HUD() {
   return (
     <div style={{
@@ -117,6 +136,7 @@ export function HUD() {
       <TeamRoster />
       <CombatLogPanel />
       <ContactBreakPanel />
+      <BombObjectivePanel />
       <ExecutePlanner />
       <CommandBar />
       <AiStatusPanel />
@@ -301,12 +321,15 @@ function AiStatusPanel() {
 
 function CombatLogPanel() {
   const combatLog = useGameStore((s) => s.combatLog);
+  const round = useGameStore((s) => s.round);
   if (combatLog.length === 0) return null;
+
+  const hasObjectivePanel = round.bombPlanted || round.phase === 'roundend';
 
   return (
     <div style={{
       position: 'absolute',
-      top: 132,
+      top: hasObjectivePanel ? 172 : 132,
       right: 20,
       width: 240,
       background: 'rgba(8, 8, 12, 0.9)',
@@ -352,6 +375,55 @@ function CombatLogPanel() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function BombObjectivePanel() {
+  const round = useGameStore((s) => s.round);
+  if (!round.bombPlanted && round.phase !== 'roundend') return null;
+
+  const isRoundOver = round.phase === 'roundend';
+  const winner = round.roundWinner;
+  const title = isRoundOver
+    ? `${winner ?? '?'} SIDE WINS`
+    : 'BOMB PLANTED';
+  const subtitle = isRoundOver
+    ? (round.winReason === 'defuse' ? 'Defuse successful' : round.winReason === 'detonation' ? 'Bomb detonated' : 'Round complete')
+    : `${round.bombTimer} turns until detonation`;
+  const accent = winner === 'CT' ? '#65b7ff' : '#ff4e6a';
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 82,
+      right: 20,
+      width: 220,
+      background: 'rgba(8, 8, 12, 0.92)',
+      border: `1px solid ${accent}55`,
+      borderLeft: `3px solid ${accent}`,
+      borderRadius: 6,
+      padding: '9px 10px',
+      pointerEvents: 'none',
+      boxShadow: '0 10px 26px rgba(0,0,0,0.35)',
+    }}>
+      <div style={{
+        color: accent,
+        fontSize: 10,
+        fontWeight: 950,
+        letterSpacing: 1.3,
+        textTransform: 'uppercase',
+      }}>
+        {title}
+      </div>
+      <div style={{ color: '#cfd3dc', fontSize: 11, marginTop: 4, fontWeight: 800 }}>
+        {subtitle}
+      </div>
+      {round.bombPosition && !isRoundOver && (
+        <div style={{ color: '#6f7685', fontSize: 9, marginTop: 3 }}>
+          Bomb at {round.bombPosition.x}, {round.bombPosition.y}
+        </div>
+      )}
     </div>
   );
 }
@@ -635,12 +707,15 @@ function SelectedUnitPanel() {
   const selectedId = useGameStore((s) => s.selectedUnitId);
   const units = useGameStore((s) => s.units);
   const finishUnit = useGameStore((s) => s.finishUnit);
+  const plantBomb = useGameStore((s) => s.plantBomb);
+  const defuseBomb = useGameStore((s) => s.defuseBomb);
   const inputMode = useGameStore((s) => s.inputMode);
   const setInputMode = useGameStore((s) => s.setInputMode);
   const shootUnit = useGameStore((s) => s.shootUnit);
   const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
-  const phase = useGameStore((s) => s.round.phase);
+  const round = useGameStore((s) => s.round);
+  const phase = round.phase;
 
   if (selectedId === null) return null;
   const unit = units.find((u) => u.id === selectedId);
@@ -674,6 +749,32 @@ function SelectedUnitPanel() {
       : unit.smokeGrenades <= 0
         ? 'No smokes remaining.'
         : null;
+  const plantSite = getPlantSite(map, unit.position);
+  const plantDisabledReason = unit.team !== 'T'
+    ? 'Only T side can plant.'
+    : round.bombPlanted
+      ? 'Bomb already planted.'
+      : !unit.hasBomb
+        ? 'This player does not have the bomb.'
+        : phase === 'setup'
+          ? 'Setup phase: reach a site first.'
+          : !plantSite
+            ? 'Not in an A/B plant zone.'
+            : unit.ap < RULES.plantActionCost
+              ? `${RULES.plantActionCost} AP required.`
+              : null;
+  const defuseCost = unit.hasDefuseKit ? RULES.defuseWithKit : RULES.defuseWithoutKit;
+  const defuseDisabledReason = unit.team !== 'CT'
+    ? 'Only CT side can defuse.'
+    : !round.bombPlanted || round.phase !== 'postplant'
+      ? 'No active planted bomb.'
+      : !round.bombPosition || tileDistance(unit.position, round.bombPosition) > 1.5
+        ? 'Move onto the bomb.'
+        : unit.ap < defuseCost
+          ? `${defuseCost} AP required.`
+          : null;
+  const showPlantAction = unit.hasBomb;
+  const showDefuseAction = round.bombPlanted && unit.team === 'CT';
 
   return (
     <div style={{
@@ -814,6 +915,53 @@ function SelectedUnitPanel() {
         </button>
       </div>
 
+      {(showPlantAction || showDefuseAction) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 7 }}>
+          {showPlantAction && (
+            <button
+              onClick={plantBomb}
+              disabled={Boolean(plantDisabledReason)}
+              title={plantDisabledReason ?? `Plant bomb on ${plantSite} site`}
+              style={{
+                padding: '7px 8px',
+                borderRadius: 4,
+                border: `1px solid ${plantDisabledReason ? '#333' : '#ff4e6aaa'}`,
+                background: plantDisabledReason ? 'rgba(255,255,255,0.03)' : 'rgba(255,78,106,0.2)',
+                color: plantDisabledReason ? '#666' : '#ffd7dd',
+                cursor: plantDisabledReason ? 'default' : 'pointer',
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.8,
+                textTransform: 'uppercase',
+              }}
+            >
+              {plantSite ? `Plant ${plantSite}` : 'Plant'}
+            </button>
+          )}
+          {showDefuseAction && (
+            <button
+              onClick={defuseBomb}
+              disabled={Boolean(defuseDisabledReason)}
+              title={defuseDisabledReason ?? 'Defuse the planted bomb'}
+              style={{
+                padding: '7px 8px',
+                borderRadius: 4,
+                border: `1px solid ${defuseDisabledReason ? '#333' : '#65b7ffaa'}`,
+                background: defuseDisabledReason ? 'rgba(255,255,255,0.03)' : 'rgba(101,183,255,0.2)',
+                color: defuseDisabledReason ? '#666' : '#d8ecff',
+                cursor: defuseDisabledReason ? 'default' : 'pointer',
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.8,
+                textTransform: 'uppercase',
+              }}
+            >
+              Defuse
+            </button>
+          )}
+        </div>
+      )}
+
       {inputMode === 'hold_angle' && (
         <div style={{ color: '#b36b77', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Click a lane or angle on the map.
@@ -837,6 +985,16 @@ function SelectedUnitPanel() {
       {utilityDisabledReason && inputMode === 'smoke' && (
         <div style={{ color: '#707985', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Smoke disabled: {utilityDisabledReason}
+        </div>
+      )}
+      {showPlantAction && plantDisabledReason && unit.hasBomb && (
+        <div style={{ color: '#7b6c71', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Plant disabled: {plantDisabledReason}
+        </div>
+      )}
+      {showDefuseAction && defuseDisabledReason && round.bombPlanted && unit.team === 'CT' && (
+        <div style={{ color: '#6f7e8e', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
+          Defuse disabled: {defuseDisabledReason}
         </div>
       )}
       {topShotPreview && !shootingDisabledReason && (

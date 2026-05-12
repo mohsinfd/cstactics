@@ -257,6 +257,24 @@ function getBestAiShot(
     .sort((a, b) => b.preview.hitChance - a.preview.hitChance)[0] ?? null;
 }
 
+function isInsideZone(tile: TileCoord, zone: { min: TileCoord; max: TileCoord }): boolean {
+  return tile.x >= zone.min.x &&
+    tile.x <= zone.max.x &&
+    tile.y >= zone.min.y &&
+    tile.y <= zone.max.y;
+}
+
+function getPlantSite(map: GameState['map'], tile: TileCoord): 'A' | 'B' | null {
+  if (isInsideZone(tile, map.plantZones.A)) return 'A';
+  if (isInsideZone(tile, map.plantZones.B)) return 'B';
+  return null;
+}
+
+function canReachBomb(unit: Unit, bombPosition: TileCoord | null): boolean {
+  if (!bombPosition) return false;
+  return tileDistance(unit.position, bombPosition) <= 1.5;
+}
+
 function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []): {
   round: RoundState;
   units: Unit[];
@@ -265,6 +283,13 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   let nextTeam: Team;
   let nextTurn = round.turn;
   let nextPhase = round.phase;
+  let nextBombTimer = round.bombTimer;
+  let roundWinner = round.roundWinner;
+  let winReason = round.winReason;
+
+  if (round.phase === 'roundend') {
+    return { round, units, smokes };
+  }
 
   if (round.activeTeam === 'T') {
     nextTeam = 'CT';
@@ -290,6 +315,15 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
       .filter((smoke) => smoke.remainingTurns > 0)
     : smokes;
 
+  if (round.bombPlanted && !round.bombDefused && round.phase === 'postplant') {
+    nextBombTimer = Math.max(0, round.bombTimer - 1);
+    if (nextBombTimer <= 0) {
+      nextPhase = 'roundend';
+      roundWinner = 'T';
+      winReason = 'detonation';
+    }
+  }
+
   return {
     units: newUnits,
     smokes: nextSmokes,
@@ -298,6 +332,9 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
       activeTeam: nextTeam,
       turn: nextTurn,
       phase: nextPhase,
+      bombTimer: nextBombTimer,
+      roundWinner,
+      winReason,
       roundTimer: round.phase === 'setup' ? round.roundTimer : round.roundTimer - 1,
     },
   };
@@ -326,7 +363,7 @@ function createUnits(): Unit[] {
       shotsFiredThisTurn: 0,
       hasMoved: false,
       hasBomb: false,
-      hasDefuseKit: false,
+      hasDefuseKit: team === 'CT' && (roleId === 'support' || roleId === 'igl'),
       smokeGrenades: roleId === 'support' ? 2 : (roleId === 'igl' || roleId === 'lurker' ? 1 : 0),
       facing: { x: 0, y: team === 'T' ? 1 : -1 },
     };
@@ -352,6 +389,8 @@ interface GameStore extends GameState {
   setInputMode: (mode: InputMode) => void;
   holdAngle: (targetTile: TileCoord) => void;
   throwSmoke: (targetTile: TileCoord) => void;
+  plantBomb: () => void;
+  defuseBomb: () => void;
   shootUnit: (targetId: number) => void;
   queueMove: (targetTile: TileCoord) => void;
   commitPlannedActions: () => void;
@@ -389,6 +428,8 @@ export const useGameStore = create<GameStore>((set, get) => {
       bombTimer: RULES.bombTimerTurns,
       bombCarrierId: 0,
       roundTimer: RULES.roundTimeLimitTurns,
+      roundWinner: null,
+      winReason: null,
     },
     match: {
       scoreT: 0,
@@ -885,6 +926,111 @@ export const useGameStore = create<GameStore>((set, get) => {
         }),
       });
       if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+    },
+
+    plantBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (selectedUnitId === null || round.bombPlanted || round.phase === 'setup' || round.phase === 'roundend') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const plantSite = getPlantSite(mapData, unit.position);
+      if (!unit.alive || unit.team !== 'T' || unit.team !== round.activeTeam) return;
+      if (!unit.hasBomb || unit.ap < RULES.plantActionCost || !plantSite) return;
+
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - RULES.plantActionCost),
+        hasBomb: false,
+        hasMoved: true,
+      };
+
+      let nextRound: RoundState = {
+        ...round,
+        phase: 'postplant',
+        bombPlanted: true,
+        bombDefused: false,
+        bombPosition: { ...unit.position },
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: null,
+        roundWinner: null,
+        winReason: null,
+      };
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(nextRound, nextUnits, state.smokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+      });
+    },
+
+    defuseBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round } = state;
+      if (selectedUnitId === null || !round.bombPlanted || round.bombDefused || round.phase !== 'postplant') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const defuseCost = unit.hasDefuseKit ? RULES.defuseWithKit : RULES.defuseWithoutKit;
+      if (!unit.alive || unit.team !== 'CT' || unit.team !== round.activeTeam) return;
+      if (!canReachBomb(unit, round.bombPosition) || unit.ap < defuseCost) return;
+
+      const nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - defuseCost),
+        hasMoved: true,
+      };
+
+      const nextRound: RoundState = {
+        ...round,
+        phase: 'roundend',
+        bombDefused: true,
+        bombTimer: Math.max(0, round.bombTimer),
+        roundWinner: 'CT',
+        winReason: 'defuse',
+      };
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: unit.id,
+        hoveredTile: null,
+        movementTiles: [],
+        walkableTiles: [],
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+      });
     },
 
     shootUnit: (targetId) => {
@@ -1624,6 +1770,8 @@ export const useGameStore = create<GameStore>((set, get) => {
           bombTimer: RULES.bombTimerTurns,
           bombCarrierId: 0,
           roundTimer: RULES.roundTimeLimitTurns,
+          roundWinner: null,
+          winReason: null,
         },
         selectedUnitId: null,
         hoveredTile: null,
@@ -1692,6 +1840,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         bombTimer: RULES.bombTimerTurns,
         bombCarrierId: tEntryId,
         roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
       };
       const movement = getMovementForSelection(nextUnits, tEntryId, mapData, round);
 

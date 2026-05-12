@@ -252,6 +252,8 @@ export interface RoundState {
   bombTimer: number;
   bombCarrierId: number | null;
   roundTimer: number;        // turns remaining
+  roundWinner: Team | null;
+  winReason: WinReason | null;
 }
 
 export interface MatchState {
