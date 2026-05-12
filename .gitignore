@@ -3,3 +3,6 @@ dist/
 tmp-scaffold/
 .DS_Store
 *.local
+dev-server.*.log
+vite-*.log
+public/debug/

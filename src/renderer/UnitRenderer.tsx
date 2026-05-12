@@ -1,26 +1,33 @@
 // ============================================================
-// UnitRenderer: Professional tactical soldier figures.
+// UnitRenderer: prototype tactical unit figures.
 //
 // Each role has a distinct silhouette:
-//   AWPer — tallest, long rifle barrel, scope glint
-//   Entry — bulky vest, short rifle, aggressive stance
-//   IGL — radio antenna on back, tablet/map indicator
-//   Support — utility belt visible, thicker torso
-//   Lurker — slimmer build, suppressed weapon
+//   AWPer - tallest, long rifle barrel, scope glint
+//   Entry - bulky vest, short rifle, aggressive stance
+//   IGL - radio antenna on back, tablet/map indicator
+//   Support - utility belt visible, thicker torso
+//   Lurker - slimmer build, suppressed weapon
 //
 // Teams distinguished by:
-//   CT — Navy blue vest + white arm band + POLICE text
-//   T  — Olive drab vest + red bandana/headwrap
+//   CT - Navy blue vest + white arm band + hard helmet
+//   T  - Olive drab vest + red bandana/headwrap
 //
-// Selected = pulsing ring + HP bar
-// Active team units glow subtly, inactive team dimmed
+// Current scope:
+//   Selected = pulsing ring + HP bar
+//   Hovered units get a readable base ring
+//   Active team units glow subtly, inactive team dimmed
+//   Units bob/step while moving between tiles
+//
+// Missing: firing animation, hit/death states, and final authored sprite/model
+// assets.
 // ============================================================
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Text } from '@react-three/drei';
+import { Line, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
-import type { Unit } from '../game/types';
+import type { Unit, RoleId } from '../game/types';
+import { getShotPreview } from '../game/combat';
 
 const CT_PALETTE = {
   vest: '#1e3f7a',
@@ -50,44 +57,557 @@ const T_PALETTE = {
   dimFactor: 0.4,
 };
 
+type TeamPalette = typeof CT_PALETTE;
+
 const ROLE_TAGS: Record<string, string> = {
   awper: 'AWP',
-  entry: 'ENTRY',
+  entry: 'ENT',
   igl: 'IGL',
   support: 'SUP',
-  lurker: 'LURK',
+  lurker: 'LRK',
 };
 
 // Role-specific weapon lengths and body modifications
-const ROLE_CONFIG: Record<string, { weaponLen: number; bodyScale: number; hasScope: boolean; hasAntenna: boolean }> = {
-  awper:   { weaponLen: 1.2,  bodyScale: 1.0, hasScope: true,  hasAntenna: false },
-  entry:   { weaponLen: 0.85, bodyScale: 1.1, hasScope: false, hasAntenna: false },
-  igl:     { weaponLen: 0.75, bodyScale: 1.0, hasScope: false, hasAntenna: true  },
-  support: { weaponLen: 0.75, bodyScale: 1.05, hasScope: false, hasAntenna: false },
-  lurker:  { weaponLen: 0.8,  bodyScale: 0.95, hasScope: false, hasAntenna: false },
+const ROLE_CONFIG: Record<RoleId, {
+  weaponLen: number;
+  bodyScale: number;
+  hasScope: boolean;
+  hasAntenna: boolean;
+  accent: string;
+  baseShape: 'long' | 'wedge' | 'command' | 'utility' | 'stealth';
+}> = {
+  awper:   { weaponLen: 1.55, bodyScale: 1.04, hasScope: true,  hasAntenna: false, accent: '#70d6ff', baseShape: 'long' },
+  entry:   { weaponLen: 0.98, bodyScale: 1.18, hasScope: false, hasAntenna: false, accent: '#ff5a4f', baseShape: 'wedge' },
+  igl:     { weaponLen: 0.82, bodyScale: 1.04, hasScope: false, hasAntenna: true,  accent: '#f6d365', baseShape: 'command' },
+  support: { weaponLen: 0.78, bodyScale: 1.12, hasScope: false, hasAntenna: false, accent: '#6ee7b7', baseShape: 'utility' },
+  lurker:  { weaponLen: 0.9,  bodyScale: 0.96, hasScope: false, hasAntenna: false, accent: '#c084fc', baseShape: 'stealth' },
 };
 
+const MOVE_STEP_SECONDS = 0.16;
+const TELEPORT_TILE_DISTANCE = 2.4;
+
+function easeInOutSine(t: number): number {
+  return -(Math.cos(Math.PI * t) - 1) / 2;
+}
+
+function dampAngle(current: number, target: number, lambda: number, delta: number): number {
+  const angleDelta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + angleDelta * (1 - Math.exp(-lambda * delta));
+}
+
+function TacticalBaseBrackets({
+  color,
+  opacity = 0.9,
+  radius = 0.84,
+  length = 0.26,
+  y = 0.082,
+}: {
+  color: string;
+  opacity?: number;
+  radius?: number;
+  length?: number;
+  y?: number;
+}) {
+  const points = useMemo(() => {
+    const r = radius;
+    const l = length;
+    return [
+      [[-r, y, -r], [-r + l, y, -r]],
+      [[-r, y, -r], [-r, y, -r + l]],
+      [[r, y, -r], [r - l, y, -r]],
+      [[r, y, -r], [r, y, -r + l]],
+      [[-r, y, r], [-r + l, y, r]],
+      [[-r, y, r], [-r, y, r - l]],
+      [[r, y, r], [r - l, y, r]],
+      [[r, y, r], [r, y, r - l]],
+    ] as Array<[[number, number, number], [number, number, number]]>;
+  }, [length, radius, y]);
+
+  return (
+    <group>
+      {points.map((segment, index) => (
+        <Line
+          key={`bracket-${index}`}
+          points={segment}
+          color={color}
+          lineWidth={2.2}
+          transparent
+          opacity={opacity}
+        />
+      ))}
+    </group>
+  );
+}
+
+function FacingArc({
+  color,
+  opacity = 0.62,
+}: {
+  color: string;
+  opacity?: number;
+}) {
+  const arc = useMemo(() => {
+    const radius = 1.08;
+    const y = 0.088;
+    const start = -0.55;
+    const end = 0.55;
+    return Array.from({ length: 18 }, (_, index): [number, number, number] => {
+      const t = start + ((end - start) * index) / 17;
+      return [Math.sin(t) * radius, y, Math.cos(t) * radius];
+    });
+  }, []);
+
+  const leftRay: Array<[number, number, number]> = [[0, 0.086, 0.36], arc[0]];
+  const rightRay: Array<[number, number, number]> = [[0, 0.086, 0.36], arc[arc.length - 1]];
+
+  return (
+    <group>
+      <Line points={arc} color={color} lineWidth={1.8} transparent opacity={opacity} />
+      <Line points={leftRay} color={color} lineWidth={1.1} transparent opacity={opacity * 0.7} />
+      <Line points={rightRay} color={color} lineWidth={1.1} transparent opacity={opacity * 0.7} />
+    </group>
+  );
+}
+
+function TeamIdentityBase({
+  team,
+  palette,
+  roleAccent,
+}: {
+  team: Unit['team'];
+  palette: TeamPalette;
+  roleAccent: string;
+}) {
+  if (team === 'CT') {
+    return (
+      <group>
+        <mesh position={[0, 0.082, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 4]} raycast={() => null}>
+          <ringGeometry args={[0.72, 0.84, 4]} />
+          <meshBasicMaterial color={palette.accent} transparent opacity={0.54} side={THREE.DoubleSide} />
+        </mesh>
+        <mesh position={[0, 0.095, 0]} raycast={() => null}>
+          <boxGeometry args={[0.5, 0.018, 0.11]} />
+          <meshBasicMaterial color="#e9eef7" transparent opacity={0.68} />
+        </mesh>
+        <mesh position={[0, 0.096, 0]} raycast={() => null}>
+          <boxGeometry args={[0.11, 0.018, 0.5]} />
+          <meshBasicMaterial color="#e9eef7" transparent opacity={0.68} />
+        </mesh>
+        <mesh position={[0, 0.104, 0.56]} raycast={() => null}>
+          <boxGeometry args={[0.3, 0.02, 0.06]} />
+          <meshBasicMaterial color={roleAccent} transparent opacity={0.9} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group>
+      <mesh position={[0, 0.083, 0.08]} rotation={[-Math.PI / 2, 0, Math.PI]} raycast={() => null}>
+        <circleGeometry args={[0.38, 3]} />
+        <meshBasicMaterial color={palette.accent} transparent opacity={0.5} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0.099, 0]} rotation={[0, Math.PI / 4, 0]} raycast={() => null}>
+        <boxGeometry args={[0.78, 0.018, 0.12]} />
+        <meshBasicMaterial color="#c43232" transparent opacity={0.76} />
+      </mesh>
+      <mesh position={[0.27, 0.104, 0.22]} raycast={() => null}>
+        <boxGeometry args={[0.18, 0.018, 0.08]} />
+        <meshBasicMaterial color={roleAccent} transparent opacity={0.86} />
+      </mesh>
+    </group>
+  );
+}
+
+function TeamChestBadge({
+  team,
+  scale,
+  roleAccent,
+}: {
+  team: Unit['team'];
+  scale: number;
+  roleAccent: string;
+}) {
+  return (
+    <group position={[0, 0.92 * scale, 0.235 * scale]}>
+      <mesh castShadow>
+        <boxGeometry args={[0.2 * scale, 0.13 * scale, 0.018]} />
+        <meshStandardMaterial
+          color={team === 'CT' ? '#e9eef7' : '#c43232'}
+          roughness={0.48}
+          emissive={roleAccent}
+          emissiveIntensity={0.08}
+        />
+      </mesh>
+      <Text
+        position={[0, 0, 0.012]}
+        fontSize={0.105 * scale}
+        color={team === 'CT' ? '#0f2040' : '#ffe2b5'}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.004}
+        outlineColor={team === 'CT' ? '#dfeaff' : '#4a0808'}
+        font={undefined}
+      >
+        {team}
+      </Text>
+    </group>
+  );
+}
+
+function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) {
+  const cfg = ROLE_CONFIG[roleId];
+
+  return (
+    <group>
+      <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.58, 0.68, 36]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.55} side={THREE.DoubleSide} />
+      </mesh>
+
+      {cfg.baseShape === 'long' && (
+        <>
+          <mesh position={[0, 0.09, 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
+            <boxGeometry args={[0.16, 0.95, 0.01]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.55} />
+          </mesh>
+          <mesh position={[0, 0.1, 0.68]}>
+            <sphereGeometry args={[0.075, 12, 8]} />
+            <meshBasicMaterial color={accent} />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'wedge' && (
+        <>
+          <mesh position={[0, 0.09, 0.44]} rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+            <coneGeometry args={[0.22, 0.45, 3]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.75} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={[-0.22, 0.09, 0.22]} rotation={[-Math.PI / 2, 0, 0.7]}>
+            <boxGeometry args={[0.08, 0.34, 0.01]} />
+            <meshBasicMaterial color={accent} />
+          </mesh>
+          <mesh position={[0.22, 0.09, 0.22]} rotation={[-Math.PI / 2, 0, -0.7]}>
+            <boxGeometry args={[0.08, 0.34, 0.01]} />
+            <meshBasicMaterial color={accent} />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'command' && (
+        <>
+          <mesh position={[0, 0.09, 0.48]} rotation={[-Math.PI / 2, 0, 0]}>
+            <boxGeometry args={[0.42, 0.25, 0.01]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.8} />
+          </mesh>
+          <mesh position={[0, 0.105, 0.49]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.3, 0.14]} />
+            <meshBasicMaterial color="#1b1d24" />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'utility' && (
+        <>
+          {[-0.28, 0, 0.28].map((x) => (
+            <mesh key={x} position={[x, 0.1, 0.42]}>
+              <boxGeometry args={[0.16, 0.1, 0.18]} />
+              <meshBasicMaterial color={accent} />
+            </mesh>
+          ))}
+        </>
+      )}
+
+      {cfg.baseShape === 'stealth' && (
+        <>
+          <mesh position={[0, 0.09, 0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.36, 3]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.5} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={[0, 0.1, 0.54]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.08, 0.36, 12]} />
+            <meshBasicMaterial color={accent} />
+          </mesh>
+        </>
+      )}
+    </group>
+  );
+}
+
+function RoleGear({ roleId, accent, scale }: { roleId: RoleId; accent: string; scale: number }) {
+  if (roleId === 'awper') {
+    return (
+      <group>
+        <mesh position={[0.22 * scale, 0.98 * scale, -0.16]} rotation={[0.18, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.035, 0.035, 0.46, 8]} />
+          <meshStandardMaterial color={accent} roughness={0.25} metalness={0.65} emissive={accent} emissiveIntensity={0.12} />
+        </mesh>
+        <mesh position={[-0.22 * scale, 0.96 * scale, -0.17]} castShadow>
+          <boxGeometry args={[0.13, 0.22, 0.08]} />
+          <meshStandardMaterial color="#172033" roughness={0.62} metalness={0.18} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (roleId === 'entry') {
+    return (
+      <group>
+        <mesh position={[0, 1.03 * scale, 0.18]} rotation={[Math.PI / 2, 0, Math.PI / 4]} castShadow>
+          <coneGeometry args={[0.13, 0.34, 3]} />
+          <meshStandardMaterial color={accent} roughness={0.44} emissive={accent} emissiveIntensity={0.08} />
+        </mesh>
+        {[-0.22, 0.22].map((x) => (
+          <mesh key={x} position={[x * scale, 0.66 * scale, 0.16]} castShadow>
+            <boxGeometry args={[0.11, 0.28, 0.065]} />
+            <meshStandardMaterial color="#241614" roughness={0.72} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
+  if (roleId === 'igl') {
+    return (
+      <group>
+        <mesh position={[0, 0.74 * scale, 0.2]} rotation={[Math.PI * 0.08, 0, 0]} castShadow>
+          <boxGeometry args={[0.28, 0.17, 0.035]} />
+          <meshStandardMaterial color="#171b20" roughness={0.45} metalness={0.18} />
+        </mesh>
+        <mesh position={[0, 0.744 * scale, 0.222]} rotation={[Math.PI * 0.08, 0, 0]}>
+          <planeGeometry args={[0.2, 0.09]} />
+          <meshBasicMaterial color={accent} transparent opacity={0.85} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (roleId === 'support') {
+    return (
+      <group>
+        {[-0.24, 0, 0.24].map((x, index) => (
+          <mesh key={x} position={[x * scale, 0.6 * scale, 0.19]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.045, 0.045, 0.14, 10]} />
+            <meshStandardMaterial color={['#6ee7b7', '#f6d365', '#ff8a3d'][index]} roughness={0.48} metalness={0.15} />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.91 * scale, -0.19]} castShadow>
+          <boxGeometry args={[0.34, 0.36, 0.12]} />
+          <meshStandardMaterial color="#243028" roughness={0.86} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group>
+      <mesh position={[0, 0.95 * scale, -0.2]} castShadow>
+        <boxGeometry args={[0.34, 0.44, 0.08]} />
+        <meshStandardMaterial color="#17131f" roughness={0.92} transparent opacity={0.88} />
+      </mesh>
+      <mesh position={[0.2 * scale, 0.82 * scale, 0.13]} rotation={[0, 0.25, 0]} castShadow>
+        <boxGeometry args={[0.06, 0.2, 0.055]} />
+        <meshStandardMaterial color={accent} roughness={0.56} emissive={accent} emissiveIntensity={0.1} />
+      </mesh>
+    </group>
+  );
+}
+
+function TeamHeadgear({ team, scale, mats, palette }: {
+  team: Unit['team'];
+  scale: number;
+  mats: {
+    helmet: THREE.MeshStandardMaterial;
+    skin: THREE.MeshStandardMaterial;
+  };
+  palette: typeof CT_PALETTE;
+}) {
+  if (team === 'CT') {
+    return (
+      <group>
+        <mesh position={[0, 1.32 * scale, 0]} castShadow material={mats.helmet}>
+          <sphereGeometry args={[0.145, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
+        </mesh>
+        <mesh position={[0, 1.27 * scale, 0.105]} castShadow>
+          <boxGeometry args={[0.25, 0.055, 0.055]} />
+          <meshStandardMaterial color="#070b12" roughness={0.28} metalness={0.35} emissive="#1a5b91" emissiveIntensity={0.12} />
+        </mesh>
+        <mesh position={[0, 1.22 * scale, -0.07]} castShadow>
+          <boxGeometry args={[0.25, 0.16, 0.05]} />
+          <meshStandardMaterial color={palette.helmetRim} roughness={0.62} metalness={0.1} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group>
+      <mesh position={[0, 1.32 * scale, 0]} castShadow material={mats.helmet}>
+        <sphereGeometry args={[0.14, 9, 5, 0, Math.PI * 2, 0, Math.PI * 0.58]} />
+      </mesh>
+      <mesh position={[0, 1.28 * scale, 0.07]} castShadow>
+        <boxGeometry args={[0.28, 0.055, 0.05]} />
+        <meshStandardMaterial color="#c43232" roughness={0.72} emissive="#4a0808" emissiveIntensity={0.1} />
+      </mesh>
+      <mesh position={[0.14, 1.25 * scale, -0.16]} rotation={[0.15, 0.3, -0.35]} castShadow>
+        <boxGeometry args={[0.08, 0.22, 0.035]} />
+        <meshStandardMaterial color="#c43232" roughness={0.8} />
+      </mesh>
+    </group>
+  );
+}
+
 function SoldierFigure({ unit }: { unit: Unit }) {
+  const [isHovered, setIsHovered] = useState(false);
   const selectedUnitId = useGameStore((s) => s.selectedUnitId);
   const selectUnit = useGameStore((s) => s.selectUnit);
+  const shootUnit = useGameStore((s) => s.shootUnit);
+  const inputMode = useGameStore((s) => s.inputMode);
   const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const phase = useGameStore((s) => s.round.phase);
+  const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const bodyRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Mesh>(null);
+  const rightLegRef = useRef<THREE.Mesh>(null);
+  const weaponRef = useRef<THREE.Group>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const hasInitialPosition = useRef(false);
+  const movementRef = useRef({
+    from: new THREE.Vector3(),
+    to: new THREE.Vector3(),
+    startedAt: 0,
+    duration: MOVE_STEP_SECONDS,
+    targetKey: '',
+  });
 
   const isSelected = selectedUnitId === unit.id;
   const isActiveTeam = unit.team === activeTeam;
+  const selectedUnit = selectedUnitId !== null
+    ? units.find((candidate) => candidate.id === selectedUnitId)
+    : null;
+  const shotPreview = selectedUnit &&
+    inputMode === 'shoot' &&
+    phase !== 'setup' &&
+    selectedUnit.team !== unit.team &&
+    selectedUnit.ap > 0
+      ? getShotPreview(map, selectedUnit, unit)
+      : null;
+  const isVisibleTarget = Boolean(shotPreview?.hasLineOfSight);
+  const isShootableTarget = Boolean(shotPreview?.hasLineOfSight && shotPreview.inRange);
+  const isSpent = isActiveTeam && unit.ap <= 0;
   const p = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
-  const rc = ROLE_CONFIG[unit.role.id] || ROLE_CONFIG.entry;
+  const rc = ROLE_CONFIG[unit.role.id];
 
-  const wx = unit.position.x * ts + ts / 2;
+  const wx = (map.width - 1 - unit.position.x) * ts + ts / 2;
   const wz = unit.position.y * ts + ts / 2;
-  const angle = Math.atan2(unit.facing.x, unit.facing.y);
+  const angle = Math.atan2(-unit.facing.x, unit.facing.y);
+  const targetPosition = useMemo(() => new THREE.Vector3(wx, 0, wz), [wx, wz]);
+  const targetKey = `${unit.position.x}:${unit.position.y}`;
 
-  // Dim factor for inactive team
-  const dim = isActiveTeam ? 1.0 : p.dimFactor;
+  useLayoutEffect(() => {
+    if (groupRef.current && !hasInitialPosition.current) {
+      groupRef.current.position.copy(targetPosition);
+      groupRef.current.rotation.y = angle;
+      movementRef.current.from.copy(targetPosition);
+      movementRef.current.to.copy(targetPosition);
+      movementRef.current.targetKey = targetKey;
+      hasInitialPosition.current = true;
+    }
+  }, [angle, targetKey, targetPosition]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
+    let isMoving = false;
+    if (groupRef.current) {
+      const movement = movementRef.current;
+
+      if (movement.targetKey !== targetKey) {
+        const tileDistance = groupRef.current.position.distanceTo(targetPosition) / ts;
+        movement.targetKey = targetKey;
+        movement.startedAt = state.clock.elapsedTime;
+
+        if (tileDistance > TELEPORT_TILE_DISTANCE) {
+          groupRef.current.position.copy(targetPosition);
+          movement.from.copy(targetPosition);
+          movement.to.copy(targetPosition);
+          movement.duration = 0;
+        } else {
+          movement.from.copy(groupRef.current.position);
+          movement.to.copy(targetPosition);
+          movement.duration = THREE.MathUtils.clamp(tileDistance * MOVE_STEP_SECONDS, 0.08, 0.22);
+        }
+      }
+
+      if (movement.duration > 0) {
+        const progress = THREE.MathUtils.clamp(
+          (state.clock.elapsedTime - movement.startedAt) / movement.duration,
+          0,
+          1
+        );
+        const easedProgress = easeInOutSine(progress);
+        groupRef.current.position.lerpVectors(movement.from, movement.to, easedProgress);
+        isMoving = progress < 1;
+      } else {
+        groupRef.current.position.copy(targetPosition);
+      }
+
+      groupRef.current.rotation.y = dampAngle(
+        groupRef.current.rotation.y,
+        angle,
+        isMoving ? 15 : 10,
+        delta
+      );
+    }
+
+    const walkPhase = state.clock.elapsedTime * 13;
+    if (bodyRef.current) {
+      bodyRef.current.position.y = THREE.MathUtils.damp(
+        bodyRef.current.position.y,
+        isMoving ? Math.abs(Math.sin(walkPhase)) * 0.07 : 0,
+        16,
+        delta
+      );
+      bodyRef.current.rotation.x = THREE.MathUtils.damp(
+        bodyRef.current.rotation.x,
+        isMoving ? Math.sin(walkPhase) * 0.045 : 0,
+        14,
+        delta
+      );
+    }
+    if (leftLegRef.current) {
+      leftLegRef.current.rotation.x = THREE.MathUtils.damp(
+        leftLegRef.current.rotation.x,
+        isMoving ? Math.sin(walkPhase) * 0.42 : 0,
+        18,
+        delta
+      );
+    }
+    if (rightLegRef.current) {
+      rightLegRef.current.rotation.x = THREE.MathUtils.damp(
+        rightLegRef.current.rotation.x,
+        isMoving ? -Math.sin(walkPhase) * 0.42 : 0,
+        18,
+        delta
+      );
+    }
+    if (weaponRef.current) {
+      weaponRef.current.rotation.x = THREE.MathUtils.damp(
+        weaponRef.current.rotation.x,
+        isMoving ? Math.sin(walkPhase + 0.8) * 0.055 : 0,
+        14,
+        delta
+      );
+      weaponRef.current.rotation.y = THREE.MathUtils.damp(
+        weaponRef.current.rotation.y,
+        isMoving ? Math.sin(walkPhase * 0.5) * 0.025 : 0,
+        14,
+        delta
+      );
+    }
+
     if (glowRef.current && isSelected) {
       const pulse = 0.3 + Math.sin(state.clock.elapsedTime * 3.5) * 0.15;
       (glowRef.current.material as THREE.MeshBasicMaterial).opacity = pulse;
@@ -97,8 +617,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const mats = useMemo(() => ({
     vest: new THREE.MeshStandardMaterial({
       color: p.vest, roughness: 0.7, metalness: 0.05,
-      emissive: isSelected ? p.accent : '#000000',
-      emissiveIntensity: isSelected ? 0.3 : 0,
+      emissive: isSelected || isHovered ? p.accent : '#000000',
+      emissiveIntensity: isSelected ? 0.3 : (isHovered ? 0.16 : 0),
     }),
     vestDark: new THREE.MeshStandardMaterial({ color: p.vestDark, roughness: 0.8 }),
     pants: new THREE.MeshStandardMaterial({ color: p.pants, roughness: 0.85 }),
@@ -106,39 +626,140 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     skin: new THREE.MeshStandardMaterial({ color: p.skin, roughness: 0.9 }),
     weapon: new THREE.MeshStandardMaterial({ color: p.weapon, roughness: 0.3, metalness: 0.7 }),
     armband: new THREE.MeshStandardMaterial({ color: p.armband, roughness: 0.6 }),
+    roleAccent: new THREE.MeshStandardMaterial({
+      color: rc.accent,
+      roughness: 0.55,
+      metalness: 0.12,
+      emissive: rc.accent,
+      emissiveIntensity: isActiveTeam ? 0.18 : 0.03,
+    }),
     boot: new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.9 }),
-  }), [p, isSelected]);
+  }), [p, rc.accent, isSelected, isHovered, isActiveTeam]);
 
   const s = rc.bodyScale;
 
   return (
     <group
-      position={[wx, 0, wz]}
-      rotation={[0, angle, 0]}
-      onClick={(e) => { e.stopPropagation(); selectUnit(unit.id); }}
-      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { document.body.style.cursor = 'default'; }}
+      ref={groupRef}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (inputMode === 'shoot') {
+          shootUnit(unit.id);
+        } else {
+          selectUnit(unit.id);
+        }
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setIsHovered(true);
+        document.body.style.cursor = isShootableTarget ? 'crosshair' : 'pointer';
+      }}
+      onPointerOut={() => {
+        setIsHovered(false);
+        document.body.style.cursor = 'default';
+      }}
     >
       {/* Dim overlay for inactive team */}
-      <group scale={[1, 1, 1]}>
+      <group scale={[1.22, 1.22, 1.22]}>
 
         {/* === BASE DISC === */}
         <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <circleGeometry args={[0.5, 24]} />
+          <circleGeometry args={[0.62, 32]} />
           <meshStandardMaterial
             color={p.base}
             roughness={0.8}
-            emissive={isSelected ? p.accent : (isActiveTeam ? p.accent : '#000000')}
-            emissiveIntensity={isSelected ? 0.6 : (isActiveTeam ? 0.15 : 0)}
+            emissive={isSelected ? rc.accent : (isActiveTeam ? p.accent : '#000000')}
+            emissiveIntensity={isSelected ? 0.75 : (isActiveTeam ? 0.18 : 0)}
           />
         </mesh>
+
+        <TeamIdentityBase team={unit.team} palette={p} roleAccent={rc.accent} />
+        <RoleSilhouette roleId={unit.role.id} accent={rc.accent} />
+
+        {(isSelected || isHovered) && (
+          <FacingArc
+            color={isSelected ? rc.accent : '#f7f2df'}
+            opacity={isSelected ? 0.72 : 0.4}
+          />
+        )}
+
+        {(isSelected || isHovered || isVisibleTarget) && (
+          <TacticalBaseBrackets
+            color={isVisibleTarget && !isSelected ? (isShootableTarget ? '#ff4e6a' : '#d0b783') : (isSelected ? rc.accent : '#f7f2df')}
+            opacity={isSelected ? 0.94 : 0.66}
+            radius={isVisibleTarget ? 0.93 : 0.84}
+            length={isVisibleTarget ? 0.32 : 0.26}
+          />
+        )}
 
         {/* === SELECTION RING === */}
         {isSelected && (
           <mesh ref={glowRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.45, 0.7, 32]} />
-            <meshBasicMaterial color={p.accent} transparent opacity={0.3} side={THREE.DoubleSide} />
+            <ringGeometry args={[0.64, 0.88, 40]} />
+            <meshBasicMaterial color={rc.accent} transparent opacity={0.3} side={THREE.DoubleSide} />
           </mesh>
+        )}
+
+        {isHovered && !isSelected && (
+          <mesh position={[0, 0.055, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.66, 0.82, 40]} />
+            <meshBasicMaterial color="#f7f2df" transparent opacity={0.55} side={THREE.DoubleSide} />
+          </mesh>
+        )}
+
+        {isSpent && !isSelected && (
+          <group>
+            <mesh position={[0, 0.061, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+              <ringGeometry args={[0.7, 0.9, 40]} />
+              <meshBasicMaterial color="#465061" transparent opacity={0.48} side={THREE.DoubleSide} />
+            </mesh>
+            <Line
+              points={[[-0.48, 0.09, -0.48], [0.48, 0.09, 0.48]]}
+              color="#6f7785"
+              lineWidth={2}
+            />
+            <Text
+              position={[0, 0.13, 0.72]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={0.18}
+              color="#b7beca"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.018}
+              outlineColor="#08090d"
+              font={undefined}
+            >
+              DONE
+            </Text>
+          </group>
+        )}
+
+        {isVisibleTarget && (
+          <>
+            <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.88, 1.08, 48]} />
+              <meshBasicMaterial color={isShootableTarget ? '#ff4e6a' : '#7a6d58'} transparent opacity={isShootableTarget ? 0.72 : 0.42} side={THREE.DoubleSide} />
+            </mesh>
+            {isShootableTarget && (
+              <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[0.22, 24]} />
+                <meshBasicMaterial color="#ff4e6a" transparent opacity={0.18} side={THREE.DoubleSide} />
+              </mesh>
+            )}
+            <Text
+              position={[0, 0.13, 0.84]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={0.22}
+              color={isShootableTarget ? '#ffd7dd' : '#d0b783'}
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.025}
+              outlineColor="#14080d"
+              font={undefined}
+            >
+              {isShootableTarget ? `${shotPreview!.hitChance}%` : 'OOR'}
+            </Text>
+          </>
         )}
 
         {/* === AP INDICATOR (small dots around base) === */}
@@ -147,15 +768,16 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             key={`ap-${i}`}
             position={[
               Math.cos((i / unit.maxAp) * Math.PI * 2 - Math.PI / 2) * 0.55,
-              0.06,
+              0.08,
               Math.sin((i / unit.maxAp) * Math.PI * 2 - Math.PI / 2) * 0.55,
             ]}
           >
-            <sphereGeometry args={[0.04, 6, 4]} />
+            <sphereGeometry args={[0.055, 8, 6]} />
             <meshBasicMaterial color={i < unit.ap ? '#44ee66' : '#333333'} />
           </mesh>
         ))}
 
+        <group ref={bodyRef}>
         {/* === BOOTS === */}
         <mesh position={[-0.1 * s, 0.06, 0.02]} castShadow material={mats.boot}>
           <boxGeometry args={[0.14 * s, 0.1, 0.2]} />
@@ -165,22 +787,38 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         </mesh>
 
         {/* === LEGS === */}
-        <mesh position={[-0.1 * s, 0.32, 0]} castShadow material={mats.pants}>
+        <mesh ref={leftLegRef} position={[-0.1 * s, 0.32, 0]} castShadow material={mats.pants}>
           <cylinderGeometry args={[0.07 * s, 0.08 * s, 0.48, 6]} />
         </mesh>
-        <mesh position={[0.1 * s, 0.32, 0]} castShadow material={mats.pants}>
+        <mesh ref={rightLegRef} position={[0.1 * s, 0.32, 0]} castShadow material={mats.pants}>
           <cylinderGeometry args={[0.07 * s, 0.08 * s, 0.48, 6]} />
         </mesh>
 
         {/* === TORSO (vest) === */}
         <mesh position={[0, 0.82 * s, 0]} castShadow material={mats.vest}>
-          <boxGeometry args={[0.44 * s, 0.50 * s, 0.26 * s]} />
+          <boxGeometry args={[0.5 * s, 0.54 * s, 0.3 * s]} />
         </mesh>
 
         {/* === VEST PLATE (front) === */}
-        <mesh position={[0, 0.85 * s, 0.12 * s]} castShadow material={mats.vestDark}>
-          <boxGeometry args={[0.30 * s, 0.25 * s, 0.06]} />
+        <mesh position={[0, 0.85 * s, 0.15 * s]} castShadow material={mats.roleAccent}>
+          <boxGeometry args={[0.32 * s, 0.08 * s, 0.075]} />
         </mesh>
+
+        <RoleGear roleId={unit.role.id} accent={rc.accent} scale={s} />
+
+        {/* === TEAM MARKING === */}
+        {unit.team === 'CT' ? (
+          <mesh position={[0, 0.93 * s, -0.18]} castShadow>
+            <boxGeometry args={[0.36 * s, 0.16 * s, 0.05]} />
+            <meshStandardMaterial color="#e9eef7" roughness={0.48} emissive="#224c84" emissiveIntensity={0.08} />
+          </mesh>
+        ) : (
+          <mesh position={[0, 0.96 * s, 0.205]} castShadow>
+            <boxGeometry args={[0.38 * s, 0.07 * s, 0.05]} />
+            <meshStandardMaterial color="#c43a32" roughness={0.72} emissive="#4b0907" emissiveIntensity={0.1} />
+          </mesh>
+        )}
+        <TeamChestBadge team={unit.team} scale={s} roleAccent={rc.accent} />
 
         {/* === TEAM ARMBAND (left upper arm) === */}
         <mesh position={[-0.28 * s, 0.95 * s, 0]} material={mats.armband}>
@@ -205,9 +843,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         </mesh>
 
         {/* === WEAPON === */}
-        <group position={[-0.12, 0.72 * s, 0.22]}>
+        <group ref={weaponRef} position={[-0.12, 0.72 * s, 0.22]}>
           <mesh rotation={[Math.PI * 0.03, 0, 0]} castShadow material={mats.weapon}>
-            <boxGeometry args={[0.05, 0.07, rc.weaponLen]} />
+            <boxGeometry args={[unit.role.id === 'awper' ? 0.045 : 0.07, 0.075, rc.weaponLen]} />
           </mesh>
           {/* Stock */}
           <mesh position={[0, 0, -rc.weaponLen * 0.45]} castShadow material={mats.weapon}>
@@ -219,17 +857,27 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               <boxGeometry args={[0.03, 0.10, 0.04]} />
             </mesh>
           )}
+          <mesh position={[0, 0, rc.weaponLen * 0.54]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[unit.role.id === 'awper' ? 0.018 : 0.025, unit.role.id === 'awper' ? 0.015 : 0.022, 0.18, 8]} />
+            <meshStandardMaterial color="#090909" roughness={0.25} metalness={0.7} />
+          </mesh>
           {/* Scope (AWPer only) */}
           {rc.hasScope && (
-            <mesh position={[0, 0.06, 0.15]} castShadow>
-              <cylinderGeometry args={[0.015, 0.02, 0.25, 6]} />
-              <meshStandardMaterial color="#1a1a1a" roughness={0.2} metalness={0.9} />
-            </mesh>
+            <>
+              <mesh position={[0, 0.06, 0.15]} castShadow>
+                <cylinderGeometry args={[0.025, 0.03, 0.32, 8]} />
+                <meshStandardMaterial color={rc.accent} roughness={0.2} metalness={0.9} emissive={rc.accent} emissiveIntensity={0.2} />
+              </mesh>
+              <mesh position={[0, 0.03, rc.weaponLen * 0.3]} castShadow>
+                <boxGeometry args={[0.09, 0.035, 0.18]} />
+                <meshStandardMaterial color="#15191f" roughness={0.22} metalness={0.65} />
+              </mesh>
+            </>
           )}
           {/* Suppressor (Lurker) */}
           {unit.role.id === 'lurker' && (
             <mesh position={[0, 0, rc.weaponLen * 0.55]} castShadow>
-              <cylinderGeometry args={[0.025, 0.02, 0.15, 6]} />
+              <cylinderGeometry args={[0.035, 0.025, 0.22, 8]} />
               <meshStandardMaterial color="#1a1a1a" roughness={0.3} metalness={0.6} />
             </mesh>
           )}
@@ -260,41 +908,34 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         </mesh>
 
         {/* === HELMET / HEADGEAR === */}
-        <mesh position={[0, 1.32 * s, 0]} castShadow material={mats.helmet}>
-          <sphereGeometry args={[0.14, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-        </mesh>
-        {/* Helmet rim */}
-        <mesh position={[0, 1.26 * s, 0.02]} castShadow>
-          <boxGeometry args={[0.26, 0.03, 0.16]} />
-          <meshStandardMaterial color={p.helmetRim} roughness={0.6} />
-        </mesh>
+        <TeamHeadgear team={unit.team} scale={s} mats={mats} palette={p} />
 
         {/* === ROLE TAG === */}
         <Text
-          position={[0, 1.65 * s, 0]}
-          fontSize={0.22}
-          color={p.accent}
+          position={[0, 0.115, -0.68]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.28}
+          color={isHovered ? rc.accent : '#f6f8fb'}
           anchorX="center"
           anchorY="middle"
-          outlineWidth={0.025}
-          outlineColor="#000000"
+          outlineWidth={0.035}
+          outlineColor="#07080d"
           font={undefined}
-          rotation={[0, -angle, 0]}
         >
           {ROLE_TAGS[unit.role.id] || '???'}
         </Text>
 
         {/* === NAME === */}
         <Text
-          position={[0, 1.48 * s, 0]}
-          fontSize={0.15}
+          position={[0, 0.115, -0.95]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.18}
           color={isActiveTeam ? '#cccccc' : '#666666'}
           anchorX="center"
           anchorY="middle"
           outlineWidth={0.015}
           outlineColor="#000000"
           font={undefined}
-          rotation={[0, -angle, 0]}
         >
           {unit.name}
         </Text>
@@ -320,6 +961,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             <meshStandardMaterial color="#4488cc" roughness={0.5} />
           </mesh>
         )}
+        </group>
 
         {/* === HP BAR (selected only) === */}
         {isSelected && (

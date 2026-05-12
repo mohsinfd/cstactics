@@ -1,44 +1,91 @@
 // ============================================================
-// MapRenderer: Professional-grade Inferno map rendering.
+// MapRenderer: prototype Inferno renderer.
 //
-// Features:
+// Current scope:
 // - Floor tiles with subtle grid edges
 // - Building mass (walls) with slight color variation
 // - Cover objects with distinct materials
 // - Bombsite plant zone indicators
 // - Callout name labels floating above map areas
-// - Walkable range highlight (green tint)
-// - Path preview line (bright green)
+// - Walkable range highlight with AP bands and tactical boundary outlines
+// - Hovered destination tile feedback with threat/cover information
+// - Path preview line
+// - Planned move previews
+// - LOS shot previews and watched-lane overlays
 // - Interactive invisible plane for click/hover
+//
+// Missing: flash/molly utility volumes, richer animation, and final art assets.
 // ============================================================
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
+import type { CoverObject, MapData, TileCoord } from '../game/types';
+import { getCrossingHeldAngles } from '../game/threats';
+import { getShotPreview } from '../game/combat';
+import { getWatchedLane } from '../game/los';
 
 // --- Color palette: muted tactical tones ---
 const TILE_COLORS: Record<string, string> = {
-  floor:       '#3a3a52',
-  bombsite_a:  '#4a2828',
-  bombsite_b:  '#4a2828',
-  spawn_t:     '#4a4020',
-  spawn_ct:    '#203850',
-  wall:        '#4a4a60',
-  cover_half:  '#7a6d4a',
-  cover_full:  '#5c5540',
-  out_of_bounds: '#08080c',
+  floor:       '#6f7b8e',
+  bombsite_a:  '#963d3d',
+  bombsite_b:  '#963d3d',
+  spawn_t:     '#c59b2f',
+  spawn_ct:    '#2d80bd',
+  wall:        '#171b24',
+  cover_half:  '#c0a661',
+  cover_full:  '#8d7650',
+  out_of_bounds: '#11151d',
 };
 
-const WALL_HEIGHT = 2.8;
+const WALL_HEIGHT = 0.95;
 const COVER_HALF_H = 0.9;
 const COVER_FULL_H = 1.8;
-const FLOOR_H = 0.12;
-const GRID_GAP = 0.04; // gap between tiles for grid effect
+const FLOOR_H = 0.1;
+const GRID_GAP = 0.003; // nearly seamless so the silhouette reads before the grid
+const MOVE_ONE_AP_COLOR = '#5df2ff';
+const MOVE_TWO_AP_COLOR = '#f7cf5f';
+const MOVE_BOUNDARY_COLOR = '#9dfcff';
+const THREAT_COLOR = '#ff8a3d';
+const SMOKE_PREVIEW_COLOR = '#c5d1df';
+const SMOKE_THROW_RANGE = 12;
+const SMOKE_RADIUS_TILES = 2;
+const KEY_CALLOUTS = new Set([
+  'T Spawn',
+  'Upper Banana',
+  'B Site',
+  'Mid',
+  'Second Mid',
+  'Apartments',
+  'A Site',
+  'Arch',
+  'CT Spawn',
+]);
+
+function displayCalloutName(name: string): string {
+  if (name.includes('Banana')) return 'Banana';
+  if (name === 'Second Mid') return '2nd Mid';
+  if (name === 'Apartments') return 'Apps';
+  return name;
+}
 
 function tileWorld(x: number, y: number, ts: number): [number, number, number] {
-  return [x * ts + ts / 2, 0, y * ts + ts / 2];
+  return [(90 - 1 - x) * ts + ts / 2, 0, y * ts + ts / 2];
+}
+
+function gridDistance(a: TileCoord, b: TileCoord): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+type LinePoint = [number, number, number];
+type BoundarySegment = [LinePoint, LinePoint];
+
+function areaCenterWorldX(mapWidth: number, x: number, width: number, ts: number): number {
+  return (mapWidth - x - width / 2) * ts;
 }
 
 // ---- Floor tiles (instanced per type) ----
@@ -93,16 +140,25 @@ function InstancedFloor({ positions, elevations, color, tileSize }: {
   return <primitive object={mesh} />;
 }
 
-// ---- Walls (building mass) ----
+// ---- Walls (readable perimeter mass, not full black building slabs) ----
 function WallLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
   const wallPositions = useMemo(() => {
     const p: [number, number, number][] = [];
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        if (map.grid[y]?.[x]?.type === 'wall') p.push(tileWorld(x, y, ts));
+        if (map.grid[y]?.[x]?.type !== 'wall') continue;
+        const touchesFloor = dirs.some(([dx, dy]) => map.grid[y + dy]?.[x + dx]?.walkable);
+        if (touchesFloor) p.push(tileWorld(x, y, ts));
       }
     }
     return p;
@@ -110,11 +166,13 @@ function WallLayer() {
 
   const mesh = useMemo(() => {
     if (wallPositions.length === 0) return null;
-    const geo = new THREE.BoxGeometry(ts, WALL_HEIGHT, ts);
-    // Slightly varied wall color using vertex colors would be ideal,
-    // but for now use a single darker material
+    const geo = new THREE.BoxGeometry(ts - GRID_GAP, WALL_HEIGHT, ts - GRID_GAP);
     const mat = new THREE.MeshStandardMaterial({
-      color: TILE_COLORS.wall, roughness: 0.92, metalness: 0.0,
+      color: TILE_COLORS.wall,
+      roughness: 0.86,
+      metalness: 0.02,
+      emissive: '#05070b',
+      emissiveIntensity: 0.08,
     });
     const inst = new THREE.InstancedMesh(geo, mat, wallPositions.length);
     const d = new THREE.Object3D();
@@ -127,9 +185,9 @@ function WallLayer() {
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
 
-      // Subtle variation: +/- 5% brightness based on position hash
+      // Subtle variation keeps the boundary from looking tiled-flat.
       const hash = ((x * 73 + z * 137) % 100) / 100;
-      const variation = 0.92 + hash * 0.16;
+      const variation = 0.82 + hash * 0.14;
       colorAttr[i * 3] = baseColor.r * variation;
       colorAttr[i * 3 + 1] = baseColor.g * variation;
       colorAttr[i * 3 + 2] = baseColor.b * variation;
@@ -154,22 +212,20 @@ function CoverLayer() {
   return (
     <>
       {map.coverObjects.map((c, i) => {
-        const cx = (c.x + c.width / 2) * ts;
+        const cx = areaCenterWorldX(map.width, c.x, c.width, ts);
         const cz = (c.y + c.height / 2) * ts;
         const h = c.coverType === 'half' ? COVER_HALF_H : COVER_FULL_H;
-        const color = c.coverType === 'half' ? '#8a7d5a' : '#6a6050';
 
         return (
           <group key={i}>
-            <mesh position={[cx, h / 2, cz]} castShadow receiveShadow>
-              <boxGeometry args={[c.width * ts * 0.88, h, c.height * ts * 0.88]} />
-              <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
-            </mesh>
+            <CoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
             {/* Cover label */}
             <Text
-              position={[cx, h + 0.15, cz]}
+              position={[cx, h + 0.08, cz]}
+              rotation={[-Math.PI / 2, 0, Math.PI]}
               fontSize={0.18}
-              color="#887755"
+              color="#dcc77e"
+              fillOpacity={0.45}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.015}
@@ -195,7 +251,8 @@ function BombsiteMarkers() {
       const zone = map.plantZones[site];
       const w = (zone.max.x - zone.min.x) * ts;
       const h = (zone.max.y - zone.min.y) * ts;
-      const cx = (zone.min.x + (zone.max.x - zone.min.x) / 2) * ts;
+      const width = zone.max.x - zone.min.x;
+      const cx = areaCenterWorldX(map.width, zone.min.x, width, ts);
       const cz = (zone.min.y + (zone.max.y - zone.min.y) / 2) * ts;
       return { site, cx, cz, w, h };
     });
@@ -208,16 +265,19 @@ function BombsiteMarkers() {
           {/* Glowing plant zone */}
           <mesh position={[cx, FLOOR_H + 0.03, cz]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[w, h]} />
-            <meshBasicMaterial color="#cc2222" transparent opacity={0.12} side={THREE.DoubleSide} />
+            <meshBasicMaterial color="#e44740" transparent opacity={0.32} side={THREE.DoubleSide} />
           </mesh>
           {/* Site letter */}
           <Text
-            position={[cx, 0.5, cz]}
-            fontSize={1.5}
-            color="#cc3333"
-            fillOpacity={0.33}
+            position={[cx, FLOOR_H + 0.08, cz]}
+            rotation={[-Math.PI / 2, 0, Math.PI]}
+            fontSize={2.65}
+            color="#ffdad5"
+            fillOpacity={0.94}
             anchorX="center"
             anchorY="middle"
+            outlineWidth={0.06}
+            outlineColor="#3f0f0d"
             font={undefined}
           >
             {site}
@@ -238,8 +298,9 @@ function CalloutLabels() {
     // Deduplicate: only show unique names (first occurrence)
     const seen = new Set<string>();
     return all.filter((l) => {
-      if (seen.has(l.name)) return false;
-      seen.add(l.name);
+      const displayName = displayCalloutName(l.name);
+      if (!KEY_CALLOUTS.has(l.name) || seen.has(displayName)) return false;
+      seen.add(displayName);
       return true;
     });
   }, []);
@@ -247,24 +308,80 @@ function CalloutLabels() {
   return (
     <>
       {labels.map((l) => {
-        const wx = l.x * ts + ts / 2;
+        const wx = (map.width - 1 - l.x) * ts + ts / 2;
         const wz = l.y * ts + ts / 2;
         return (
           <Text
             key={l.name}
-            position={[wx, WALL_HEIGHT + 0.8, wz]}
-            fontSize={0.35}
-            color="#aaaaaa"
-            fillOpacity={0.33}
+            position={[wx, FLOOR_H + 0.09, wz]}
+            rotation={[-Math.PI / 2, 0, Math.PI]}
+            fontSize={1.55}
+            color="#f4f7fb"
+            fillOpacity={0.82}
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.02}
-            outlineColor="#000000"
-            outlineOpacity={0.27}
+            outlineWidth={0.12}
+            outlineColor="#0b0d12"
+            outlineOpacity={0.85}
             font={undefined}
           >
-            {l.name.toUpperCase()}
+            {displayCalloutName(l.name).toUpperCase()}
           </Text>
+        );
+      })}
+    </>
+  );
+}
+
+function SmokeLayer() {
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (smokes.length === 0) return null;
+
+  return (
+    <>
+      {smokes.map((smoke) => {
+        const [wx, , wz] = tileWorld(smoke.position.x, smoke.position.y, ts);
+        const radius = smoke.radius * ts;
+        const color = smoke.team === 'CT' ? '#a9c7e8' : '#d9c89a';
+        return (
+          <group key={smoke.id} position={[wx, 0, wz]} raycast={() => null}>
+            <mesh position={[0, FLOOR_H + 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[radius, 40]} />
+              <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} depthWrite={false} />
+            </mesh>
+            <mesh position={[0, FLOOR_H + 0.48, 0]}>
+              <cylinderGeometry args={[radius * 0.94, radius * 0.72, 0.78, 36, 1, true]} />
+              <meshStandardMaterial
+                color="#b8c0ca"
+                transparent
+                opacity={0.26}
+                roughness={1}
+                metalness={0}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <mesh position={[0, FLOOR_H + 0.91, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[radius * 0.48, radius * 0.92, 40]} />
+              <meshBasicMaterial color="#eef4fb" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
+            </mesh>
+            <Text
+              position={[0, FLOOR_H + 0.98, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={0.2}
+              color="#eef4fb"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.025}
+              outlineColor="#313943"
+              font={undefined}
+            >
+              SMOKE
+            </Text>
+          </group>
         );
       })}
     </>
@@ -273,21 +390,654 @@ function CalloutLabels() {
 
 // ---- Walkable range highlight ----
 function WalkableHighlight() {
-  const walkableTiles = useGameStore((s) => s.walkableTiles);
+  const movementTiles = useGameStore((s) => s.movementTiles);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
+  const groups = useMemo(() => {
+    const oneAp = movementTiles.filter((tile) => tile.apCost <= 1);
+    const twoAp = movementTiles.filter((tile) => tile.apCost >= 2);
+    return { oneAp, twoAp };
+  }, [movementTiles]);
+
+  return (
+    <>
+      <MovementBand tiles={groups.twoAp} color={MOVE_TWO_AP_COLOR} opacity={0.15} tileSize={ts} />
+      <MovementBand tiles={groups.oneAp} color={MOVE_ONE_AP_COLOR} opacity={0.18} tileSize={ts} />
+      <MovementBoundary
+        tiles={movementTiles}
+        color={MOVE_BOUNDARY_COLOR}
+        tileSize={ts}
+        y={FLOOR_H + 0.125}
+        lineWidth={2.4}
+      />
+      <MovementBoundary
+        tiles={groups.oneAp}
+        color={MOVE_ONE_AP_COLOR}
+        tileSize={ts}
+        y={FLOOR_H + 0.135}
+        lineWidth={1.35}
+        opacity={0.72}
+      />
+    </>
+  );
+}
+
+function CoverProp({
+  cover,
+  x,
+  z,
+  h,
+  tileSize,
+}: {
+  cover: CoverObject;
+  x: number;
+  z: number;
+  h: number;
+  tileSize: number;
+}) {
+  const width = cover.width * tileSize * 0.88;
+  const depth = cover.height * tileSize * 0.88;
+  const label = cover.label.toLowerCase();
+
+  if (label.includes('fountain')) {
+    return <FountainProp x={x} z={z} width={width} depth={depth} />;
+  }
+  if (label.includes('banana car') || label === 'truck') {
+    return <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} />;
+  }
+  if (label.includes('coffin')) {
+    return <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />;
+  }
+  if (label.includes('orange')) {
+    return <OrangesProp x={x} z={z} width={width} depth={depth} height={h} />;
+  }
+  if (label.includes('logs')) {
+    return <LogsProp x={x} z={z} width={width} depth={depth} />;
+  }
+  if (label.includes('sandbags')) {
+    return <SandbagsProp x={x} z={z} width={width} depth={depth} />;
+  }
+  if (label.includes('library shelf')) {
+    return <LibraryShelfProp x={x} z={z} width={width} depth={depth} height={h} />;
+  }
+  if (label.includes('pillar')) {
+    return <PillarProp x={x} z={z} height={h} />;
+  }
+  if (label.includes('rail') || label.includes('wall')) {
+    return <WallStripProp x={x} z={z} width={width} depth={depth} height={h} />;
+  }
+
+  const color = cover.coverType === 'half' ? '#8a7d5a' : '#6a6050';
+  return (
+    <mesh position={[x, h / 2, z]} castShadow receiveShadow>
+      <boxGeometry args={[width, h, depth]} />
+      <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
+    </mesh>
+  );
+}
+
+function VehicleProp({
+  x,
+  z,
+  width,
+  depth,
+  isTruck,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  isTruck: boolean;
+}) {
+  const bodyColor = isTruck ? '#6f776f' : '#56473b';
+  const trimColor = isTruck ? '#b9c2b5' : '#2d2b28';
+  const bodyH = isTruck ? 0.68 : 0.46;
+  const cabinH = isTruck ? 0.55 : 0.34;
+
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, bodyH, depth * 0.8]} />
+        <meshStandardMaterial color={bodyColor} roughness={0.58} metalness={0.22} />
+      </mesh>
+      <mesh position={[width * 0.18, bodyH + cabinH / 2 - 0.04, -depth * 0.02]} castShadow>
+        <boxGeometry args={[width * 0.42, cabinH, depth * 0.62]} />
+        <meshStandardMaterial color={trimColor} roughness={0.5} metalness={0.25} />
+      </mesh>
+      {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
+        <mesh key={`${sx}-${sz}`} position={[sx * width, 0.14, sz * depth]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.14, 0.14, 0.12, 12]} />
+          <meshStandardMaterial color="#111216" roughness={0.72} metalness={0.08} />
+        </mesh>
+      )))}
+      <mesh position={[-width * 0.46, bodyH * 0.58, 0]} castShadow>
+        <boxGeometry args={[0.08, 0.18, depth * 0.5]} />
+        <meshStandardMaterial color="#f6d76a" roughness={0.35} emissive="#9b6b18" emissiveIntensity={0.12} />
+      </mesh>
+    </group>
+  );
+}
+
+function FountainProp({
+  x,
+  z,
+  width,
+  depth,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+}) {
+  const radius = Math.min(width, depth) * 0.38;
+
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[radius, radius * 1.12, 0.34, 36]} />
+        <meshStandardMaterial color="#8f8775" roughness={0.78} metalness={0.02} />
+      </mesh>
+      <mesh position={[0, 0.37, 0]} castShadow>
+        <cylinderGeometry args={[radius * 0.58, radius * 0.66, 0.12, 32]} />
+        <meshStandardMaterial color="#2f6e82" roughness={0.36} metalness={0.05} emissive="#1d5060" emissiveIntensity={0.18} />
+      </mesh>
+      <mesh position={[0, 0.56, 0]} castShadow>
+        <cylinderGeometry args={[radius * 0.12, radius * 0.18, 0.36, 18]} />
+        <meshStandardMaterial color="#b4a27d" roughness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
+function CoffinsProp({
+  x,
+  z,
+  width,
+  depth,
+  height,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+}) {
+  return (
+    <group position={[x, 0, z]}>
+      {[-0.22, 0.22].map((offset) => (
+        <mesh key={offset} position={[offset * width, height / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width * 0.36, height, depth * 0.9]} />
+          <meshStandardMaterial color="#403b37" roughness={0.7} metalness={0.04} />
+        </mesh>
+      ))}
+      <mesh position={[0, height + 0.04, 0]} castShadow>
+        <boxGeometry args={[width * 0.86, 0.08, depth * 0.78]} />
+        <meshStandardMaterial color="#1c1a18" roughness={0.82} />
+      </mesh>
+    </group>
+  );
+}
+
+function OrangesProp({
+  x,
+  z,
+  width,
+  depth,
+  height,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+}) {
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial color="#8c6540" roughness={0.76} metalness={0.02} />
+      </mesh>
+      {[-0.25, 0.05, 0.35].map((sx, index) => (
+        <mesh key={sx} position={[sx * width, height + 0.13, (index - 1) * depth * 0.2]} castShadow>
+          <sphereGeometry args={[0.13, 12, 8]} />
+          <meshStandardMaterial color="#d9822b" roughness={0.7} emissive="#6d2e0d" emissiveIntensity={0.07} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function LogsProp({
+  x,
+  z,
+  width,
+  depth,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+}) {
+  return (
+    <group position={[x, 0, z]}>
+      {[-0.22, 0, 0.22].map((offset, index) => (
+        <mesh key={offset} position={[0, 0.2 + index * 0.06, offset * depth]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.16, 0.16, width * 0.92, 14]} />
+          <meshStandardMaterial color={index % 2 === 0 ? '#6f4a2d' : '#7a5636'} roughness={0.8} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function SandbagsProp({
+  x,
+  z,
+  width,
+  depth,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+}) {
+  const bags = [
+    [-0.28, -0.18, 0],
+    [0.05, -0.18, 0.03],
+    [0.34, -0.14, -0.02],
+    [-0.12, 0.18, 0.08],
+    [0.22, 0.18, 0.04],
+  ];
+
+  return (
+    <group position={[x, 0, z]}>
+      {bags.map(([sx, sz, lift], index) => (
+        <mesh key={index} position={[sx * width, 0.18 + lift, sz * depth]} scale={[0.38, 0.12, 0.22]} castShadow receiveShadow>
+          <sphereGeometry args={[1, 16, 8]} />
+          <meshStandardMaterial color={index % 2 ? '#9b8a63' : '#ab9a70'} roughness={0.92} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function LibraryShelfProp({
+  x,
+  z,
+  width,
+  depth,
+  height,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+}) {
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial color="#4d3929" roughness={0.66} />
+      </mesh>
+      {[-0.25, 0, 0.25].map((sx, index) => (
+        <mesh key={sx} position={[sx * width, height * 0.65, depth * 0.51]} castShadow>
+          <boxGeometry args={[width * 0.12, height * 0.42, 0.04]} />
+          <meshStandardMaterial color={['#9a3430', '#d0ac56', '#2f6f82'][index]} roughness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function PillarProp({
+  x,
+  z,
+  height,
+}: {
+  x: number;
+  z: number;
+  height: number;
+}) {
+  return (
+    <mesh position={[x, height / 2, z]} castShadow receiveShadow>
+      <cylinderGeometry args={[0.38, 0.44, height, 12]} />
+      <meshStandardMaterial color="#73695b" roughness={0.78} />
+    </mesh>
+  );
+}
+
+function WallStripProp({
+  x,
+  z,
+  width,
+  depth,
+  height,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+}) {
+  return (
+    <mesh position={[x, Math.min(height, 1.05) / 2, z]} castShadow receiveShadow>
+      <boxGeometry args={[width, Math.min(height, 1.05), depth]} />
+      <meshStandardMaterial color="#8d7f68" roughness={0.84} metalness={0.02} />
+    </mesh>
+  );
+}
+
+function ThreatenedMovementOverlay() {
+  const movementTiles = useGameStore((s) => s.movementTiles);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const units = useGameStore((s) => s.units);
+  const phase = useGameStore((s) => s.round.phase);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const threatenedTiles = useMemo(() => {
+    if (selectedUnitId === null || phase === 'setup' || movementTiles.length === 0) return [];
+    const selectedUnit = units.find((unit) => unit.id === selectedUnitId);
+    if (!selectedUnit) return [];
+    const enemies = units.filter((unit) => unit.alive && unit.team !== selectedUnit.team);
+
+    return movementTiles.filter((tile) => enemies.some((enemy) => {
+      const preview = getShotPreview(map, enemy, selectedUnit, 0, tile, smokes);
+      return preview.hasLineOfSight && preview.inRange;
+    }));
+  }, [map, movementTiles, phase, selectedUnitId, smokes, units]);
+
+  if (threatenedTiles.length === 0) return null;
+  return (
+    <>
+      <MovementBand tiles={threatenedTiles} color={THREAT_COLOR} opacity={0.22} tileSize={ts} />
+      <MovementBoundary
+        tiles={threatenedTiles}
+        color={THREAT_COLOR}
+        tileSize={ts}
+        y={FLOOR_H + 0.155}
+        lineWidth={1.6}
+        opacity={0.78}
+      />
+    </>
+  );
+}
+
+function HoveredTileHighlight() {
+  const hoveredTile = useGameStore((s) => s.hoveredTile);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const movementTiles = useGameStore((s) => s.movementTiles);
+  const pathPreview = useGameStore((s) => s.pathPreview);
+  const units = useGameStore((s) => s.units);
+  const heldAngles = useGameStore((s) => s.heldAngles);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const phase = useGameStore((s) => s.round.phase);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const hoveredMovementTile = useMemo(() => {
+    if (!hoveredTile || selectedUnitId === null) return null;
+    return movementTiles.find((tile) => tile.x === hoveredTile.x && tile.y === hoveredTile.y) ?? null;
+  }, [hoveredTile, movementTiles, selectedUnitId]);
+
+  if (!hoveredTile || !hoveredMovementTile) return null;
+
+  const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
+  const isOneAp = hoveredMovementTile.apCost <= 1;
+  const selectedUnit = units.find((unit) => unit.id === selectedUnitId);
+  const crossedHeldAngles = selectedUnit
+    && phase !== 'setup'
+    ? getCrossingHeldAngles(heldAngles, pathPreview, selectedUnit.team)
+    : [];
+  const knownThreats = selectedUnit
+    && phase !== 'setup'
+    ? units
+      .filter((unit) => unit.alive && unit.team !== selectedUnit.team)
+      .map((unit) => getShotPreview(map, unit, selectedUnit, 0, hoveredTile, smokes))
+      .filter((preview) => preview.hasLineOfSight && preview.inRange)
+    : [];
+  const isWatched = crossedHeldAngles.length > 0;
+  const isThreatened = knownThreats.length > 0;
+  const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
+  const isSmokeMode = inputMode === 'smoke';
+  const label = isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? 'DANGER' : (isOneAp ? '1 AP' : '2 AP')));
+  const smokeColor = '#b9c6d8';
+  const displayColor = isSmokeMode ? smokeColor : color;
+  const coverEdges = getCoverEdges(map, hoveredTile);
+
+  return (
+    <group position={[wx, FLOOR_H + 0.16, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh raycast={() => null}>
+        <planeGeometry args={[ts - GRID_GAP, ts - GRID_GAP]} />
+        <meshBasicMaterial
+          color={displayColor}
+          transparent
+          opacity={0.46}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={[0, 0, 0.01]} raycast={() => null}>
+        <ringGeometry args={[ts * 0.38, ts * 0.5, 4]} />
+        <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} />
+      </mesh>
+      <Text
+        position={[0, 0, 0.035]}
+        fontSize={0.28}
+        color="#101318"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.035}
+        outlineColor={isSmokeMode ? '#3f4a58' : '#f8f3dc'}
+        font={undefined}
+      >
+        {label}
+      </Text>
+      {coverEdges.map((edge) => (
+        <mesh
+          key={edge.key}
+          position={[edge.x, edge.y, 0.055]}
+          raycast={() => null}
+        >
+          <planeGeometry args={edge.orientation === 'horizontal' ? [ts * 0.62, 0.11] : [0.11, ts * 0.62]} />
+          <meshBasicMaterial
+            color={edge.cover === 'full' ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR}
+            transparent
+            opacity={edge.cover === 'full' ? 0.95 : 0.78}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function SmokeTargetPreview() {
+  const hoveredTile = useGameStore((s) => s.hoveredTile);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (!hoveredTile || selectedUnitId === null || inputMode !== 'smoke') return null;
+  const unit = units.find((candidate) => candidate.id === selectedUnitId);
+  if (!unit) return null;
+
+  const tile = map.grid[hoveredTile.y]?.[hoveredTile.x];
+  const inRange = gridDistance(unit.position, hoveredTile) <= SMOKE_THROW_RANGE;
+  const valid = Boolean(tile?.walkable && inRange && unit.smokeGrenades > 0 && unit.ap > 0);
+  const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
+  const radius = SMOKE_RADIUS_TILES * ts;
+  const color = valid ? SMOKE_PREVIEW_COLOR : '#ff6b6b';
+
+  return (
+    <group position={[wx, FLOOR_H + 0.24, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius, 40]} />
+        <meshBasicMaterial color={color} transparent opacity={valid ? 0.18 : 0.1} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.88, radius, 40]} />
+        <meshBasicMaterial color={color} transparent opacity={0.78} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <Text
+        position={[0, 0.02, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.26}
+        color={valid ? '#eef4fb' : '#ffd1d1'}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.035}
+        outlineColor="#18202a"
+        font={undefined}
+      >
+        {valid ? 'SMOKE' : 'NO THROW'}
+      </Text>
+    </group>
+  );
+}
+
+function getCoverEdges(map: MapData, tile: TileCoord): Array<{
+  key: string;
+  cover: 'half' | 'full';
+  orientation: 'horizontal' | 'vertical';
+  x: number;
+  y: number;
+}> {
+  const edge = map.tileSize * 0.48;
+  const edges: Array<{
+    key: string;
+    cover: 'half' | 'full';
+    orientation: 'horizontal' | 'vertical';
+    x: number;
+    y: number;
+  }> = [];
+  const directions = [
+    { key: 'north', dx: 0, dy: -1, x: 0, y: -edge, orientation: 'horizontal' as const },
+    { key: 'east', dx: 1, dy: 0, x: -edge, y: 0, orientation: 'vertical' as const },
+    { key: 'south', dx: 0, dy: 1, x: 0, y: edge, orientation: 'horizontal' as const },
+    { key: 'west', dx: -1, dy: 0, x: edge, y: 0, orientation: 'vertical' as const },
+  ];
+
+  for (const dir of directions) {
+    const adjacent = map.grid[tile.y + dir.dy]?.[tile.x + dir.dx];
+    if (!adjacent) continue;
+    if (adjacent.type === 'cover_half') {
+      edges.push({ key: dir.key, cover: 'half', orientation: dir.orientation, x: dir.x, y: dir.y });
+    }
+    if (adjacent.type === 'cover_full' || adjacent.type === 'wall') {
+      edges.push({ key: dir.key, cover: 'full', orientation: dir.orientation, x: dir.x, y: dir.y });
+    }
+  }
+
+  return edges;
+}
+
+function getBoundarySegments(
+  tiles: Array<{ x: number; y: number }>,
+  tileSize: number,
+  y: number,
+): BoundarySegment[] {
+  if (tiles.length === 0) return [];
+
+  const keys = new Set(tiles.map((tile) => `${tile.x},${tile.y}`));
+  const half = tileSize / 2 - GRID_GAP * 2;
+  const segments: BoundarySegment[] = [];
+
+  for (const tile of tiles) {
+    const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
+    const northWest: LinePoint = [wx - half, y, wz - half];
+    const northEast: LinePoint = [wx + half, y, wz - half];
+    const southEast: LinePoint = [wx + half, y, wz + half];
+    const southWest: LinePoint = [wx - half, y, wz + half];
+
+    const edges = [
+      { neighbor: `${tile.x},${tile.y - 1}`, a: northWest, b: northEast },
+      { neighbor: `${tile.x + 1},${tile.y}`, a: northEast, b: southEast },
+      { neighbor: `${tile.x},${tile.y + 1}`, a: southEast, b: southWest },
+      { neighbor: `${tile.x - 1},${tile.y}`, a: southWest, b: northWest },
+    ];
+
+    for (const edge of edges) {
+      if (!keys.has(edge.neighbor)) {
+        segments.push([edge.a, edge.b]);
+      }
+    }
+  }
+
+  return segments;
+}
+
+function MovementBoundary({
+  tiles,
+  color,
+  tileSize,
+  y,
+  lineWidth,
+  opacity = 0.95,
+}: {
+  tiles: Array<{ x: number; y: number }>;
+  color: string;
+  tileSize: number;
+  y: number;
+  lineWidth: number;
+  opacity?: number;
+}) {
+  const segments = useMemo(
+    () => getBoundarySegments(tiles, tileSize, y),
+    [tiles, tileSize, y],
+  );
+
+  if (segments.length === 0) return null;
+
+  return (
+    <group>
+      {segments.map((segment, index) => (
+        <Line
+          key={`${color}-${index}`}
+          points={segment}
+          color={color}
+          lineWidth={lineWidth}
+          transparent
+          opacity={opacity}
+        />
+      ))}
+    </group>
+  );
+}
+
+function MovementBand({
+  tiles,
+  color,
+  opacity,
+  tileSize,
+}: {
+  tiles: Array<{ x: number; y: number }>;
+  color: string;
+  opacity: number;
+  tileSize: number;
+}) {
   const mesh = useMemo(() => {
-    if (walkableTiles.length === 0) return null;
-    const size = ts - GRID_GAP;
+    if (tiles.length === 0) return null;
+    const size = tileSize - GRID_GAP;
     const geo = new THREE.PlaneGeometry(size, size);
     const mat = new THREE.MeshBasicMaterial({
-      color: '#22ee66', transparent: true, opacity: 0.1, side: THREE.DoubleSide,
+      color,
+      transparent: true,
+      opacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
     });
-    const inst = new THREE.InstancedMesh(geo, mat, walkableTiles.length);
+    const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
     const d = new THREE.Object3D();
-    walkableTiles.forEach((tile, i) => {
-      const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
+    tiles.forEach((tile, i) => {
+      const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
       d.position.set(wx, FLOOR_H + 0.04, wz);
       d.rotation.set(-Math.PI / 2, 0, 0);
       d.updateMatrix();
@@ -295,10 +1045,10 @@ function WalkableHighlight() {
     });
     inst.instanceMatrix.needsUpdate = true;
     return inst;
-  }, [walkableTiles, ts]);
+  }, [tiles, color, opacity, tileSize]);
 
   if (!mesh) return null;
-  return <primitive object={mesh} />;
+  return <primitive object={mesh} raycast={() => null} />;
 }
 
 // ---- Path preview line ----
@@ -324,17 +1074,348 @@ function PathPreview() {
   return <Line points={points} color="#44ff88" lineWidth={3} />;
 }
 
+function PlannedActionPreview() {
+  const plannedActions = useGameStore((s) => s.plannedActions);
+  const heldAngles = useGameStore((s) => s.heldAngles);
+  const phase = useGameStore((s) => s.round.phase);
+  const units = useGameStore((s) => s.units);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  return (
+    <>
+      {plannedActions.map((action, index) => {
+        const unit = units.find((u) => u.id === action.unitId);
+        const isWatched = phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
+        const isDanger = Boolean(unit && phase !== 'setup' && units.some((enemy) => {
+          if (!enemy.alive || enemy.team === action.team) return false;
+          const preview = getShotPreview(map, enemy, unit, 0, action.target, smokes);
+          return preview.hasLineOfSight && preview.inRange;
+        }));
+        const color = isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166'));
+        const label = isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`);
+        const points = [action.from, ...action.path].map((tile): [number, number, number] => {
+          const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
+          return [wx, FLOOR_H + 0.24 + index * 0.012, wz];
+        });
+        const [wx, , wz] = tileWorld(action.target.x, action.target.y, ts);
+
+        return (
+          <group key={action.id}>
+            {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
+            <group position={[wx, FLOOR_H + 0.21, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh raycast={() => null}>
+                <ringGeometry args={[ts * 0.24, ts * 0.42, 24]} />
+                <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
+              </mesh>
+              <Text
+                position={[0, 0, 0.04]}
+                fontSize={0.24}
+                color="#101318"
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.03}
+                outlineColor={color}
+                font={undefined}
+              >
+                {label}
+              </Text>
+            </group>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+function HeldAngleOverlay() {
+  const heldAngles = useGameStore((s) => s.heldAngles);
+  const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  return (
+    <>
+      {heldAngles.map((angle) => {
+        const unit = units.find((u) => u.id === angle.unitId);
+        const color = unit?.team === 'CT' ? '#ff4e6a' : '#ff9d3d';
+        const points = [angle.origin, ...angle.laneTiles].map((tile): [number, number, number] => {
+          const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
+          return [wx, FLOOR_H + 0.31, wz];
+        });
+
+        return (
+          <group key={angle.id}>
+            {points.length >= 2 && <Line points={points} color={color} lineWidth={3} />}
+            <HeldLaneTiles tiles={angle.laneTiles} color={color} tileSize={ts} />
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+function HoldAngleHoverPreview() {
+  const hoveredTile = useGameStore((s) => s.hoveredTile);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const preview = useMemo(() => {
+    if (!hoveredTile || selectedUnitId === null || inputMode !== 'hold_angle') return null;
+    const unit = units.find((candidate) => candidate.id === selectedUnitId);
+    if (!unit || !unit.alive || unit.ap <= 0) return null;
+    if (unit.position.x === hoveredTile.x && unit.position.y === hoveredTile.y) return null;
+
+    const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
+    const laneTiles = getWatchedLane(map, unit.position, hoveredTile, maxTiles);
+    if (laneTiles.length === 0) return null;
+    return { unit, laneTiles };
+  }, [hoveredTile, inputMode, map, selectedUnitId, units]);
+
+  if (!preview) return null;
+
+  const color = preview.unit.team === 'CT' ? '#ff87a0' : '#ffb86b';
+  const points = [preview.unit.position, ...preview.laneTiles].map((tile): [number, number, number] => {
+    const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
+    return [wx, FLOOR_H + 0.39, wz];
+  });
+  const lastTile = preview.laneTiles[preview.laneTiles.length - 1];
+  const [labelX, , labelZ] = tileWorld(lastTile.x, lastTile.y, ts);
+
+  return (
+    <group>
+      {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
+      <HeldLaneTiles tiles={preview.laneTiles} color={color} tileSize={ts} opacity={0.18} />
+      <Text
+        position={[labelX, FLOOR_H + 0.42, labelZ]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.25}
+        color="#ffd7dd"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.025}
+        outlineColor="#14080d"
+        font={undefined}
+      >
+        HOLD
+      </Text>
+    </group>
+  );
+}
+
+function HeldLaneTiles({
+  tiles,
+  color,
+  tileSize,
+  opacity = 0.28,
+}: {
+  tiles: TileCoord[];
+  color: string;
+  tileSize: number;
+  opacity?: number;
+}) {
+  const mesh = useMemo(() => {
+    if (tiles.length === 0) return null;
+    const size = tileSize - GRID_GAP;
+    const geo = new THREE.PlaneGeometry(size, size);
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
+    const d = new THREE.Object3D();
+    tiles.forEach((tile, i) => {
+      const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
+      d.position.set(wx, FLOOR_H + 0.18, wz);
+      d.rotation.set(-Math.PI / 2, 0, 0);
+      d.updateMatrix();
+      inst.setMatrixAt(i, d.matrix);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    return inst;
+  }, [tiles, color, opacity, tileSize]);
+
+  if (!mesh) return null;
+  return <primitive object={mesh} raycast={() => null} />;
+}
+
+function CombatEventMarker() {
+  const event = useGameStore((s) => s.combatLog[0]);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (!event) return null;
+
+  const [wx, , wz] = tileWorld(event.tile.x, event.tile.y, ts);
+  const color = event.hit ? '#ff4e6a' : '#d8c170';
+  const label = event.hit ? `-${event.damage}` : 'MISS';
+
+  return (
+    <group position={[wx, FLOOR_H + 0.5, wz]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[ts * 0.32, ts * 0.55, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
+      </mesh>
+      <Text
+        position={[0, 0.04, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.36}
+        color={event.hit ? '#ffd7dd' : '#fff1b5'}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.04}
+        outlineColor="#11080c"
+        font={undefined}
+      >
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+function CombatTracerOverlay() {
+  const event = useGameStore((s) => s.combatLog[0]);
+  const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (!event) return null;
+
+  const attacker = units.find((unit) => unit.id === event.attackerId);
+  const target = units.find((unit) => unit.id === event.targetId);
+  if (!attacker) return null;
+
+  const [sx, , sz] = tileWorld(attacker.position.x, attacker.position.y, ts);
+  const targetTile = target?.position ?? event.tile;
+  const [tx, , tz] = tileWorld(targetTile.x, targetTile.y, ts);
+  const color = event.hit ? '#ff4e6a' : '#fff1b5';
+  const label = event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
+  const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
+  const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
+  const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];
+
+  return (
+    <group raycast={() => null}>
+      <Line points={[start, end]} color={color} lineWidth={event.hit ? 4 : 2} />
+      <Line
+        points={[[sx, FLOOR_H + 1.12, sz], [tx, FLOOR_H + 0.72, tz]]}
+        color={event.hit ? '#ffd7dd' : '#d8c170'}
+        lineWidth={1}
+      />
+      <mesh position={start}>
+        <sphereGeometry args={[0.1, 12, 8]} />
+        <meshBasicMaterial color={color} transparent opacity={0.82} />
+      </mesh>
+      <mesh position={end} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.18, event.hit ? 0.42 : 0.3, 28]} />
+        <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} />
+      </mesh>
+      <Text
+        position={midpoint}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.22}
+        color={color}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.03}
+        outlineColor="#09090f"
+        font={undefined}
+      >
+        {label}
+      </Text>
+    </group>
+  );
+}
+
+function ShotPreviewOverlay() {
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const units = useGameStore((s) => s.units);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const shots = useMemo(() => {
+    if (selectedUnitId === null || inputMode !== 'shoot') return [];
+    const shooter = units.find((unit) => unit.id === selectedUnitId);
+    if (!shooter || !shooter.alive || shooter.ap <= 0) return [];
+
+    return units
+      .filter((unit) => unit.alive && unit.team !== shooter.team)
+      .map((target) => ({
+        target,
+        preview: getShotPreview(map, shooter, target, 0, target.position, smokes),
+      }))
+      .filter(({ preview }) => preview.hasLineOfSight && preview.inRange);
+  }, [inputMode, map, selectedUnitId, smokes, units]);
+
+  if (selectedUnitId === null || shots.length === 0) return null;
+  const shooter = units.find((unit) => unit.id === selectedUnitId);
+  if (!shooter) return null;
+
+  return (
+    <>
+      {shots.map(({ target, preview }) => {
+        const [sx, , sz] = tileWorld(shooter.position.x, shooter.position.y, ts);
+        const [tx, , tz] = tileWorld(target.position.x, target.position.y, ts);
+        const midpoint: [number, number, number] = [
+          (sx + tx) / 2,
+          FLOOR_H + 0.62,
+          (sz + tz) / 2,
+        ];
+        const color = preview.hitChance >= 65 ? '#58ff9a' : preview.hitChance >= 35 ? '#ffd166' : '#ff6b82';
+
+        return (
+          <group key={`shot-${target.id}`}>
+            <Line
+              points={[[sx, FLOOR_H + 0.58, sz], [tx, FLOOR_H + 0.58, tz]]}
+              color={color}
+              lineWidth={2}
+            />
+            <Text
+              position={midpoint}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={0.26}
+              color={color}
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.03}
+              outlineColor="#08090d"
+              font={undefined}
+            >
+              {`${preview.hitChance}%`}
+            </Text>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 // ---- Interactive plane for click-to-move + unit selection ----
 function InteractiveFloor() {
   const map = useGameStore((s) => s.map);
   const moveUnit = useGameStore((s) => s.moveUnit);
+  const queueMove = useGameStore((s) => s.queueMove);
+  const holdAngle = useGameStore((s) => s.holdAngle);
+  const throwSmoke = useGameStore((s) => s.throwSmoke);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const hoverTile = useGameStore((s) => s.hoverTile);
+  const planningMode = useGameStore((s) => s.planningMode);
+  const inputMode = useGameStore((s) => s.inputMode);
   const ts = map.tileSize;
+  const lastHoverKey = useRef<string | null>(null);
 
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
-      const tileX = Math.floor(e.point.x / ts);
+      const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
       if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {
         // Check if a unit is on this tile — if so, select it
@@ -342,21 +1423,33 @@ function InteractiveFloor() {
         const unitOnTile = units.find(
           (u) => u.alive && u.position.x === tileX && u.position.y === tileY
         );
-        if (unitOnTile && unitOnTile.team === round.activeTeam) {
+        if (inputMode === 'hold_angle') {
+          holdAngle({ x: tileX, y: tileY });
+        } else if (inputMode === 'smoke') {
+          throwSmoke({ x: tileX, y: tileY });
+        } else if (unitOnTile && unitOnTile.team === round.activeTeam) {
           selectUnit(unitOnTile.id);
         } else {
-          moveUnit({ x: tileX, y: tileY });
+          const target = { x: tileX, y: tileY };
+          if (planningMode) {
+            queueMove(target);
+          } else {
+            moveUnit(target);
+          }
         }
       }
     },
-    [ts, map.width, map.height, moveUnit, selectUnit]
+    [ts, map.width, map.height, moveUnit, queueMove, holdAngle, throwSmoke, selectUnit, planningMode, inputMode]
   );
 
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      const tileX = Math.floor(e.point.x / ts);
+      const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
       if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {
+        const key = `${tileX},${tileY}`;
+        if (lastHoverKey.current === key) return;
+        lastHoverKey.current = key;
         hoverTile({ x: tileX, y: tileY });
       }
     },
@@ -383,7 +1476,7 @@ function GroundPlane() {
     <mesh position={[(map.width * ts) / 2, -0.05, (map.height * ts) / 2]}
       rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[map.width * ts + 20, map.height * ts + 20]} />
-      <meshStandardMaterial color="#08080c" roughness={1} />
+      <meshStandardMaterial color="#121722" roughness={1} />
     </mesh>
   );
 }
@@ -398,8 +1491,18 @@ export function MapRenderer() {
       <CoverLayer />
       <BombsiteMarkers />
       <CalloutLabels />
+      <SmokeLayer />
       <WalkableHighlight />
+      <ThreatenedMovementOverlay />
+      <HoveredTileHighlight />
+      <SmokeTargetPreview />
       <PathPreview />
+      <PlannedActionPreview />
+      <HeldAngleOverlay />
+      <HoldAngleHoverPreview />
+      <CombatTracerOverlay />
+      <CombatEventMarker />
+      <ShotPreviewOverlay />
       <InteractiveFloor />
     </group>
   );

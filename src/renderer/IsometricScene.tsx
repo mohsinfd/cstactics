@@ -7,30 +7,58 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
+import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
 import { MapRenderer } from './MapRenderer';
 import { UnitRenderer } from './UnitRenderer';
 import { useGameStore } from '../game/store';
 
+const CAMERA_PRESET = {
+  offsetX: 78,
+  height: 125,
+  offsetZ: -98,
+  targetOffsetZ: 8,
+  zoom: 4.9,
+  minZoom: 3.8,
+  maxZoom: 26,
+} as const;
+
 export function IsometricScene() {
   const map = useGameStore((s) => s.map);
+  const cameraRef = useRef<ThreeOrthographicCamera>(null);
 
   const cx = (map.width * map.tileSize) / 2;
   const cz = (map.height * map.tileSize) / 2;
-  const camDist = 120;
+  const cameraPosition = useMemo<[number, number, number]>(() => [
+    cx + CAMERA_PRESET.offsetX,
+    CAMERA_PRESET.height,
+    cz + CAMERA_PRESET.offsetZ,
+  ], [cx, cz]);
+  const cameraTarget = useMemo<[number, number, number]>(() => [
+    cx,
+    0,
+    cz + CAMERA_PRESET.targetOffsetZ,
+  ], [cx, cz]);
+
+  useLayoutEffect(() => {
+    cameraRef.current?.lookAt(...cameraTarget);
+    cameraRef.current?.updateProjectionMatrix();
+  }, [cameraTarget]);
 
   return (
     <Canvas
       shadows
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-      style={{ width: '100vw', height: '100vh', background: '#06060a' }}
+      style={{ width: '100vw', height: '100vh', background: '#10131a' }}
     >
       {/* Camera */}
       <OrthographicCamera
+        ref={cameraRef}
         makeDefault
-        zoom={6}
-        position={[cx - camDist, camDist, cz - camDist]}
+        zoom={CAMERA_PRESET.zoom}
+        position={cameraPosition}
         near={1}
         far={500}
       />
@@ -40,26 +68,26 @@ export function IsometricScene() {
         enableRotate={false}
         enableDamping
         dampingFactor={0.12}
-        minZoom={2}
-        maxZoom={30}
+        minZoom={CAMERA_PRESET.minZoom}
+        maxZoom={CAMERA_PRESET.maxZoom}
         screenSpacePanning
-        target={[cx, 0, cz]}
+        target={cameraTarget}
       />
 
       {/* === Lighting === */}
 
       {/* Hemisphere: warm ground, cool sky */}
       <hemisphereLight
-        args={['#667799', '#332211', 0.35]}
+        args={['#d7deee', '#2a2630', 0.78]}
       />
 
       {/* Ambient fill */}
-      <ambientLight intensity={0.3} color="#9aa8c0" />
+      <ambientLight intensity={0.76} color="#c9d2e2" />
 
       {/* Main sun (warm, casts shadows) */}
       <directionalLight
         position={[cx + 60, 100, cz - 40]}
-        intensity={1.6}
+        intensity={1.2}
         color="#ffe0b0"
         castShadow
         shadow-mapSize-width={2048}
@@ -76,14 +104,14 @@ export function IsometricScene() {
       {/* Cool fill from opposite side */}
       <directionalLight
         position={[cx - 50, 50, cz + 50]}
-        intensity={0.3}
+        intensity={0.42}
         color="#7788aa"
       />
 
       {/* Slight rim light from behind */}
       <directionalLight
         position={[cx, 30, cz - 80]}
-        intensity={0.15}
+        intensity={0.28}
         color="#aabbcc"
       />
 
@@ -92,7 +120,7 @@ export function IsometricScene() {
       <UnitRenderer />
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#06060a', 180, 380]} />
+      <fog attach="fog" args={['#10131a', 360, 640]} />
     </Canvas>
   );
 }

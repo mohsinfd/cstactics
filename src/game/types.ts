@@ -18,6 +18,59 @@ export interface TileCoord {
   y: number;
 }
 
+export interface MovementTile extends TileCoord {
+  apCost: number;
+}
+
+export type PlannedActionKind = 'move';
+export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke';
+
+export interface PlannedAction {
+  id: string;
+  unitId: number;
+  team: Team;
+  kind: PlannedActionKind;
+  from: TileCoord;
+  target: TileCoord;
+  path: TileCoord[];
+  apCost: number;
+  summary: string;
+}
+
+export interface HeldAngle {
+  id: string;
+  unitId: number;
+  team: Team;
+  origin: TileCoord;
+  target: TileCoord;
+  laneTiles: TileCoord[];
+  remainingShots: number;
+  aimBonus: number;
+}
+
+export interface CombatEvent {
+  id: string;
+  type: 'reaction_fire' | 'direct_fire';
+  attackerId: number;
+  targetId: number;
+  attackerName: string;
+  targetName: string;
+  hitChance: number;
+  hit: boolean;
+  damage: number;
+  tile: TileCoord;
+  summary: string;
+}
+
+export interface SmokeCloud {
+  id: string;
+  ownerId: number;
+  team: Team;
+  position: TileCoord;
+  radius: number;
+  remainingTurns: number;
+}
+
 export type TileType = 'floor' | 'wall' | 'cover_half' | 'cover_full' | 'bombsite_a' | 'bombsite_b' | 'spawn_t' | 'spawn_ct' | 'out_of_bounds';
 
 export interface Tile {
@@ -148,6 +201,7 @@ export interface Unit {
   hasMoved: boolean;
   hasBomb: boolean;
   hasDefuseKit: boolean;
+  smokeGrenades: number;
   // Visual state
   facing: TileCoord;        // direction unit is looking
 }
@@ -190,5 +244,13 @@ export interface GameState {
   selectedUnitId: number | null;
   hoveredTile: TileCoord | null;
   walkableTiles: TileCoord[];
+  movementTiles: MovementTile[];
   pathPreview: TileCoord[];
+  planningMode: boolean;
+  plannedActions: PlannedAction[];
+  isExecuting: boolean;
+  inputMode: InputMode;
+  heldAngles: HeldAngle[];
+  smokes: SmokeCloud[];
+  combatLog: CombatEvent[];
 }

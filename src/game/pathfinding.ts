@@ -3,7 +3,7 @@
 // Works on the MapData grid. Only walks through walkable tiles.
 // Returns the path as an array of TileCoords (excluding start).
 // ============================================================
-import type { MapData, TileCoord } from './types';
+import type { MapData, MovementTile, TileCoord } from './types';
 
 interface Node {
   x: number;
@@ -113,6 +113,18 @@ export function findPath(map: MapData, start: TileCoord, goal: TileCoord): TileC
  * Returns array of reachable tile coords (excluding start).
  */
 export function getWalkableRange(map: MapData, start: TileCoord, range: number): TileCoord[] {
+  return getWalkableDistances(map, start, range).map(({ x, y }) => ({ x, y }));
+}
+
+/**
+ * Get all walkable tiles within a range with their shortest tile distance.
+ * Used by the UI to convert movement distance into AP bands.
+ */
+export function getWalkableDistances(
+  map: MapData,
+  start: TileCoord,
+  range: number
+): Array<TileCoord & { distance: number }> {
   const key = (x: number, y: number) => `${x},${y}`;
   const visited = new Set<string>();
   visited.add(key(start.x, start.y));
@@ -120,7 +132,7 @@ export function getWalkableRange(map: MapData, start: TileCoord, range: number):
   const queue: { x: number; y: number; dist: number }[] = [
     { x: start.x, y: start.y, dist: 0 },
   ];
-  const result: TileCoord[] = [];
+  const result: Array<TileCoord & { distance: number }> = [];
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -140,11 +152,25 @@ export function getWalkableRange(map: MapData, start: TileCoord, range: number):
       const newDist = current.dist + 1;
 
       if (newDist <= range) {
-        result.push({ x: nx, y: ny });
+        result.push({ x: nx, y: ny, distance: newDist });
         queue.push({ x: nx, y: ny, dist: newDist });
       }
     }
   }
 
   return result;
+}
+
+export function getMovementTiles(
+  map: MapData,
+  start: TileCoord,
+  rangePerAp: number,
+  availableAp: number
+): MovementTile[] {
+  const totalRange = rangePerAp * availableAp;
+  return getWalkableDistances(map, start, totalRange).map((tile) => ({
+    x: tile.x,
+    y: tile.y,
+    apCost: Math.min(availableAp, Math.max(1, Math.ceil(tile.distance / rangePerAp))),
+  }));
 }
