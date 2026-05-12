@@ -40,9 +40,31 @@ const CAMERA_PRESET = {
   maxZoom: 26,
 } as const;
 
+const WHEEL_INPUT = {
+  mouseStepThresholdPx: 80,
+  trackpadPanZoomFactor: 0.9,
+  minTrackpadPanScale: 0.075,
+  maxTrackpadPanScale: 0.22,
+  mouseWheelZoomFactor: 1.12,
+  pinchZoomFactor: 1.14,
+} as const;
+
 function getCrispDevicePixelRatio(): number {
   if (typeof window === 'undefined') return 1.5;
   return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
+}
+
+function isLikelyMouseWheel(deltaX: number, deltaY: number, deltaMode: number, shiftKey: boolean): boolean {
+  if (shiftKey) return false;
+  if (deltaMode !== 0) return true;
+
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX > 0.5 || absY < WHEEL_INPUT.mouseStepThresholdPx) return false;
+
+  const roundedY = Math.round(absY);
+  const isCleanStep = Math.abs(absY - roundedY) < 0.01;
+  return isCleanStep && (roundedY % 100 === 0 || roundedY % 120 === 0);
 }
 
 export function IsometricScene() {
@@ -113,15 +135,25 @@ export function IsometricScene() {
     const deltaX = event.deltaX * unitScale;
     const deltaY = event.deltaY * unitScale;
 
-    if (event.ctrlKey || event.metaKey || event.altKey) {
-      zoomCamera(deltaY < 0 ? 1.14 : 1 / 1.14);
+    const isPinchZoom = event.ctrlKey || event.metaKey || event.altKey;
+    const isMouseWheel = isLikelyMouseWheel(event.deltaX, event.deltaY, event.deltaMode, event.shiftKey);
+
+    if (isPinchZoom || isMouseWheel) {
+      const zoomFactor = isMouseWheel ? WHEEL_INPUT.mouseWheelZoomFactor : WHEEL_INPUT.pinchZoomFactor;
+      zoomCamera(deltaY < 0 ? zoomFactor : 1 / zoomFactor);
       return;
     }
 
     const horizontal = event.shiftKey && Math.abs(deltaX) < 1 ? deltaY : deltaX;
     const vertical = event.shiftKey && Math.abs(deltaX) < 1 ? 0 : deltaY;
     const camera = cameraRef.current;
-    const panScale = camera ? THREE.MathUtils.clamp(0.62 / camera.zoom, 0.035, 0.14) : 0.08;
+    const panScale = camera
+      ? THREE.MathUtils.clamp(
+        WHEEL_INPUT.trackpadPanZoomFactor / camera.zoom,
+        WHEEL_INPUT.minTrackpadPanScale,
+        WHEEL_INPUT.maxTrackpadPanScale
+      )
+      : 0.1;
     panCamera(-horizontal, vertical, panScale);
   }, [panCamera, zoomCamera]);
 

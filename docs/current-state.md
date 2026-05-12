@@ -86,6 +86,9 @@ verbs that make those nouns matter.
   during dragging.
 - Wheel/trackpad scroll pans the tactical board by default; modified wheel and
   view buttons handle zoom.
+- Camera input now separates trackpad-style pan/pinch from discrete mouse-wheel
+  zoom and has a repeatable usability test in
+  `docs/usability-camera-input-test.md`.
 - Planned movement resolves in short visible ticks and interrupts on held-angle
   contact. Unit interpolation now advances through smaller, overlapping ticks
   for smoother motion.
