@@ -108,6 +108,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Protected/flanked/exposed shot and movement warnings. Implemented as a
   first-pass directional cover readout.
 - Procedural shot/contact audio cues. Implemented.
+- Procedural movement, selection, planning, AI response, and turn feedback audio.
+  Implemented as a first pass.
+- Basic CT auto-response. Implemented as a scripted/simple opponent pass for
+  testing the one-player loop.
 - Next: tighten cover-corner fidelity, add richer shot VFX, then build true
   simultaneous order timing.
 
@@ -247,7 +251,9 @@ Work:
 - Better map materials and landmark props. Landmark prop silhouettes are started.
 - Camera presets and smoother pan/zoom limits.
 - Sound design for shots, plants, defuses, UI, and phase changes.
-- Better unit silhouettes and animations.
+- High-DPI render pass for crisper zoom/readability. First pass implemented.
+- Better unit silhouettes and animations. Higher-resolution generated sprite
+  overlays are started; authored art pipeline still needed.
 - Onboarding overlay for first-time players.
 - Settings for performance and accessibility.
 

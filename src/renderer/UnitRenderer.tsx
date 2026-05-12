@@ -106,11 +106,14 @@ function dampAngle(current: number, target: number, lambda: number, delta: numbe
 
 function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 192;
-  canvas.height = 256;
+  const spriteScale = 4;
+  canvas.width = 192 * spriteScale;
+  canvas.height = 256 * spriteScale;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.scale(spriteScale, spriteScale);
 
   const isCt = team === 'CT';
   const vest = isCt ? '#224c88' : '#6b5b35';
@@ -285,6 +288,10 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }

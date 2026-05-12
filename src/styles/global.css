@@ -34,6 +34,8 @@ html, body, #root {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+  font-synthesis: none;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -42,6 +44,12 @@ html, body, #root {
 canvas {
   outline: none;
   display: block;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+button {
+  font-family: inherit;
 }
 
 /* Selection styling */

@@ -7,7 +7,7 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -40,8 +40,14 @@ const CAMERA_PRESET = {
   maxZoom: 26,
 } as const;
 
+function getCrispDevicePixelRatio(): number {
+  if (typeof window === 'undefined') return 1.5;
+  return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
+}
+
 export function IsometricScene() {
   const map = useGameStore((s) => s.map);
+  const [rendererDpr, setRendererDpr] = useState(getCrispDevicePixelRatio);
   const cameraRef = useRef<ThreeOrthographicCamera>(null);
   const controlsRef = useRef<MapControlsHandle | null>(null);
 
@@ -73,6 +79,13 @@ export function IsometricScene() {
       controlsRef.current.update();
     }
   }, [targetVector]);
+
+  useEffect(() => {
+    const updateDpr = () => setRendererDpr(getCrispDevicePixelRatio());
+    updateDpr();
+    window.addEventListener('resize', updateDpr);
+    return () => window.removeEventListener('resize', updateDpr);
+  }, []);
 
   useEffect(() => {
     const panCamera = (screenX: number, screenY: number) => {
@@ -178,12 +191,23 @@ export function IsometricScene() {
   return (
     <Canvas
       shadows
-      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+      dpr={rendererDpr}
+      gl={{
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance',
+        precision: 'highp',
+      }}
+      onCreated={({ gl }) => {
+        gl.outputColorSpace = THREE.SRGBColorSpace;
+        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      }}
       style={{
         width: '100vw',
         height: '100vh',
         background: '#10131a',
         touchAction: 'none',
+        transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
     >

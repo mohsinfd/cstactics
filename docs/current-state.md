@@ -72,6 +72,12 @@ verbs that make those nouns matter.
 - Landmark cover silhouettes for Inferno readability: Banana Car, Logs,
   Sandbags, B Fountain, Coffins, Oranges, Truck, Library Shelf, rails, walls,
   and pillars.
+- Basic CT auto-response: CT can run a short automated turn after T passes,
+  repositioning toward holds, taking obvious shots, and setting held angles.
+- Procedural feedback audio for selection, planning, movement, turn transitions,
+  AI response, utility, and combat.
+- High-DPI canvas rendering and higher-resolution generated unit sprite overlays
+  for crisper camera/browser zoom.
 
 ## Partially Implemented
 
@@ -98,8 +104,8 @@ verbs that make those nouns matter.
 - Smoke, flash, molly, HE, or utility timing.
 - Ammo and reload.
 - Plant, defuse, dropped bomb, or bomb timer pressure.
-- Enemy AI.
-- Audio.
+- Production-grade enemy AI.
+- Production-grade authored audio mix.
 - Real synchronized execute timeline.
 
 ## Immediate Focus
