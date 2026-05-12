@@ -35,7 +35,7 @@ import type {
 } from './types';
 import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
-import { getDefaultWeaponForRole } from './config/weapons';
+import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
@@ -253,7 +253,7 @@ function getBestAiShot(
   units: Unit[],
   smokes: SmokeCloud[]
 ): { target: Unit; preview: ReturnType<typeof getShotPreview> } | null {
-  if (attacker.ammoInClip <= 0) return null;
+  if (attacker.ammoInClip <= 0 || attacker.ap < getWeaponShotApCost(attacker.weapon)) return null;
 
   return units
     .filter((target) => target.alive && target.team !== attacker.team)
@@ -1442,7 +1442,8 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       const shooter = units[shooterIdx];
       const target = units[targetIdx];
-      if (!shooter.alive || !target.alive || shooter.ap <= 0 || shooter.ammoInClip <= 0) return;
+      const shotApCost = getWeaponShotApCost(shooter.weapon);
+      if (!shooter.alive || !target.alive || shooter.ap < shotApCost || shooter.ammoInClip <= 0) return;
       if (shooter.team !== round.activeTeam || target.team === shooter.team) return;
       if (round.phase === 'setup' && !RULES.setupFiringAllowed) return;
 
@@ -1461,7 +1462,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       };
       nextUnits[shooterIdx] = {
         ...shooter,
-        ap: Math.max(0, shooter.ap - 1),
+        ap: Math.max(0, shooter.ap - shotApCost),
         ammoInClip: Math.max(0, shooter.ammoInClip - 1),
         shotsFiredThisTurn: shooter.shotsFiredThisTurn + 1,
         facing: {
@@ -2147,6 +2148,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (bestShot && bestShot.preview.hitChance >= 25) {
           const targetIdx = nextUnits.findIndex((candidate) => candidate.id === bestShot.target.id);
           if (targetIdx !== -1) {
+            const shotApCost = getWeaponShotApCost(unit.weapon);
             const event = resolveShot(mapData, unit, bestShot.target, bestShot.target.position, 0, 'direct_fire', nextSmokes);
             const distance = tileDistance(unit.position, bestShot.target.position);
             const newTargetHp = event.hit ? Math.max(0, nextUnits[targetIdx].hp - event.damage) : nextUnits[targetIdx].hp;
@@ -2160,7 +2162,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             };
             nextUnits[unitIdx] = {
               ...unit,
-              ap: 0,
+              ap: Math.max(0, unit.ap - shotApCost),
               ammoInClip: Math.max(0, unit.ammoInClip - 1),
               shotsFiredThisTurn: unit.shotsFiredThisTurn + 1,
               hasMoved: true,

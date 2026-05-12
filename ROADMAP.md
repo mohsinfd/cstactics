@@ -154,6 +154,7 @@ move, trigger contact, and freeze into a trade decision. See
 - Scoreboard progression on `New Round`. Implemented as first pass.
 - Ammo consumption and reload. Implemented as first pass.
 - Role-aware default loadouts. Implemented as first pass.
+- Weapon shot AP costs by class. Implemented as first pass.
 - Save/hunt pressure.
 - Round-to-round strategic consequences.
 

@@ -18,6 +18,7 @@ import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
 import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
+import { getWeaponShotApCost } from '../game/config/weapons';
 
 const PHASE_LABELS: Record<string, string> = {
   buy: 'BUY PHASE',
@@ -614,9 +615,15 @@ function ExecutePlanner() {
 
 function MovementLegend() {
   const selectedId = useGameStore((s) => s.selectedUnitId);
+  const units = useGameStore((s) => s.units);
   const movementTiles = useGameStore((s) => s.movementTiles);
 
   if (selectedId === null || movementTiles.length === 0) return null;
+  const selectedUnit = units.find((unit) => unit.id === selectedId);
+  const shotCost = selectedUnit ? getWeaponShotApCost(selectedUnit.weapon) : 1;
+  const oneApNote = shotCost <= 1
+    ? 'shoot remains'
+    : `${selectedUnit?.weapon.category ?? 'weapon'} needs 2 AP`;
 
   return (
     <div style={{
@@ -630,7 +637,7 @@ function MovementLegend() {
       gap: 5,
       minWidth: 170,
     }}>
-      <LegendRow color="#39e58c" label="1 AP move" note="shoot remains" />
+      <LegendRow color="#39e58c" label="1 AP move" note={oneApNote} />
       <LegendRow color="#f2c94c" label="2 AP move" note="full commit" />
     </div>
   );
@@ -801,6 +808,7 @@ function SelectedUnitPanel() {
   if (!unit) return null;
 
   const teamColor = unit.team === 'T' ? '#b8860b' : '#4488cc';
+  const shotApCost = getWeaponShotApCost(unit.weapon);
   const targetPreviews = units
     .filter((candidate) => candidate.alive && candidate.team !== unit.team)
     .map((candidate) => ({
@@ -812,17 +820,20 @@ function SelectedUnitPanel() {
     .filter(({ preview }) => preview.inRange)
     .sort((a, b) => b.preview.hitChance - a.preview.hitChance);
   const topShotPreview = shotOptions[0]?.preview ?? null;
-  const shootingDisabledReason = unit.ap <= 0
-    ? 'No AP remaining.'
-    : unit.ammoInClip <= 0
-      ? 'Magazine empty.'
-    : (phase === 'setup' && !RULES.setupFiringAllowed)
-      ? 'Setup phase: no firing.'
-      : visibleTargets.length > 0 && shotOptions.length === 0
-        ? 'Visible enemy out of weapon range.'
-        : shotOptions.length === 0
-        ? 'No visible enemy.'
-        : null;
+  let shootingDisabledReason: string | null = null;
+  if (unit.ap <= 0) {
+    shootingDisabledReason = 'No AP remaining.';
+  } else if (unit.ammoInClip <= 0) {
+    shootingDisabledReason = 'Magazine empty.';
+  } else if (unit.ap < shotApCost) {
+    shootingDisabledReason = `${shotApCost} AP required for ${unit.weapon.category} shot.`;
+  } else if (phase === 'setup' && !RULES.setupFiringAllowed) {
+    shootingDisabledReason = 'Setup phase: no firing.';
+  } else if (visibleTargets.length > 0 && shotOptions.length === 0) {
+    shootingDisabledReason = 'Visible enemy out of weapon range.';
+  } else if (shotOptions.length === 0) {
+    shootingDisabledReason = 'No visible enemy.';
+  }
   const smokeDisabledReason = unit.ap <= 0
     ? 'No AP remaining.'
     : (phase === 'setup' && !RULES.setupUtilityAllowed)

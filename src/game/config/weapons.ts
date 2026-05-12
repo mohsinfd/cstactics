@@ -98,3 +98,11 @@ const ROLE_LOADOUTS: Record<Team, Record<RoleId, string>> = {
 export function getDefaultWeaponForRole(team: Team, roleId: RoleId): WeaponData {
   return WEAPONS[ROLE_LOADOUTS[team][roleId]] ?? getDefaultWeapon(team);
 }
+
+export function getWeaponShotApCost(weapon: WeaponData): number {
+  if (weapon.category === 'pistol' || weapon.category === 'smg' || weapon.category === 'melee') {
+    return 1;
+  }
+
+  return 2;
+}

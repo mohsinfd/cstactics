@@ -21,6 +21,8 @@ verbs that make those nouns matter.
 - A* pathfinding and movement range calculation.
 - AP-banded movement preview.
 - XCOM-style movement boundary outlines for 1 AP / 2 AP decisions.
+- Weapon shot AP costs: pistols, SMGs, and melee cost 1 AP to fire; rifles and
+  snipers cost 2 AP.
 - Hovered tile path preview, AP cost, shot-remains/full-commit badge, and
   destination cover readout.
 - Destination risk card that groups AP, cover, and threat/contact state.
@@ -118,8 +120,9 @@ verbs that make those nouns matter.
 
 - Roles exist as data, visual identity, and first-pass loadout identity, but not
   yet as full tactical jobs.
-- Weapons exist as data and now drive simple preview/damage/headshot resolution,
-  but recoil depth and richer per-modifier shot breakdowns are still missing.
+- Weapons exist as data and now drive simple preview/damage/headshot/AP-cost
+  resolution, but recoil depth and richer per-modifier shot breakdowns are still
+  missing.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed/corner messaging, but production cover
   fidelity is still first-pass.
