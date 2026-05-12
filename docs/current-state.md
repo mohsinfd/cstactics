@@ -106,6 +106,9 @@ verbs that make those nouns matter.
   reset still starts a fresh match.
 - First-pass ammo and reload loop: shots and reaction fire consume magazine
   ammo, empty weapons cannot shoot/hold, and reload spends AP from reserve ammo.
+- Role-aware default loadouts: AWPers spawn with AWPs, entries/lurkers with
+  rifles, and CT support/IGL roles with CT rifles instead of everyone using
+  side pistols.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
@@ -113,9 +116,10 @@ verbs that make those nouns matter.
 
 ## Partially Implemented
 
-- Roles exist as data and visual identity, but not yet as tactical jobs.
-- Weapons exist as data and now drive simple preview/damage resolution, but
-  recoil depth and richer per-modifier shot breakdowns are still missing.
+- Roles exist as data, visual identity, and first-pass loadout identity, but not
+  yet as full tactical jobs.
+- Weapons exist as data and now drive simple preview/damage/headshot resolution,
+  but recoil depth and richer per-modifier shot breakdowns are still missing.
 - Cover exists as static geometry/readout and now contributes to directional shot
   penalties with protected/flanked/exposed/corner messaging, but production cover
   fidelity is still first-pass.

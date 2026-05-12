@@ -35,7 +35,7 @@ import type {
 } from './types';
 import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
-import { getDefaultWeapon } from './config/weapons';
+import { getDefaultWeaponForRole } from './config/weapons';
 import { RULES } from './config/rules';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
@@ -467,7 +467,7 @@ function createUnits(): Unit[] {
 
   const makeUnit = (team: Team, roleId: RoleId, spawn: TileCoord): Unit => {
     const role = ROLES[roleId];
-    const weapon = getDefaultWeapon(team);
+    const weapon = getDefaultWeaponForRole(team, roleId);
     return {
       id: id++,
       team,
