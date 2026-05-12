@@ -381,6 +381,7 @@ function CombatLogPanel() {
 
 function BombObjectivePanel() {
   const round = useGameStore((s) => s.round);
+  const initGame = useGameStore((s) => s.initGame);
   if (!round.bombPlanted && round.phase !== 'roundend') return null;
 
   const isRoundOver = round.phase === 'roundend';
@@ -389,7 +390,15 @@ function BombObjectivePanel() {
     ? `${winner ?? '?'} SIDE WINS`
     : 'BOMB PLANTED';
   const subtitle = isRoundOver
-    ? (round.winReason === 'defuse' ? 'Defuse successful' : round.winReason === 'detonation' ? 'Bomb detonated' : 'Round complete')
+    ? (round.winReason === 'defuse'
+      ? 'Defuse successful'
+      : round.winReason === 'detonation'
+        ? 'Bomb detonated'
+        : round.winReason === 'elimination'
+          ? 'Enemy team eliminated'
+          : round.winReason === 'timeexpiry'
+            ? 'Round timer expired'
+            : 'Round complete')
     : `${round.bombTimer} turns until detonation`;
   const accent = winner === 'CT' ? '#65b7ff' : '#ff4e6a';
 
@@ -404,7 +413,7 @@ function BombObjectivePanel() {
       borderLeft: `3px solid ${accent}`,
       borderRadius: 6,
       padding: '9px 10px',
-      pointerEvents: 'none',
+      pointerEvents: isRoundOver ? 'auto' : 'none',
       boxShadow: '0 10px 26px rgba(0,0,0,0.35)',
     }}>
       <div style={{
@@ -423,6 +432,27 @@ function BombObjectivePanel() {
         <div style={{ color: '#6f7685', fontSize: 9, marginTop: 3 }}>
           Bomb at {round.bombPosition.x}, {round.bombPosition.y}
         </div>
+      )}
+      {isRoundOver && (
+        <button
+          onClick={initGame}
+          style={{
+            marginTop: 8,
+            width: '100%',
+            border: `1px solid ${accent}88`,
+            background: `${accent}22`,
+            color: '#f3f6fb',
+            borderRadius: 4,
+            padding: '7px 8px',
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+          }}
+        >
+          New Round
+        </button>
       )}
     </div>
   );
@@ -1163,6 +1193,7 @@ function CommandBar() {
   const startContactDrill = useGameStore((s) => s.startContactDrill);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
+  const isRoundOver = phase === 'roundend';
   const commandButtonStyle = compact
     ? {
       width: '100%',
@@ -1216,17 +1247,17 @@ function CommandBar() {
       </div>
 
       <button
-        onClick={() => !isExecuting && setPlanningMode(!planningMode)}
-        disabled={isExecuting}
+        onClick={() => !isExecuting && !isRoundOver && setPlanningMode(!planningMode)}
+        disabled={isExecuting || isRoundOver}
         title={planningMode ? 'Click destination tiles to queue synchronized moves.' : 'Queue movement orders before resolving them together.'}
         aria-label={planningMode ? 'Planning mode is on' : 'Plan moves'}
         style={{
           border: `1px solid ${teamColor}88`,
           background: planningMode ? teamColor : `${teamColor}22`,
-          color: isExecuting ? '#777' : '#ffffff',
+          color: isExecuting || isRoundOver ? '#777' : '#ffffff',
           borderRadius: 5,
           padding: '9px 12px',
-          cursor: isExecuting ? 'default' : 'pointer',
+          cursor: isExecuting || isRoundOver ? 'default' : 'pointer',
           fontSize: 11,
           fontWeight: 900,
           letterSpacing: 1,
@@ -1263,17 +1294,17 @@ function CommandBar() {
 
       {plannedActions.length > 0 ? (
         <button
-          onClick={() => !isExecuting && commitPlannedActions()}
-          disabled={isExecuting}
+          onClick={() => !isExecuting && !isRoundOver && commitPlannedActions()}
+          disabled={isExecuting || isRoundOver}
           title="Resolve all queued movement orders together until contact or completion."
           aria-label={isExecuting ? 'Executing queued orders' : 'Run execute'}
           style={{
             border: 'none',
             background: isExecuting ? '#5b665f' : '#2fbf71',
-            color: isExecuting ? '#d3d7d2' : '#06110b',
+            color: isExecuting || isRoundOver ? '#d3d7d2' : '#06110b',
             borderRadius: 5,
             padding: '10px 14px',
-            cursor: isExecuting ? 'default' : 'pointer',
+            cursor: isExecuting || isRoundOver ? 'default' : 'pointer',
             fontSize: 11,
             fontWeight: 950,
             letterSpacing: 1.1,
@@ -1288,17 +1319,17 @@ function CommandBar() {
         </button>
       ) : (
         <button
-          onClick={() => !isExecuting && endTurn()}
-          disabled={isExecuting}
+          onClick={() => !isExecuting && !isRoundOver && endTurn()}
+          disabled={isExecuting || isRoundOver}
           title={`Pass control from ${activeTeam} side to the other team.`}
           aria-label={`End ${activeTeam} side`}
           style={{
             border: 'none',
             background: teamColor,
-            color: isExecuting ? '#888' : '#ffffff',
+            color: isExecuting || isRoundOver ? '#888' : '#ffffff',
             borderRadius: 5,
             padding: '10px 14px',
-            cursor: isExecuting ? 'default' : 'pointer',
+            cursor: isExecuting || isRoundOver ? 'default' : 'pointer',
             fontSize: 11,
             fontWeight: 950,
             letterSpacing: 1.1,
@@ -1315,17 +1346,17 @@ function CommandBar() {
 
       {plannedActions.length > 0 && (
         <button
-          onClick={() => !isExecuting && endTurn()}
-          disabled={isExecuting}
+          onClick={() => !isExecuting && !isRoundOver && endTurn()}
+          disabled={isExecuting || isRoundOver}
           title={`Discard remaining tempo and pass control from ${activeTeam} side.`}
           aria-label={`End ${activeTeam} side`}
           style={{
             border: '1px solid #3a2f2f',
             background: 'rgba(130, 60, 50, 0.28)',
-            color: isExecuting ? '#675a58' : '#d8b9b5',
+            color: isExecuting || isRoundOver ? '#675a58' : '#d8b9b5',
             borderRadius: 5,
             padding: '6px 10px',
-            cursor: isExecuting ? 'default' : 'pointer',
+            cursor: isExecuting || isRoundOver ? 'default' : 'pointer',
             fontSize: 9,
             fontWeight: 850,
             letterSpacing: 0.8,

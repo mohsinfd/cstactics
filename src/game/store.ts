@@ -281,6 +281,33 @@ function canReachBomb(unit: Unit, bombPosition: TileCoord | null): boolean {
   return tileDistance(unit.position, bombPosition) <= 1.5;
 }
 
+function applyEliminationOutcome(round: RoundState, units: Unit[]): RoundState {
+  if (round.phase === 'roundend') return round;
+
+  const terroristsAlive = units.some((unit) => unit.alive && unit.team === 'T');
+  const ctsAlive = units.some((unit) => unit.alive && unit.team === 'CT');
+
+  if (!terroristsAlive) {
+    return {
+      ...round,
+      phase: 'roundend',
+      roundWinner: 'CT',
+      winReason: 'elimination',
+    };
+  }
+
+  if (!ctsAlive) {
+    return {
+      ...round,
+      phase: 'roundend',
+      roundWinner: 'T',
+      winReason: 'elimination',
+    };
+  }
+
+  return round;
+}
+
 function isUtilityAction(action: PlannedAction): boolean {
   return action.kind === 'smoke' || action.kind === 'flash';
 }
@@ -346,6 +373,7 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   let nextTurn = round.turn;
   let nextPhase = round.phase;
   let nextBombTimer = round.bombTimer;
+  const nextRoundTimer = round.phase === 'setup' ? round.roundTimer : Math.max(0, round.roundTimer - 1);
   let roundWinner = round.roundWinner;
   let winReason = round.winReason;
 
@@ -390,19 +418,27 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
     }
   }
 
+  if (nextPhase !== 'roundend' && !round.bombPlanted && round.phase !== 'setup' && nextRoundTimer <= 0) {
+    nextPhase = 'roundend';
+    roundWinner = 'CT';
+    winReason = 'timeexpiry';
+  }
+
+  const outcomeRound = applyEliminationOutcome({
+    ...round,
+    activeTeam: nextTeam,
+    turn: nextTurn,
+    phase: nextPhase,
+    bombTimer: nextBombTimer,
+    roundWinner,
+    winReason,
+    roundTimer: nextRoundTimer,
+  }, newUnits);
+
   return {
     units: newUnits,
     smokes: nextSmokes,
-    round: {
-      ...round,
-      activeTeam: nextTeam,
-      turn: nextTurn,
-      phase: nextPhase,
-      bombTimer: nextBombTimer,
-      roundWinner,
-      winReason,
-      roundTimer: round.phase === 'setup' ? round.roundTimer : round.roundTimer - 1,
-    },
+    round: outcomeRound,
   };
 }
 
@@ -830,7 +866,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: contactEvent ? 1.2 : 0.9,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     setInputMode: (mode) => {
@@ -922,7 +958,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: 0.9,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     throwSmoke: (targetTile) => {
@@ -1015,7 +1051,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: 1,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     throwFlash: (targetTile) => {
@@ -1134,7 +1170,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     plantBomb: () => {
@@ -1280,12 +1316,14 @@ export const useGameStore = create<GameStore>((set, get) => {
         },
       };
 
-      let nextRound = round;
+      let nextRound = applyEliminationOutcome(round, nextUnits);
       let nextSmokes = state.smokes;
-      let nextSelectedUnitId = nextUnits[shooterIdx].ap > 0
-        ? shooter.id
-        : getNextAvailableUnitId(nextUnits, round.activeTeam, shooter.id);
-      if (nextSelectedUnitId === null) {
+      let nextSelectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : nextUnits[shooterIdx].ap > 0
+          ? shooter.id
+          : getNextAvailableUnitId(nextUnits, round.activeTeam, shooter.id);
+      if (nextRound.phase !== 'roundend' && nextSelectedUnitId === null) {
         const advanced = advanceTurn(round, nextUnits, state.smokes);
         nextUnits = advanced.units;
         nextRound = advanced.round;
@@ -1307,7 +1345,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog: [event, ...state.combatLog].slice(0, 8),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     queueMove: (targetTile) => {
@@ -1600,7 +1638,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           smokes: nextSmokes,
           flashBursts: nextFlashBursts,
         });
-        if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+        if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
         return;
       }
 
@@ -1719,11 +1757,13 @@ export const useGameStore = create<GameStore>((set, get) => {
         };
       }
 
-      let nextRound = round;
-      let selectedUnitId = contactEvent
-        ? (nextUnits.find((unit) => unit.id === contactEvent!.targetId && unit.alive)?.id ?? getFirstAvailableUnitId(nextUnits, round.activeTeam))
-        : getFirstAvailableUnitId(nextUnits, round.activeTeam);
-      if (!contactEvent && selectedUnitId === null) {
+      let nextRound = applyEliminationOutcome(round, nextUnits);
+      let selectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : contactEvent
+          ? (nextUnits.find((unit) => unit.id === contactEvent!.targetId && unit.alive)?.id ?? getFirstAvailableUnitId(nextUnits, round.activeTeam))
+          : getFirstAvailableUnitId(nextUnits, round.activeTeam);
+      if (nextRound.phase !== 'roundend' && !contactEvent && selectedUnitId === null) {
         const advanced = advanceTurn(round, nextUnits, nextSmokes);
         nextUnits = advanced.units;
         nextRound = advanced.round;
@@ -1731,12 +1771,14 @@ export const useGameStore = create<GameStore>((set, get) => {
         selectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
       }
 
-      selectedUnitId = getPreferredSelection(
-        nextUnits,
-        nextRound,
-        contactEvent ? selectedUnitId : get().selectedUnitId,
-        selectedUnitId
-      );
+      selectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : getPreferredSelection(
+          nextUnits,
+          nextRound,
+          contactEvent ? selectedUnitId : get().selectedUnitId,
+          selectedUnitId
+        );
       const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, nextRound);
       const combatLog = contactEvent
         ? [contactEvent, ...state.combatLog].slice(0, 8)
@@ -1765,7 +1807,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: contactEvent ? 1.2 : 1,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     clearPlannedActions: () => {
@@ -1839,7 +1881,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: 0.8,
         }),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     endTurn: () => {
@@ -1877,7 +1919,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: 1,
         }),
       });
-      if (advanced.round.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (advanced.round.activeTeam === 'CT' && advanced.round.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     runCtAiTurn: async () => {

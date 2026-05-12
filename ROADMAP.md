@@ -139,6 +139,8 @@ move, trigger contact, and freeze into a trade decision. See
 
 - Buy phase, economy, weapons, armor, kit, utility loadout.
 - Bomb plant/defuse pressure. Implemented as first pass.
+- Elimination, defuse, detonation, and time-expiry round outcomes. Implemented
+  as first pass.
 - Dropped bomb, pickup, save/hunt pressure.
 - Round-to-round strategic consequences.
 
