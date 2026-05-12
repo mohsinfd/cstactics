@@ -381,7 +381,7 @@ function CombatLogPanel() {
 
 function BombObjectivePanel() {
   const round = useGameStore((s) => s.round);
-  const initGame = useGameStore((s) => s.initGame);
+  const startNextRound = useGameStore((s) => s.startNextRound);
   const bombDropped = !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition);
   if (!round.bombPlanted && round.phase !== 'roundend' && !bombDropped) return null;
 
@@ -440,7 +440,7 @@ function BombObjectivePanel() {
       )}
       {isRoundOver && (
         <button
-          onClick={initGame}
+          onClick={startNextRound}
           style={{
             marginTop: 8,
             width: '100%',

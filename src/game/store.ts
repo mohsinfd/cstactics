@@ -522,6 +522,7 @@ interface GameStore extends GameState {
   endTurn: () => void;
   runCtAiTurn: () => Promise<void>;
   initGame: () => void;
+  startNextRound: () => void;
   startContactDrill: () => void;
 }
 
@@ -2254,6 +2255,62 @@ export const useGameStore = create<GameStore>((set, get) => {
           roundTimer: RULES.roundTimeLimitTurns,
           roundWinner: null,
           winReason: null,
+        },
+        match: {
+          scoreT: 0,
+          scoreCT: 0,
+          currentRound: 1,
+          maxRounds: RULES.roundsPerHalf * 2,
+          isOvertime: false,
+          halfSwapped: false,
+        },
+        selectedUnitId: null,
+        hoveredTile: null,
+        walkableTiles: [],
+        movementTiles: [],
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles: [],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        feedbackEvents: [],
+        aiStatus: null,
+      });
+    },
+
+    startNextRound: () => {
+      const state = get();
+      if (state.isExecuting) return;
+
+      const newMap = createInfernoMap();
+      const newUnits = createUnits();
+      const winner = state.round.roundWinner;
+
+      set({
+        map: newMap,
+        units: newUnits,
+        round: {
+          phase: 'setup',
+          turn: 1,
+          activeTeam: 'T',
+          bombPlanted: false,
+          bombDefused: false,
+          bombPosition: null,
+          bombTimer: RULES.bombTimerTurns,
+          bombCarrierId: 0,
+          roundTimer: RULES.roundTimeLimitTurns,
+          roundWinner: null,
+          winReason: null,
+        },
+        match: {
+          ...state.match,
+          scoreT: state.match.scoreT + (winner === 'T' ? 1 : 0),
+          scoreCT: state.match.scoreCT + (winner === 'CT' ? 1 : 0),
+          currentRound: Math.min(state.match.currentRound + 1, state.match.maxRounds),
         },
         selectedUnitId: null,
         hoveredTile: null,
