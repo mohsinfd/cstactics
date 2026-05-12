@@ -16,9 +16,9 @@
 //
 // Missing: flash/molly utility volumes, richer animation, and final art assets.
 // ============================================================
-import { useMemo, useCallback, useRef } from 'react';
+import { Suspense, useMemo, useCallback, useRef, type ComponentProps } from 'react';
 import * as THREE from 'three';
-import type { ThreeEvent } from '@react-three/fiber';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
@@ -26,6 +26,16 @@ import type { CoverObject, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
 import { getWatchedLane } from '../game/los';
+
+const CLICK_DRAG_THRESHOLD_PX = 4;
+
+function SafeText(props: ComponentProps<typeof Text>) {
+  return (
+    <Suspense fallback={null}>
+      <Text {...props} />
+    </Suspense>
+  );
+}
 
 // --- Color palette: muted tactical tones ---
 const TILE_COLORS: Record<string, string> = {
@@ -220,7 +230,7 @@ function CoverLayer() {
           <group key={i}>
             <CoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
             {/* Cover label */}
-            <Text
+            <SafeText
               position={[cx, h + 0.08, cz]}
               rotation={[-Math.PI / 2, 0, Math.PI]}
               fontSize={0.18}
@@ -233,7 +243,7 @@ function CoverLayer() {
               font={undefined}
             >
               {c.label}
-            </Text>
+            </SafeText>
           </group>
         );
       })}
@@ -268,7 +278,7 @@ function BombsiteMarkers() {
             <meshBasicMaterial color="#e44740" transparent opacity={0.32} side={THREE.DoubleSide} />
           </mesh>
           {/* Site letter */}
-          <Text
+          <SafeText
             position={[cx, FLOOR_H + 0.08, cz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
             fontSize={2.65}
@@ -281,7 +291,7 @@ function BombsiteMarkers() {
             font={undefined}
           >
             {site}
-          </Text>
+          </SafeText>
         </group>
       ))}
     </>
@@ -311,7 +321,7 @@ function CalloutLabels() {
         const wx = (map.width - 1 - l.x) * ts + ts / 2;
         const wz = l.y * ts + ts / 2;
         return (
-          <Text
+          <SafeText
             key={l.name}
             position={[wx, FLOOR_H + 0.09, wz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
@@ -326,7 +336,7 @@ function CalloutLabels() {
             font={undefined}
           >
             {displayCalloutName(l.name).toUpperCase()}
-          </Text>
+          </SafeText>
         );
       })}
     </>
@@ -368,7 +378,7 @@ function SmokeLayer() {
               <ringGeometry args={[radius * 0.48, radius * 0.92, 40]} />
               <meshBasicMaterial color="#eef4fb" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
-            <Text
+            <SafeText
               position={[0, FLOOR_H + 0.98, 0]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.2}
@@ -380,7 +390,7 @@ function SmokeLayer() {
               font={undefined}
             >
               SMOKE
-            </Text>
+            </SafeText>
           </group>
         );
       })}
@@ -739,23 +749,43 @@ function ThreatenedMovementOverlay() {
   const ts = map.tileSize;
 
   const threatenedTiles = useMemo(() => {
-    if (selectedUnitId === null || phase === 'setup' || movementTiles.length === 0) return [];
+    const groups = {
+      exposed: [] as TileCoord[],
+      flanked: [] as TileCoord[],
+      protected: [] as TileCoord[],
+    };
+    if (selectedUnitId === null || phase === 'setup' || movementTiles.length === 0) return groups;
     const selectedUnit = units.find((unit) => unit.id === selectedUnitId);
-    if (!selectedUnit) return [];
+    if (!selectedUnit) return groups;
     const enemies = units.filter((unit) => unit.alive && unit.team !== selectedUnit.team);
 
-    return movementTiles.filter((tile) => enemies.some((enemy) => {
-      const preview = getShotPreview(map, enemy, selectedUnit, 0, tile, smokes);
-      return preview.hasLineOfSight && preview.inRange;
-    }));
+    for (const tile of movementTiles) {
+      const strongestThreat = enemies
+        .map((enemy) => getShotPreview(map, enemy, selectedUnit, 0, tile, smokes))
+        .filter((preview) => preview.hasLineOfSight && preview.inRange)
+        .sort((a, b) => b.hitChance - a.hitChance)[0];
+
+      if (strongestThreat) {
+        groups[strongestThreat.coverState].push(tile);
+      }
+    }
+
+    return groups;
   }, [map, movementTiles, phase, selectedUnitId, smokes, units]);
 
-  if (threatenedTiles.length === 0) return null;
+  if (
+    threatenedTiles.exposed.length === 0 &&
+    threatenedTiles.flanked.length === 0 &&
+    threatenedTiles.protected.length === 0
+  ) return null;
+
   return (
     <>
-      <MovementBand tiles={threatenedTiles} color={THREAT_COLOR} opacity={0.22} tileSize={ts} />
+      <MovementBand tiles={threatenedTiles.protected} color="#d8c170" opacity={0.13} tileSize={ts} />
+      <MovementBand tiles={threatenedTiles.flanked} color={THREAT_COLOR} opacity={0.2} tileSize={ts} />
+      <MovementBand tiles={threatenedTiles.exposed} color="#ff4e6a" opacity={0.24} tileSize={ts} />
       <MovementBoundary
-        tiles={threatenedTiles}
+        tiles={[...threatenedTiles.exposed, ...threatenedTiles.flanked]}
         color={THREAT_COLOR}
         tileSize={ts}
         y={FLOOR_H + 0.155}
@@ -799,12 +829,19 @@ function HoveredTileHighlight() {
       .filter((unit) => unit.alive && unit.team !== selectedUnit.team)
       .map((unit) => getShotPreview(map, unit, selectedUnit, 0, hoveredTile, smokes))
       .filter((preview) => preview.hasLineOfSight && preview.inRange)
+      .sort((a, b) => b.hitChance - a.hitChance)
     : [];
+  const topKnownThreat = knownThreats[0] ?? null;
   const isWatched = crossedHeldAngles.length > 0;
   const isThreatened = knownThreats.length > 0;
   const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
   const isSmokeMode = inputMode === 'smoke';
-  const label = isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? 'DANGER' : (isOneAp ? '1 AP' : '2 AP')));
+  const threatLabel = topKnownThreat?.coverState === 'protected'
+    ? 'COVER'
+    : topKnownThreat?.coverState === 'flanked'
+      ? 'FLANK'
+      : 'OPEN';
+  const label = isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP')));
   const smokeColor = '#b9c6d8';
   const displayColor = isSmokeMode ? smokeColor : color;
   const coverEdges = getCoverEdges(map, hoveredTile);
@@ -825,7 +862,7 @@ function HoveredTileHighlight() {
         <ringGeometry args={[ts * 0.38, ts * 0.5, 4]} />
         <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} />
       </mesh>
-      <Text
+      <SafeText
         position={[0, 0, 0.035]}
         fontSize={0.28}
         color="#101318"
@@ -836,7 +873,7 @@ function HoveredTileHighlight() {
         font={undefined}
       >
         {label}
-      </Text>
+      </SafeText>
       {coverEdges.map((edge) => (
         <mesh
           key={edge.key}
@@ -886,7 +923,7 @@ function SmokeTargetPreview() {
         <ringGeometry args={[radius * 0.88, radius, 40]} />
         <meshBasicMaterial color={color} transparent opacity={0.78} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      <Text
+      <SafeText
         position={[0, 0.02, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.26}
@@ -898,7 +935,7 @@ function SmokeTargetPreview() {
         font={undefined}
       >
         {valid ? 'SMOKE' : 'NO THROW'}
-      </Text>
+      </SafeText>
     </group>
   );
 }
@@ -1109,7 +1146,7 @@ function PlannedActionPreview() {
                 <ringGeometry args={[ts * 0.24, ts * 0.42, 24]} />
                 <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
               </mesh>
-              <Text
+              <SafeText
                 position={[0, 0, 0.04]}
                 fontSize={0.24}
                 color="#101318"
@@ -1120,7 +1157,7 @@ function PlannedActionPreview() {
                 font={undefined}
               >
                 {label}
-              </Text>
+              </SafeText>
             </group>
           </group>
         );
@@ -1190,7 +1227,7 @@ function HoldAngleHoverPreview() {
     <group>
       {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
       <HeldLaneTiles tiles={preview.laneTiles} color={color} tileSize={ts} opacity={0.18} />
-      <Text
+      <SafeText
         position={[labelX, FLOOR_H + 0.42, labelZ]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.25}
@@ -1202,7 +1239,7 @@ function HoldAngleHoverPreview() {
         font={undefined}
       >
         HOLD
-      </Text>
+      </SafeText>
     </group>
   );
 }
@@ -1250,6 +1287,29 @@ function CombatEventMarker() {
   const event = useGameStore((s) => s.combatLog[0]);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const startedAtRef = useRef({ id: '', time: 0 });
+
+  useFrame((state) => {
+    if (!event || !groupRef.current) return;
+
+    if (startedAtRef.current.id !== event.id) {
+      startedAtRef.current = { id: event.id, time: state.clock.elapsedTime };
+    }
+
+    const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
+    const progress = THREE.MathUtils.clamp(elapsed / 1.6, 0, 1);
+    const lift = event.hit ? progress * 0.62 : progress * 0.32;
+    const pulse = 1 + Math.sin(progress * Math.PI) * (event.hit ? 0.34 : 0.18);
+    const opacity = Math.max(0, 0.92 * (1 - progress));
+
+    groupRef.current.position.y = FLOOR_H + 0.5 + lift;
+    groupRef.current.scale.setScalar(pulse);
+    if (ringMaterialRef.current) {
+      ringMaterialRef.current.opacity = opacity;
+    }
+  });
 
   if (!event) return null;
 
@@ -1258,12 +1318,12 @@ function CombatEventMarker() {
   const label = event.hit ? `-${event.damage}` : 'MISS';
 
   return (
-    <group position={[wx, FLOOR_H + 0.5, wz]}>
+    <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
         <ringGeometry args={[ts * 0.32, ts * 0.55, 36]} />
-        <meshBasicMaterial color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
+        <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
       </mesh>
-      <Text
+      <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.36}
@@ -1275,7 +1335,7 @@ function CombatEventMarker() {
         font={undefined}
       >
         {label}
-      </Text>
+      </SafeText>
     </group>
   );
 }
@@ -1317,7 +1377,7 @@ function CombatTracerOverlay() {
         <ringGeometry args={[0.18, event.hit ? 0.42 : 0.3, 28]} />
         <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} />
       </mesh>
-      <Text
+      <SafeText
         position={midpoint}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.22}
@@ -1329,7 +1389,7 @@ function CombatTracerOverlay() {
         font={undefined}
       >
         {label}
-      </Text>
+      </SafeText>
     </group>
   );
 }
@@ -1371,6 +1431,9 @@ function ShotPreviewOverlay() {
           (sz + tz) / 2,
         ];
         const color = preview.hitChance >= 65 ? '#58ff9a' : preview.hitChance >= 35 ? '#ffd166' : '#ff6b82';
+        const coverLabel = preview.coverState === 'protected'
+          ? preview.coverLabel.toUpperCase()
+          : preview.coverState.toUpperCase();
 
         return (
           <group key={`shot-${target.id}`}>
@@ -1379,7 +1442,7 @@ function ShotPreviewOverlay() {
               color={color}
               lineWidth={2}
             />
-            <Text
+            <SafeText
               position={midpoint}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.26}
@@ -1390,8 +1453,8 @@ function ShotPreviewOverlay() {
               outlineColor="#08090d"
               font={undefined}
             >
-              {`${preview.hitChance}%`}
-            </Text>
+              {`${preview.hitChance}%\n${coverLabel}`}
+            </SafeText>
           </group>
         );
       })}
@@ -1415,6 +1478,7 @@ function InteractiveFloor() {
 
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
+      if (e.delta > CLICK_DRAG_THRESHOLD_PX) return;
       const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
       if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {
@@ -1444,6 +1508,7 @@ function InteractiveFloor() {
 
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      if (e.nativeEvent.buttons !== 0) return;
       const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
       if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {

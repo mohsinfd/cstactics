@@ -11,10 +11,12 @@
 //   TileInfo — bottom-center hovered tile callout name
 // ============================================================
 import { useGameStore } from '../game/store';
+import { useEffect, useState } from 'react';
 import type { MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
-import { getShotPreview } from '../game/combat';
+import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
+import { AudioFeedback } from './AudioFeedback';
 
 const PHASE_LABELS: Record<string, string> = {
   buy: 'BUY PHASE',
@@ -39,6 +41,43 @@ const ROLE_ICONS: Record<string, string> = {
   support: 'SUP',
   lurker: 'LRK',
 };
+
+function getCoverStateLabel(preview: Pick<ShotPreview, 'coverState' | 'coverLabel'>): string {
+  if (preview.coverState === 'protected') return `${preview.coverLabel} cover`;
+  if (preview.coverState === 'flanked') return 'flanked';
+  return 'exposed';
+}
+
+function getCoverStateColor(preview: Pick<ShotPreview, 'coverState' | 'coverLabel'>): string {
+  if (preview.coverState === 'exposed') return '#ff6b82';
+  if (preview.coverState === 'flanked') return '#ff9d3d';
+  if (preview.coverLabel === 'full') return '#58ff9a';
+  if (preview.coverLabel === 'half') return '#f2c94c';
+  return '#aaa';
+}
+
+function formatPenalty(value: number): string {
+  return Math.round(value).toString();
+}
+
+function getBaseShotAim(preview: ShotPreview): number {
+  return preview.baseAim + preview.weaponAim - 70 + preview.aimBonus;
+}
+
+function useIsCompactViewport(): boolean {
+  const [isCompact, setIsCompact] = useState(() => (
+    typeof window !== 'undefined' ? window.innerWidth < 560 : false
+  ));
+
+  useEffect(() => {
+    const onResize = () => setIsCompact(window.innerWidth < 560);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  return isCompact;
+}
 
 function getDestinationCover(map: MapData, tile: TileCoord): {
   label: string;
@@ -72,6 +111,7 @@ export function HUD() {
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
       zIndex: 10,
     }}>
+      <AudioFeedback />
       <TopBar />
       <SelectedUnitPanel />
       <TeamRoster />
@@ -79,6 +119,8 @@ export function HUD() {
       <ContactBreakPanel />
       <ExecutePlanner />
       <CommandBar />
+      <AiStatusPanel />
+      <ViewControlPanel />
       <MovementLegend />
       <PhaseAnnouncement />
       <TileInfo />
@@ -130,6 +172,129 @@ function ContactBreakPanel() {
       <div style={{ color: '#8e7d82', fontSize: 10, lineHeight: 1.35, marginTop: 3 }}>
         {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.hit ? `${event.damage} damage` : 'miss'}
       </div>
+      <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}
+      </div>
+    </div>
+  );
+}
+
+function dispatchCameraCommand(command: 'zoom-in' | 'zoom-out' | 'reset') {
+  window.dispatchEvent(new CustomEvent('cs2-camera-command', { detail: command }));
+}
+
+function ViewControlPanel() {
+  const compact = useIsCompactViewport();
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: compact ? 154 : '50%',
+      right: compact ? 10 : 20,
+      transform: compact ? undefined : 'translateY(-50%)',
+      display: 'grid',
+      gridTemplateColumns: compact ? 'repeat(3, 38px)' : '38px',
+      gap: 6,
+      padding: 7,
+      background: 'rgba(8, 8, 12, 0.9)',
+      border: '1px solid #2a2f3a',
+      borderRadius: 7,
+      pointerEvents: 'auto',
+      boxShadow: '0 8px 22px rgba(0,0,0,0.34)',
+    }}>
+      <CameraButton
+        label="+"
+        title="Zoom in"
+        onClick={() => dispatchCameraCommand('zoom-in')}
+      />
+      <CameraButton
+        label="-"
+        title="Zoom out"
+        onClick={() => dispatchCameraCommand('zoom-out')}
+      />
+      <CameraButton
+        label="RST"
+        title="Reset camera"
+        onClick={() => dispatchCameraCommand('reset')}
+      />
+    </div>
+  );
+}
+
+function CameraButton({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      style={{
+        width: 38,
+        height: 34,
+        borderRadius: 5,
+        border: '1px solid #343948',
+        background: 'rgba(255,255,255,0.045)',
+        color: '#d8dce4',
+        cursor: 'pointer',
+        fontSize: label.length > 1 ? 9 : 17,
+        fontWeight: 950,
+        letterSpacing: label.length > 1 ? 0.4 : 0,
+        lineHeight: 1,
+        textTransform: 'uppercase',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function AiStatusPanel() {
+  const aiStatus = useGameStore((s) => s.aiStatus);
+  const compact = useIsCompactViewport();
+  if (!aiStatus) return null;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: compact ? 126 : 118,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: 'min(360px, calc(100vw - 28px))',
+      background: 'rgba(7, 11, 18, 0.92)',
+      border: '1px solid rgba(85,153,221,0.42)',
+      borderLeft: '3px solid #5599dd',
+      borderRadius: 6,
+      padding: '8px 11px',
+      pointerEvents: 'none',
+      boxShadow: '0 10px 26px rgba(0,0,0,0.34)',
+      textAlign: 'center',
+    }}>
+      <div style={{
+        color: '#75b9ff',
+        fontSize: 9,
+        fontWeight: 950,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+      }}>
+        Counter-T Auto Response
+      </div>
+      <div style={{
+        color: '#d8e7ff',
+        fontSize: 11,
+        fontWeight: 800,
+        lineHeight: 1.35,
+        marginTop: 3,
+      }}>
+        {aiStatus.message}
+      </div>
     </div>
   );
 }
@@ -164,15 +329,27 @@ function CombatLogPanel() {
       </div>
       {combatLog.slice(0, 3).map((event) => (
         <div key={event.id} style={{ color: '#ccc', fontSize: 10, lineHeight: 1.35 }}>
-          <span style={{ color: event.hit ? '#ffdadf' : '#aaa', fontWeight: 800 }}>
-            {event.hit ? 'HIT' : 'MISS'}
-          </span>
-          <span style={{ color: '#666', marginLeft: 6 }}>
-            {event.hitChance}%
-          </span>
-          <span style={{ marginLeft: 6 }}>
-            {event.summary}
-          </span>
+          <div>
+            <span style={{ color: event.hit ? '#ffdadf' : '#aaa', fontWeight: 800 }}>
+              {event.hit ? 'HIT' : 'MISS'}
+            </span>
+            <span style={{ color: '#666', marginLeft: 6 }}>
+              {event.hitChance}%
+            </span>
+            <span style={{ marginLeft: 6 }}>
+              {event.summary}
+            </span>
+          </div>
+          <div style={{
+            color: event.coverState === 'exposed' ? '#ff9ba9' : '#756870',
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: 0.5,
+            textTransform: 'uppercase',
+            marginTop: 1,
+          }}>
+            {event.type === 'reaction_fire' ? 'Reaction' : 'Direct'} | {Math.round(event.distance)} tiles | {event.coverState === 'protected' ? `${event.coverLabel} cover` : event.coverState} | rng -{formatPenalty(event.rangePenalty)} cov -{formatPenalty(event.coverPenalty)}
+          </div>
         </div>
       ))}
     </div>
@@ -333,6 +510,14 @@ function LegendRow({ color, label, note }: { color: string; label: string; note:
 function TopBar() {
   const match = useGameStore((s) => s.match);
   const round = useGameStore((s) => s.round);
+  const compact = useIsCompactViewport();
+  const sidePadding = compact ? '6px 8px' : '6px 24px';
+  const sideMinWidth = compact ? 78 : 60;
+  const centerPadding = compact ? '6px 10px' : '6px 24px';
+  const centerMinWidth = compact ? 116 : 140;
+  const labelSize = compact ? 9 : 10;
+  const labelSpacing = compact ? 1.1 : 1.5;
+  const scoreSize = compact ? 24 : 28;
 
   return (
     <div style={{
@@ -341,48 +526,49 @@ function TopBar() {
     }}>
       {/* T score */}
       <div style={{
-        background: 'rgba(184, 134, 11, 0.9)', padding: '6px 24px',
-        borderRadius: '0 0 0 8px', minWidth: 60, textAlign: 'center',
+        background: 'rgba(184, 134, 11, 0.9)', padding: sidePadding,
+        borderRadius: '0 0 0 8px', minWidth: sideMinWidth, textAlign: 'center',
         borderBottom: round.activeTeam === 'T' ? '3px solid #f4c430' : '3px solid transparent',
       }}>
-        <div style={{ color: '#fff', fontSize: 10, fontWeight: 600, letterSpacing: 1.5, opacity: 0.9 }}>
+        <div style={{ color: '#fff', fontSize: labelSize, fontWeight: 600, letterSpacing: labelSpacing, opacity: 0.9, whiteSpace: 'nowrap' }}>
           TERRORISTS
         </div>
-        <div style={{ color: '#fff', fontSize: 28, fontWeight: 800, fontFamily: "'Courier New', monospace" }}>
+        <div style={{ color: '#fff', fontSize: scoreSize, fontWeight: 800, fontFamily: "'Courier New', monospace" }}>
           {match.scoreT}
         </div>
       </div>
 
       {/* Center info */}
       <div style={{
-        background: 'rgba(8, 8, 12, 0.95)', padding: '6px 24px', textAlign: 'center',
+        background: 'rgba(8, 8, 12, 0.95)', padding: centerPadding, textAlign: 'center',
         borderBottom: `2px solid ${PHASE_COLORS[round.phase]}`,
-        minWidth: 140,
+        minWidth: centerMinWidth,
       }}>
         <div style={{
-          color: PHASE_COLORS[round.phase], fontSize: 9, fontWeight: 700,
-          letterSpacing: 2.5, textTransform: 'uppercase',
+          color: PHASE_COLORS[round.phase], fontSize: compact ? 8 : 9, fontWeight: 700,
+          letterSpacing: compact ? 1.8 : 2.5, textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
         }}>
           {PHASE_LABELS[round.phase]}
         </div>
-        <div style={{ color: '#fff', fontSize: 20, fontWeight: 800, fontFamily: "'Courier New', monospace" }}>
+        <div style={{ color: '#fff', fontSize: compact ? 18 : 20, fontWeight: 800, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
           Round {match.currentRound}
         </div>
-        <div style={{ color: '#777', fontSize: 10, letterSpacing: 0.5 }}>
+        <div style={{ color: '#777', fontSize: compact ? 9 : 10, letterSpacing: 0.5, whiteSpace: 'nowrap' }}>
           Turn {round.turn} &middot; {round.activeTeam === 'T' ? 'T Side' : 'CT Side'}
         </div>
       </div>
 
       {/* CT score */}
       <div style={{
-        background: 'rgba(26, 58, 110, 0.9)', padding: '6px 24px',
-        borderRadius: '0 0 8px 0', minWidth: 60, textAlign: 'center',
+        background: 'rgba(26, 58, 110, 0.9)', padding: sidePadding,
+        borderRadius: '0 0 8px 0', minWidth: sideMinWidth, textAlign: 'center',
         borderBottom: round.activeTeam === 'CT' ? '3px solid #5599dd' : '3px solid transparent',
       }}>
-        <div style={{ color: '#fff', fontSize: 10, fontWeight: 600, letterSpacing: 1.5, opacity: 0.9 }}>
+        <div style={{ color: '#fff', fontSize: labelSize, fontWeight: 600, letterSpacing: labelSpacing, opacity: 0.9, whiteSpace: 'nowrap' }}>
           COUNTER-T
         </div>
-        <div style={{ color: '#fff', fontSize: 28, fontWeight: 800, fontFamily: "'Courier New', monospace" }}>
+        <div style={{ color: '#fff', fontSize: scoreSize, fontWeight: 800, fontFamily: "'Courier New', monospace" }}>
           {match.scoreCT}
         </div>
       </div>
@@ -396,24 +582,26 @@ function TeamRoster() {
   const activeTeam = useGameStore((s) => s.round.activeTeam);
   const selectedId = useGameStore((s) => s.selectedUnitId);
   const selectUnit = useGameStore((s) => s.selectUnit);
+  const compact = useIsCompactViewport();
 
   const teamUnits = units.filter((u) => u.team === activeTeam);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#4488cc';
 
   return (
     <div style={{
-      position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)',
-      display: 'flex', gap: 6, pointerEvents: 'auto',
+      position: 'absolute', top: compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
+      display: 'flex', gap: compact ? 4 : 6, pointerEvents: 'auto',
+      maxWidth: 'calc(100vw - 14px)',
     }}>
       {teamUnits.map((u) => {
         const isSel = u.id === selectedId;
         const hasAP = u.ap > 0;
         return (
           <div
-            key={u.id}
-            onClick={() => selectUnit(u.id)}
-            style={{
-              width: 56, padding: '4px 0', textAlign: 'center', cursor: 'pointer',
+              key={u.id}
+              onClick={() => selectUnit(u.id)}
+              style={{
+              width: compact ? 48 : 56, padding: '4px 0', textAlign: 'center', cursor: 'pointer',
               background: isSel ? `${teamColor}44` : 'rgba(8,8,12,0.85)',
               border: `1px solid ${isSel ? teamColor : '#333'}`,
               borderRadius: 4,
@@ -653,7 +841,7 @@ function SelectedUnitPanel() {
       )}
       {topShotPreview && !shootingDisabledReason && (
         <div style={{ color: '#b8a45b', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
-          Best shot: {topShotPreview.hitChance}% / {topShotPreview.damage} dmg
+          Best shot: {topShotPreview.hitChance}% / {topShotPreview.damage} dmg / {getCoverStateLabel(topShotPreview)}
         </div>
       )}
       {shotOptions.length > 0 && !shootingDisabledReason && (
@@ -714,13 +902,13 @@ function SelectedUnitPanel() {
               </span>
               <span style={{
                 gridColumn: '2 / 4',
-                color: '#7b6c71',
+                color: getCoverStateColor(preview),
                 fontSize: 8,
                 fontWeight: 750,
                 letterSpacing: 0.4,
                 textTransform: 'uppercase',
               }}>
-                {Math.round(preview.distance)} tiles | RNG -{Math.round(preview.rangePenalty)} | COV {preview.coverLabel.toUpperCase()} -{Math.round(preview.coverPenalty)}
+                Base {getBaseShotAim(preview)} | Range -{formatPenalty(preview.rangePenalty)} | Cover -{formatPenalty(preview.coverPenalty)} | {getCoverStateLabel(preview)}
               </span>
             </button>
           ))}
@@ -778,26 +966,36 @@ function CommandBar() {
   const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
   const startContactDrill = useGameStore((s) => s.startContactDrill);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
+  const compact = useIsCompactViewport();
+  const commandButtonStyle = compact
+    ? {
+      width: '100%',
+      minWidth: 0,
+      padding: '9px 8px',
+      fontSize: 10,
+    }
+    : {};
 
   return (
     <div style={{
       position: 'absolute',
-      bottom: 18,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      width: 'min(640px, calc(100vw - 40px))',
+      bottom: compact ? 14 : 18,
+      left: compact ? 10 : '50%',
+      transform: compact ? 'none' : 'translateX(-50%)',
+      width: compact ? 'min(370px, calc(100vw - 20px))' : 'min(640px, calc(100vw - 40px))',
       background: 'rgba(8, 8, 12, 0.94)',
       border: '1px solid #2a2f3a',
       borderRadius: 7,
-      padding: '9px 10px',
+      padding: compact ? 8 : '9px 10px',
       pointerEvents: 'auto',
-      display: 'flex',
-      flexWrap: 'wrap',
+      display: compact ? 'grid' : 'flex',
+      gridTemplateColumns: compact ? '1fr 1fr' : undefined,
+      flexWrap: compact ? undefined : 'wrap',
       alignItems: 'center',
       gap: 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
     }}>
-      <div style={{ minWidth: 0, flex: '1 1 170px' }}>
+      <div style={{ minWidth: 0, flex: compact ? undefined : '1 1 170px', gridColumn: compact ? '1 / -1' : undefined }}>
         <div style={{
           color: teamColor,
           fontSize: 10,
@@ -838,6 +1036,7 @@ function CommandBar() {
           letterSpacing: 1,
           textTransform: 'uppercase',
           minWidth: 118,
+          ...commandButtonStyle,
         }}
       >
         {planningMode ? 'Planning' : 'Plan Moves'}
@@ -860,6 +1059,7 @@ function CommandBar() {
           letterSpacing: 0.8,
           textTransform: 'uppercase',
           minWidth: 128,
+          ...commandButtonStyle,
         }}
       >
         Contact Drill
@@ -884,6 +1084,8 @@ function CommandBar() {
             textTransform: 'uppercase',
             minWidth: 118,
             boxShadow: isExecuting ? 'none' : '0 0 14px rgba(47,191,113,0.35)',
+            gridColumn: compact ? '1 / -1' : undefined,
+            ...commandButtonStyle,
           }}
         >
           {isExecuting ? 'Executing' : 'Run Execute'}
@@ -907,6 +1109,8 @@ function CommandBar() {
             textTransform: 'uppercase',
             minWidth: 118,
             boxShadow: `0 0 14px ${teamColor}55`,
+            gridColumn: compact ? '1 / -1' : undefined,
+            ...commandButtonStyle,
           }}
         >
           End {activeTeam} Side
@@ -943,6 +1147,7 @@ function CommandBar() {
 function PhaseAnnouncement() {
   const phase = useGameStore((s) => s.round.phase);
   const turn = useGameStore((s) => s.round.turn);
+  const compact = useIsCompactViewport();
 
   const showSetup = phase === 'setup';
   const showCombat = phase === 'combat' && turn === 3; // show on first combat turn
@@ -951,12 +1156,13 @@ function PhaseAnnouncement() {
 
   return (
     <div style={{
-      position: 'absolute', top: '15%', left: '50%', transform: 'translateX(-50%)',
+      position: 'absolute', top: compact ? 136 : '15%', left: '50%', transform: 'translateX(-50%)',
       textAlign: 'center', opacity: 0.6,
+      width: compact ? 'calc(100vw - 24px)' : 'auto',
     }}>
       <div style={{
-        color: PHASE_COLORS[phase], fontSize: 16, fontWeight: 800,
-        letterSpacing: 6, textTransform: 'uppercase',
+        color: PHASE_COLORS[phase], fontSize: compact ? 13 : 16, fontWeight: 800,
+        letterSpacing: compact ? 4 : 6, textTransform: 'uppercase',
       }}>
         {showCombat ? 'FIRST CONTACT!' : PHASE_LABELS[phase]}
       </div>
@@ -1007,6 +1213,9 @@ function TileInfo() {
       .sort((a, b) => b.preview.hitChance - a.preview.hitChance)
     : [];
   const topIncomingThreat = incomingThreats[0] ?? null;
+  const incomingCoverLabel = topIncomingThreat
+    ? getCoverStateLabel(topIncomingThreat.preview)
+    : null;
   const apColor = movementTile
     ? (movementTile.apCost <= 1 ? '#5df2ff' : '#f7cf5f')
     : '#777';
@@ -1016,14 +1225,16 @@ function TileInfo() {
   const risk = watchedBy
     ? { label: 'CONTACT RISK', color: '#ff6b82' }
     : topIncomingThreat
-      ? { label: 'EXPOSED', color: '#ff9d3d' }
+      ? topIncomingThreat.preview.coverState === 'protected'
+        ? { label: 'CONTESTED', color: getCoverStateColor(topIncomingThreat.preview) }
+        : { label: topIncomingThreat.preview.coverState.toUpperCase(), color: getCoverStateColor(topIncomingThreat.preview) }
       : phase === 'setup'
         ? { label: 'SETUP SAFE', color: '#aa8833' }
         : { label: 'NO KNOWN LOS', color: '#58ff9a' };
   const threatDetail = watchedBy
     ? `Watched by ${watchedBy}`
     : topIncomingThreat
-      ? `${topIncomingThreat.unit.role.displayName} ${topIncomingThreat.unit.name}: ${topIncomingThreat.preview.hitChance}% through ${topIncomingThreat.preview.coverLabel} cover`
+      ? `${topIncomingThreat.unit.role.displayName} ${topIncomingThreat.unit.name}: ${topIncomingThreat.preview.hitChance}% | ${incomingCoverLabel} | range -${formatPenalty(topIncomingThreat.preview.rangePenalty)} cover -${formatPenalty(topIncomingThreat.preview.coverPenalty)}`
       : null;
 
   return (
@@ -1070,7 +1281,7 @@ function TileInfo() {
         <TileBadge color={apColor} label={actionEconomy} subdued={!movementTile} />
         <TileBadge color={cover.color} label={`${cover.label} +${cover.value}`} />
         {topIncomingThreat && !watchedBy && (
-          <TileBadge color="#ff9d3d" label={`${topIncomingThreat.preview.hitChance}% INCOMING`} />
+          <TileBadge color={getCoverStateColor(topIncomingThreat.preview)} label={`${topIncomingThreat.preview.hitChance}% ${topIncomingThreat.preview.coverState}`} />
         )}
       </div>
 
@@ -1120,6 +1331,9 @@ function TileBadge({
 
 // --- Map branding ---
 function MapLabel() {
+  const compact = useIsCompactViewport();
+  if (compact) return null;
+
   return (
     <div style={{
       position: 'absolute', bottom: 60, right: 20, textAlign: 'right',

@@ -105,7 +105,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Automatic shoot-mode trade prompt after contact break. Implemented.
 - First-pass ticked movement/contact resolution. Implemented.
 - Landmark cover silhouettes and destination risk card. Implemented.
-- Next: harden directional cover with flanked/exposed warnings, then build true
+- Protected/flanked/exposed shot and movement warnings. Implemented as a
+  first-pass directional cover readout.
+- Procedural shot/contact audio cues. Implemented.
+- Next: tighten cover-corner fidelity, add richer shot VFX, then build true
   simultaneous order timing.
 
 ### Milestone C: Utility Timing

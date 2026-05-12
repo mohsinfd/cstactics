@@ -48,8 +48,12 @@ export interface HeldAngle {
   aimBonus: number;
 }
 
+export type CoverLabel = 'open' | 'half' | 'full';
+export type CoverState = 'protected' | 'flanked' | 'exposed';
+
 export interface CombatEvent {
   id: string;
+  createdAt: number;
   type: 'reaction_fire' | 'direct_fire';
   attackerId: number;
   targetId: number;
@@ -58,8 +62,39 @@ export interface CombatEvent {
   hitChance: number;
   hit: boolean;
   damage: number;
+  distance: number;
+  rangePenalty: number;
+  coverPenalty: number;
+  coverLabel: CoverLabel;
+  coverState: CoverState;
+  aimBonus: number;
   tile: TileCoord;
   summary: string;
+}
+
+export type FeedbackEventType =
+  | 'select_unit'
+  | 'plan_add'
+  | 'move_step'
+  | 'move_complete'
+  | 'hold_angle'
+  | 'smoke_throw'
+  | 'turn_change'
+  | 'ai_start'
+  | 'ai_end';
+
+export interface FeedbackEvent {
+  id: string;
+  createdAt: number;
+  type: FeedbackEventType;
+  team?: Team;
+  unitId?: number;
+  intensity?: number;
+}
+
+export interface AiStatus {
+  team: Team;
+  message: string;
 }
 
 export interface SmokeCloud {
@@ -253,4 +288,6 @@ export interface GameState {
   heldAngles: HeldAngle[];
   smokes: SmokeCloud[];
   combatLog: CombatEvent[];
+  feedbackEvents: FeedbackEvent[];
+  aiStatus: AiStatus | null;
 }

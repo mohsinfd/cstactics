@@ -21,7 +21,7 @@
 // Missing: firing animation, hit/death states, and final authored sprite/model
 // assets.
 // ============================================================
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -67,6 +67,14 @@ const ROLE_TAGS: Record<string, string> = {
   lurker: 'LRK',
 };
 
+function SafeText(props: ComponentProps<typeof Text>) {
+  return (
+    <Suspense fallback={null}>
+      <Text {...props} />
+    </Suspense>
+  );
+}
+
 // Role-specific weapon lengths and body modifications
 const ROLE_CONFIG: Record<RoleId, {
   weaponLen: number;
@@ -85,6 +93,7 @@ const ROLE_CONFIG: Record<RoleId, {
 
 const MOVE_STEP_SECONDS = 0.16;
 const TELEPORT_TILE_DISTANCE = 2.4;
+const CLICK_DRAG_THRESHOLD_PX = 4;
 
 function easeInOutSine(t: number): number {
   return -(Math.cos(Math.PI * t) - 1) / 2;
@@ -93,6 +102,191 @@ function easeInOutSine(t: number): number {
 function dampAngle(current: number, target: number, lambda: number, delta: number): number {
   const angleDelta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
   return current + angleDelta * (1 - Math.exp(-lambda * delta));
+}
+
+function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 192;
+  canvas.height = 256;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  const isCt = team === 'CT';
+  const vest = isCt ? '#224c88' : '#6b5b35';
+  const vestDark = isCt ? '#10233f' : '#332d1e';
+  const cloth = isCt ? '#1b2738' : '#3b3426';
+  const head = isCt ? '#324f7f' : '#8a6b4e';
+  const band = isCt ? '#eef4ff' : '#cc3333';
+  const skin = '#c99870';
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(96, 220, 52, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const gradient = ctx.createLinearGradient(58, 44, 134, 214);
+  gradient.addColorStop(0, accent);
+  gradient.addColorStop(0.28, vest);
+  gradient.addColorStop(1, vestDark);
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Legs and boots.
+  ctx.fillStyle = cloth;
+  ctx.fillRect(70, 150, 20, 55);
+  ctx.fillRect(103, 150, 20, 55);
+  ctx.fillStyle = '#08090d';
+  ctx.fillRect(64, 198, 31, 12);
+  ctx.fillRect(98, 198, 31, 12);
+
+  // Weapon silhouette behind the chest.
+  ctx.strokeStyle = '#111318';
+  ctx.lineWidth = roleId === 'awper' ? 10 : 12;
+  ctx.beginPath();
+  ctx.moveTo(roleId === 'awper' ? 42 : 52, roleId === 'awper' ? 132 : 140);
+  ctx.lineTo(roleId === 'awper' ? 152 : 140, roleId === 'awper' ? 70 : 90);
+  ctx.stroke();
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = roleId === 'awper' ? 0.55 : 0.36;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(roleId === 'awper' ? 44 : 55, roleId === 'awper' ? 130 : 138);
+  ctx.lineTo(roleId === 'awper' ? 150 : 137, roleId === 'awper' ? 72 : 92);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (roleId === 'awper') {
+    ctx.fillStyle = '#0b0f17';
+    ctx.fillRect(116, 78, 24, 10);
+    ctx.strokeStyle = '#9ee8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(138, 82, 7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Body armor.
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(64, 86);
+  ctx.lineTo(128, 86);
+  ctx.lineTo(141, 154);
+  ctx.lineTo(119, 178);
+  ctx.lineTo(73, 178);
+  ctx.lineTo(51, 154);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(75, 99, 42, 13);
+  ctx.fillStyle = accent;
+  ctx.fillRect(76, 101, 40, 5);
+
+  if (roleId === 'support') {
+    ['#6ee7b7', '#f6d365', '#ff8a3d'].forEach((color, index) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(66 + index * 22, 150, 13, 20);
+    });
+  }
+
+  if (roleId === 'igl') {
+    ctx.strokeStyle = '#8fffa2';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(120, 83);
+    ctx.lineTo(134, 45);
+    ctx.stroke();
+    ctx.fillStyle = '#172033';
+    ctx.fillRect(75, 126, 42, 25);
+    ctx.fillStyle = '#f6d365';
+    ctx.fillRect(81, 132, 30, 10);
+  }
+
+  if (roleId === 'lurker') {
+    ctx.fillStyle = 'rgba(192,132,252,0.28)';
+    ctx.beginPath();
+    ctx.moveTo(96, 74);
+    ctx.lineTo(139, 157);
+    ctx.lineTo(53, 157);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Arms and team marker.
+  ctx.strokeStyle = vestDark;
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.moveTo(58, 104);
+  ctx.lineTo(42, 150);
+  ctx.moveTo(134, 104);
+  ctx.lineTo(150, 150);
+  ctx.stroke();
+  ctx.strokeStyle = band;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(46, 137);
+  ctx.lineTo(58, 143);
+  ctx.moveTo(134, 143);
+  ctx.lineTo(146, 137);
+  ctx.stroke();
+
+  // Neck, face, and helmet/headwrap.
+  ctx.fillStyle = skin;
+  ctx.fillRect(85, 70, 22, 18);
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.ellipse(96, 58, 21, 24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = head;
+  ctx.beginPath();
+  ctx.ellipse(96, 46, 27, 20, 0, Math.PI, Math.PI * 2);
+  ctx.lineTo(123, 58);
+  ctx.lineTo(69, 58);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = band;
+  ctx.fillRect(72, 56, 48, 6);
+  if (isCt) {
+    ctx.fillStyle = '#09111f';
+    ctx.fillRect(78, 61, 36, 6);
+  } else {
+    ctx.fillStyle = '#cc3333';
+    ctx.beginPath();
+    ctx.moveTo(119, 58);
+    ctx.lineTo(139, 70);
+    ctx.lineTo(122, 74);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(96, 28, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.font = '900 21px system-ui, Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f7f8fb';
+  ctx.strokeStyle = '#07080d';
+  ctx.lineWidth = 5;
+  const tag = ROLE_TAGS[roleId] ?? '???';
+  ctx.strokeText(tag, 96, 236);
+  ctx.fillText(tag, 96, 236);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function TacticalBaseBrackets({
@@ -239,7 +433,7 @@ function TeamChestBadge({
           emissiveIntensity={0.08}
         />
       </mesh>
-      <Text
+      <SafeText
         position={[0, 0, 0.012]}
         fontSize={0.105 * scale}
         color={team === 'CT' ? '#0f2040' : '#ffe2b5'}
@@ -250,7 +444,7 @@ function TeamChestBadge({
         font={undefined}
       >
         {team}
-      </Text>
+      </SafeText>
     </group>
   );
 }
@@ -501,6 +695,14 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const isSpent = isActiveTeam && unit.ap <= 0;
   const p = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
   const rc = ROLE_CONFIG[unit.role.id];
+  const spriteTexture = useMemo(
+    () => createUnitSpriteTexture(unit.team, unit.role.id, rc.accent),
+    [rc.accent, unit.role.id, unit.team]
+  );
+
+  useEffect(() => () => {
+    spriteTexture.dispose();
+  }, [spriteTexture]);
 
   const wx = (map.width - 1 - unit.position.x) * ts + ts / 2;
   const wz = unit.position.y * ts + ts / 2;
@@ -643,6 +845,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       ref={groupRef}
       onClick={(e) => {
         e.stopPropagation();
+        if (e.delta > CLICK_DRAG_THRESHOLD_PX) return;
         if (inputMode === 'shoot') {
           shootUnit(unit.id);
         } else {
@@ -675,6 +878,20 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         <TeamIdentityBase team={unit.team} palette={p} roleAccent={rc.accent} />
         <RoleSilhouette roleId={unit.role.id} accent={rc.accent} />
+
+        <sprite
+          position={[0, 1.32 * s, 0.04]}
+          scale={[1.48 * s, 1.96 * s, 1]}
+          raycast={() => null}
+        >
+          <spriteMaterial
+            map={spriteTexture}
+            transparent
+            opacity={isActiveTeam ? 0.98 : 0.72}
+            depthTest={false}
+            depthWrite={false}
+          />
+        </sprite>
 
         {(isSelected || isHovered) && (
           <FacingArc
@@ -718,7 +935,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               color="#6f7785"
               lineWidth={2}
             />
-            <Text
+            <SafeText
               position={[0, 0.13, 0.72]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.18}
@@ -730,7 +947,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               font={undefined}
             >
               DONE
-            </Text>
+            </SafeText>
           </group>
         )}
 
@@ -746,7 +963,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
                 <meshBasicMaterial color="#ff4e6a" transparent opacity={0.18} side={THREE.DoubleSide} />
               </mesh>
             )}
-            <Text
+            <SafeText
               position={[0, 0.13, 0.84]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.22}
@@ -758,7 +975,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               font={undefined}
             >
               {isShootableTarget ? `${shotPreview!.hitChance}%` : 'OOR'}
-            </Text>
+            </SafeText>
           </>
         )}
 
@@ -911,7 +1128,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         <TeamHeadgear team={unit.team} scale={s} mats={mats} palette={p} />
 
         {/* === ROLE TAG === */}
-        <Text
+        <SafeText
           position={[0, 0.115, -0.68]}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.28}
@@ -923,10 +1140,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           font={undefined}
         >
           {ROLE_TAGS[unit.role.id] || '???'}
-        </Text>
+        </SafeText>
 
         {/* === NAME === */}
-        <Text
+        <SafeText
           position={[0, 0.115, -0.95]}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.18}
@@ -938,7 +1155,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           font={undefined}
         >
           {unit.name}
-        </Text>
+        </SafeText>
 
         {/* === BOMB (T carrier) === */}
         {unit.hasBomb && (

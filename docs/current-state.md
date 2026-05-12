@@ -48,9 +48,18 @@ verbs that make those nouns matter.
 - Shoot mode draws line-of-fire overlays with hit chance.
 - First-pass directional cover penalty for shots: adjacent cover only helps when
   it is between shooter and target.
+- Shot previews now distinguish protected, flanked, and exposed targets instead
+  of treating all nearby cover as equal.
+- Visible target cards, tile risk cards, contact breaks, and combat logs show
+  compact aim breakdowns with range and cover modifiers.
+- Movement danger overlays now separate exposed/flanked danger from protected
+  contested tiles.
 - Combat log panel for hit/miss/damage feedback.
 - Contact Break panel for reaction-fire interrupts.
-- Board-level hit/miss marker at the combat event tile.
+- Board-level hit/miss marker at the combat event tile with a short fade/lift
+  animation.
+- Procedural shot/contact audio cues play for direct fire, reaction fire, hits,
+  and misses.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
   the immediate trade decision.
 - Contact Drill prototype scenario for testing the Banana hold/crossing loop.
@@ -70,9 +79,9 @@ verbs that make those nouns matter.
 - Weapons exist as data and now drive simple preview/damage resolution, but
   ammo, reload, recoil depth, and richer per-modifier shot breakdowns are still
   missing.
-- Cover exists as static geometry/readout and now contributes to basic
-  directional shot penalties, but flanked/exposed logic and cover-corner fidelity
-  are still missing.
+- Cover exists as static geometry/readout and now contributes to directional shot
+  penalties with protected/flanked/exposed messaging, but cover-corner fidelity is
+  still first-pass.
 - Bomb state exists as data, but plant/defuse actions are not implemented.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, but not yet a
@@ -85,7 +94,7 @@ verbs that make those nouns matter.
 - Crit/headshot logic and richer kill feed.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Full freeze-on-contact state machine and cinematic interrupt timeline.
-- Flanked/exposed warnings.
+- Production-grade diagonal/corner cover fidelity.
 - Smoke, flash, molly, HE, or utility timing.
 - Ammo and reload.
 - Plant, defuse, dropped bomb, or bomb timer pressure.
@@ -103,7 +112,7 @@ Finish hardening the first contact vertical slice before broadening the game:
 4. The player commits.
 5. Movement resolves in short ticks and stops when contact occurs.
 6. The CT sees the crossing and reaction fire triggers.
-7. Hit chance and damage resolve.
+7. Hit chance, cover state, and damage resolve with visible/audio feedback.
 8. The game surfaces a contact break so the player can make the trade/continue
    call.
 

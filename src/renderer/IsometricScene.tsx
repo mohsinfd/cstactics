@@ -7,13 +7,28 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
+import * as THREE from 'three';
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
 import { MapRenderer } from './MapRenderer';
 import { UnitRenderer } from './UnitRenderer';
 import { useGameStore } from '../game/store';
+
+type MapControlsHandle = {
+  target: THREE.Vector3;
+  update: () => void;
+};
+
+type CameraCommand =
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'reset'
+  | 'pan-left'
+  | 'pan-right'
+  | 'pan-up'
+  | 'pan-down';
 
 const CAMERA_PRESET = {
   offsetX: 78,
@@ -28,6 +43,7 @@ const CAMERA_PRESET = {
 export function IsometricScene() {
   const map = useGameStore((s) => s.map);
   const cameraRef = useRef<ThreeOrthographicCamera>(null);
+  const controlsRef = useRef<MapControlsHandle | null>(null);
 
   const cx = (map.width * map.tileSize) / 2;
   const cz = (map.height * map.tileSize) / 2;
@@ -41,18 +57,138 @@ export function IsometricScene() {
     0,
     cz + CAMERA_PRESET.targetOffsetZ,
   ], [cx, cz]);
+  const targetVector = useMemo(
+    () => new THREE.Vector3(...cameraTarget),
+    [cameraTarget]
+  );
 
   useLayoutEffect(() => {
-    cameraRef.current?.lookAt(...cameraTarget);
-    cameraRef.current?.updateProjectionMatrix();
-  }, [cameraTarget]);
+    if (cameraRef.current) {
+      cameraRef.current.lookAt(targetVector);
+      cameraRef.current.updateProjectionMatrix();
+    }
+
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(targetVector);
+      controlsRef.current.update();
+    }
+  }, [targetVector]);
+
+  useEffect(() => {
+    const panCamera = (screenX: number, screenY: number) => {
+      const camera = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!camera || !controls) return;
+
+      camera.updateMatrixWorld();
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      right.y = 0;
+      up.y = 0;
+      right.normalize();
+      up.normalize();
+
+      const step = Math.max(1.2, 20 / camera.zoom);
+      const delta = right.multiplyScalar(screenX * step).add(up.multiplyScalar(screenY * step));
+      camera.position.add(delta);
+      controls.target.add(delta);
+      controls.update();
+    };
+
+    const applyCameraCommand = (command: CameraCommand) => {
+      const camera = cameraRef.current;
+      if (!camera) return;
+
+      if (command === 'zoom-in') {
+        camera.zoom = Math.min(CAMERA_PRESET.maxZoom, camera.zoom * 1.22);
+      } else if (command === 'zoom-out') {
+        camera.zoom = Math.max(CAMERA_PRESET.minZoom, camera.zoom / 1.22);
+      } else if (command === 'reset') {
+        camera.position.set(...cameraPosition);
+        camera.zoom = CAMERA_PRESET.zoom;
+        controlsRef.current?.target.copy(targetVector);
+        camera.lookAt(targetVector);
+      } else if (command === 'pan-left') {
+        panCamera(-1, 0);
+      } else if (command === 'pan-right') {
+        panCamera(1, 0);
+      } else if (command === 'pan-up') {
+        panCamera(0, 1);
+      } else if (command === 'pan-down') {
+        panCamera(0, -1);
+      }
+
+      camera.updateProjectionMatrix();
+      controlsRef.current?.update();
+    };
+
+    const onCameraCommand = (event: Event) => {
+      applyCameraCommand((event as CustomEvent<CameraCommand>).detail);
+    };
+
+    window.addEventListener('cs2-camera-command', onCameraCommand);
+    return () => window.removeEventListener('cs2-camera-command', onCameraCommand);
+  }, [cameraPosition, targetVector]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+
+      const keyCommands: Record<string, CameraCommand> = {
+        '=': 'zoom-in',
+        '+': 'zoom-in',
+        '-': 'zoom-out',
+        '_': 'zoom-out',
+        '0': 'reset',
+        Home: 'reset',
+        ArrowLeft: 'pan-left',
+        a: 'pan-left',
+        A: 'pan-left',
+        ArrowRight: 'pan-right',
+        d: 'pan-right',
+        D: 'pan-right',
+        ArrowUp: 'pan-up',
+        w: 'pan-up',
+        W: 'pan-up',
+        ArrowDown: 'pan-down',
+        s: 'pan-down',
+        S: 'pan-down',
+      };
+
+      const command = keyCommands[event.key];
+      if (!command) return;
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent('cs2-camera-command', { detail: command }));
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <Canvas
       shadows
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-      style={{ width: '100vw', height: '100vh', background: '#10131a' }}
+      style={{
+        width: '100vw',
+        height: '100vh',
+        background: '#10131a',
+        touchAction: 'none',
+      }}
+      onContextMenu={(event) => event.preventDefault()}
     >
+      <color attach="background" args={['#10131a']} />
+
       {/* Camera */}
       <OrthographicCamera
         ref={cameraRef}
@@ -65,13 +201,27 @@ export function IsometricScene() {
 
       {/* Pan + zoom, no rotation */}
       <MapControls
+        ref={(controls) => {
+          controlsRef.current = controls;
+        }}
         enableRotate={false}
+        enablePan
+        enableZoom
         enableDamping
         dampingFactor={0.12}
         minZoom={CAMERA_PRESET.minZoom}
         maxZoom={CAMERA_PRESET.maxZoom}
+        mouseButtons={{
+          LEFT: THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.PAN,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
         screenSpacePanning
-        target={cameraTarget}
+        target={targetVector}
       />
 
       {/* === Lighting === */}
@@ -117,7 +267,9 @@ export function IsometricScene() {
 
       {/* === Scene content === */}
       <MapRenderer />
-      <UnitRenderer />
+      <Suspense fallback={null}>
+        <UnitRenderer />
+      </Suspense>
 
       {/* Fog for depth */}
       <fog attach="fog" args={['#10131a', 360, 640]} />

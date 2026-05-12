@@ -1,6 +1,6 @@
 import { RULES } from './config/rules';
 import { hasLineOfSight } from './los';
-import type { CombatEvent, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
+import type { CombatEvent, CoverLabel, CoverState, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
 
 export interface ShotPreview {
   hasLineOfSight: boolean;
@@ -8,10 +8,25 @@ export interface ShotPreview {
   distance: number;
   hitChance: number;
   damage: number;
+  baseAim: number;
+  weaponAim: number;
+  aimBonus: number;
   rangePenalty: number;
   coverPenalty: number;
-  coverLabel: 'open' | 'half' | 'full';
+  coverLabel: CoverLabel;
+  coverState: CoverState;
+  staticCoverPenalty: number;
+  directionalCoverPenalty: number;
+  unclampedHitChance: number;
   reasons: string[];
+}
+
+export interface CoverProfile {
+  staticCoverPenalty: number;
+  directionalCoverPenalty: number;
+  effectiveCoverPenalty: number;
+  coverLabel: CoverLabel;
+  coverState: CoverState;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -80,10 +95,32 @@ export function getDirectionalCoverPenalty(
   }, 0);
 }
 
-function getCoverLabel(coverPenalty: number): ShotPreview['coverLabel'] {
+function getCoverLabel(coverPenalty: number): CoverLabel {
   if (coverPenalty >= RULES.fullCoverAimPenalty) return 'full';
   if (coverPenalty >= RULES.halfCoverAimPenalty) return 'half';
   return 'open';
+}
+
+export function getCoverProfile(
+  map: MapData,
+  attackerTile: TileCoord,
+  targetTile: TileCoord
+): CoverProfile {
+  const staticCoverPenalty = getStaticCoverPenalty(map, targetTile);
+  const directionalCoverPenalty = getDirectionalCoverPenalty(map, attackerTile, targetTile);
+  const coverState: CoverState = directionalCoverPenalty > 0
+    ? 'protected'
+    : staticCoverPenalty > 0
+      ? 'flanked'
+      : 'exposed';
+
+  return {
+    staticCoverPenalty,
+    directionalCoverPenalty,
+    effectiveCoverPenalty: directionalCoverPenalty * 0.5,
+    coverLabel: getCoverLabel(directionalCoverPenalty),
+    coverState,
+  };
 }
 
 export function getShotPreview(
@@ -98,9 +135,17 @@ export function getShotPreview(
   const hasLos = hasLineOfSight(map, attacker.position, targetTile, smokes);
   const inRange = distance <= attacker.weapon.rangeMax;
   const rangePenalty = Math.max(0, distance - attacker.weapon.rangeOptimal) * 4;
-  const coverPenalty = getDirectionalCoverPenalty(map, attacker.position, targetTile) * 0.5;
+  const cover = getCoverProfile(map, attacker.position, targetTile);
+  const unclampedHitChance = Math.round(
+    attacker.role.baseAim +
+    attacker.weapon.baseAim -
+    70 +
+    aimBonus -
+    rangePenalty -
+    cover.effectiveCoverPenalty
+  );
   const hitChance = clamp(
-    Math.round(attacker.role.baseAim + attacker.weapon.baseAim - 70 + aimBonus - rangePenalty - coverPenalty),
+    unclampedHitChance,
     5,
     95
   );
@@ -118,9 +163,16 @@ export function getShotPreview(
     distance,
     hitChance,
     damage,
+    baseAim: attacker.role.baseAim,
+    weaponAim: attacker.weapon.baseAim,
+    aimBonus,
     rangePenalty,
-    coverPenalty,
-    coverLabel: getCoverLabel(coverPenalty * 2),
+    coverPenalty: cover.effectiveCoverPenalty,
+    coverLabel: cover.coverLabel,
+    coverState: cover.coverState,
+    staticCoverPenalty: cover.staticCoverPenalty,
+    directionalCoverPenalty: cover.directionalCoverPenalty,
+    unclampedHitChance,
     reasons,
   };
 }
@@ -137,12 +189,16 @@ export function resolveShot(
   const preview = getShotPreview(map, attacker, target, aimBonus, targetTile, smokes);
   const hit = Math.random() * 100 < preview.hitChance;
   const damage = hit ? preview.damage : 0;
+  const coverText = preview.coverState === 'protected'
+    ? `${preview.coverLabel} cover`
+    : preview.coverState;
   const summary = hit
-    ? `${attacker.name} hits ${target.name} for ${damage}`
-    : `${attacker.name} misses ${target.name}`;
+    ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}`
+    : `${attacker.name} misses ${target.name} through ${coverText}`;
 
   return {
     id: `${Date.now()}:${attacker.id}:${target.id}`,
+    createdAt: Date.now(),
     type,
     attackerId: attacker.id,
     targetId: target.id,
@@ -151,6 +207,12 @@ export function resolveShot(
     hitChance: preview.hitChance,
     hit,
     damage,
+    distance: preview.distance,
+    rangePenalty: preview.rangePenalty,
+    coverPenalty: preview.coverPenalty,
+    coverLabel: preview.coverLabel,
+    coverState: preview.coverState,
+    aimBonus,
     tile: { ...targetTile },
     summary,
   };

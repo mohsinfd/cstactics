@@ -75,6 +75,9 @@ These are important, but they should stack on top of the first contact loop.
 - Running the queued move can trigger reaction fire. Implemented.
 - Hit chance and damage are visible enough to understand the result. Implemented
   through target rings, target list, board marker, and contact log.
+- Shot previews and contact logs show range and directional cover modifiers,
+  including protected, flanked, and exposed states. Implemented.
+- Direct/reaction shots have procedural audio cues. Implemented.
 - The game pauses after contact instead of blindly continuing. Implemented as a
   contact break with immediate movement stop and automatic shoot-mode trade
   prompt.
@@ -84,11 +87,12 @@ These are important, but they should stack on top of the first contact loop.
 
 ## Remaining Polish
 
-- Add per-modifier shot breakdowns: range, cover, held-angle bonus, movement
-  penalty.
-- Harden directional cover: diagonal corners, flanked/exposed warnings, and
-  cover preview from known enemy angles.
-- Add shot VFX and damage numbers so contact reads without scanning the HUD.
+- Add deeper per-modifier shot breakdowns: held-angle bonus, movement penalty,
+  recoil/ammo, and final clamped/unclamped aim.
+- Harden directional cover further: diagonal corners and tighter cover-corner
+  fidelity.
+- Add richer shot VFX and damage numbers so contact reads without scanning the
+  HUD.
 - Make board-level combat markers animated and temporary instead of persistent
   until the next event.
 - Build true simultaneous multi-order resolution with timing offsets for

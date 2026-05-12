@@ -27,6 +27,8 @@ import type {
   HeldAngle,
   InputMode,
   CombatEvent,
+  FeedbackEvent,
+  FeedbackEventType,
   SmokeCloud,
 } from './types';
 import { createInfernoMap } from './maps/inferno';
@@ -39,12 +41,34 @@ import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
 
 const EXECUTION_STEP_MS = 165;
+const AI_EXECUTION_STEP_MS = 70;
+const AI_THINK_MS = 180;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS = 2;
 const SMOKE_DURATION_TURNS = 4;
+const FEEDBACK_LOG_LIMIT = 16;
+
+let feedbackSequence = 0;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function appendFeedback(
+  events: FeedbackEvent[],
+  type: FeedbackEventType,
+  details: Omit<FeedbackEvent, 'id' | 'createdAt' | 'type'> = {}
+): FeedbackEvent[] {
+  feedbackSequence += 1;
+  return [
+    {
+      id: `${Date.now()}:${feedbackSequence}:${type}`,
+      createdAt: Date.now(),
+      type,
+      ...details,
+    },
+    ...events,
+  ].slice(0, FEEDBACK_LOG_LIMIT);
 }
 
 // Movement range per AP point
@@ -142,6 +166,95 @@ function findNearestWalkable(map: GameState['map'], preferred: TileCoord): TileC
   }
 
   return preferred;
+}
+
+function isUnitSelectable(units: Unit[], activeTeam: Team, unitId: number | null): boolean {
+  if (unitId === null) return false;
+  const unit = units.find((candidate) => candidate.id === unitId);
+  return Boolean(unit?.alive && unit.team === activeTeam);
+}
+
+function getPreferredSelection(
+  units: Unit[],
+  round: RoundState,
+  preferredUnitId: number | null,
+  fallbackUnitId: number | null
+): number | null {
+  if (isUnitSelectable(units, round.activeTeam, preferredUnitId)) return preferredUnitId;
+  if (isUnitSelectable(units, round.activeTeam, fallbackUnitId)) return fallbackUnitId;
+  return getFirstAvailableUnitId(units, round.activeTeam);
+}
+
+function isTileOccupied(units: Unit[], tile: TileCoord, ignoreUnitId?: number): boolean {
+  return units.some((unit) => (
+    unit.alive &&
+    unit.id !== ignoreUnitId &&
+    unit.position.x === tile.x &&
+    unit.position.y === tile.y
+  ));
+}
+
+const CT_AI_ANCHORS: Partial<Record<RoleId, TileCoord>> = {
+  awper: { x: 62, y: 55 },
+  entry: { x: 43, y: 76 },
+  support: { x: 45, y: 74 },
+  igl: { x: 72, y: 35 },
+  lurker: { x: 76, y: 47 },
+};
+
+const CT_AI_HOLDS: Partial<Record<RoleId, TileCoord>> = {
+  awper: { x: 52, y: 43 },
+  entry: { x: 38, y: 68 },
+  support: { x: 37, y: 61 },
+  igl: { x: 60, y: 43 },
+  lurker: { x: 62, y: 55 },
+};
+
+function getCtAiAnchor(unit: Unit, map: GameState['map']): TileCoord {
+  return findNearestWalkable(map, CT_AI_ANCHORS[unit.role.id] ?? unit.position);
+}
+
+function getCtAiHoldTarget(unit: Unit, units: Unit[], map: GameState['map']): TileCoord {
+  const nearestT = units
+    .filter((candidate) => candidate.alive && candidate.team === 'T')
+    .sort((a, b) => tileDistance(unit.position, a.position) - tileDistance(unit.position, b.position))[0];
+
+  return nearestT?.position ?? findNearestWalkable(map, CT_AI_HOLDS[unit.role.id] ?? unit.position);
+}
+
+function getReachableAiDestination(
+  map: GameState['map'],
+  units: Unit[],
+  unit: Unit,
+  target: TileCoord,
+  maxTiles: number
+): TileCoord | null {
+  const path = findPath(map, unit.position, target);
+  if (path.length === 0) return null;
+
+  const limitedPath = path.slice(0, Math.max(1, maxTiles));
+  for (let i = limitedPath.length - 1; i >= 0; i--) {
+    const candidate = limitedPath[i];
+    if (!isTileOccupied(units, candidate, unit.id)) return candidate;
+  }
+
+  return null;
+}
+
+function getBestAiShot(
+  map: GameState['map'],
+  attacker: Unit,
+  units: Unit[],
+  smokes: SmokeCloud[]
+): { target: Unit; preview: ReturnType<typeof getShotPreview> } | null {
+  return units
+    .filter((target) => target.alive && target.team !== attacker.team)
+    .map((target) => ({
+      target,
+      preview: getShotPreview(map, attacker, target, 0, target.position, smokes),
+    }))
+    .filter(({ preview }) => preview.hasLineOfSight && preview.inRange)
+    .sort((a, b) => b.preview.hitChance - a.preview.hitChance)[0] ?? null;
 }
 
 function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []): {
@@ -246,6 +359,7 @@ interface GameStore extends GameState {
   setPlanningMode: (enabled: boolean) => void;
   finishUnit: () => void;
   endTurn: () => void;
+  runCtAiTurn: () => Promise<void>;
   initGame: () => void;
   startContactDrill: () => void;
 }
@@ -253,6 +367,14 @@ interface GameStore extends GameState {
 export const useGameStore = create<GameStore>((set, get) => {
   const map = createInfernoMap();
   const units = createUnits();
+  const maybeRunCtAiTurn = () => {
+    window.setTimeout(() => {
+      const state = get();
+      if (state.round.activeTeam === 'CT' && !state.isExecuting && !state.aiStatus) {
+        void get().runCtAiTurn();
+      }
+    }, 180);
+  };
 
   return {
     map,
@@ -294,6 +416,8 @@ export const useGameStore = create<GameStore>((set, get) => {
     heldAngles: [],
     smokes: [],
     combatLog: [],
+    feedbackEvents: [],
+    aiStatus: null,
 
     selectUnit: (id) => {
       const state = get();
@@ -316,14 +440,34 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       // No AP left? Can still select but no walkable tiles
       if (unit.ap <= 0) {
-        set({ selectedUnitId: id, walkableTiles: [], movementTiles: [], pathPreview: [] });
+        set({
+          selectedUnitId: id,
+          walkableTiles: [],
+          movementTiles: [],
+          pathPreview: [],
+          feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 0.55,
+          }),
+        });
         return;
       }
 
       const isSetup = state.round.phase === 'setup';
       const { movementTiles, walkableTiles } = getMovementState(unit, state.map, isSetup);
 
-      set({ selectedUnitId: id, movementTiles, walkableTiles, pathPreview: [] });
+      set({
+        selectedUnitId: id,
+        movementTiles,
+        walkableTiles,
+        pathPreview: [],
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: unit.ap > 0 ? 1 : 0.55,
+        }),
+      });
     },
 
     hoverTile: (tile) => {
@@ -425,6 +569,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         walkableTiles: [],
         pathPreview: [],
         inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'move_step', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 0.65,
+        }),
       });
 
       for (const step of pathToTravel) {
@@ -449,11 +598,13 @@ export const useGameStore = create<GameStore>((set, get) => {
 
         set({
           units: nextUnits,
-          selectedUnitId: unit.id,
           hoveredTile: null,
-          movementTiles: [],
-          walkableTiles: [],
           pathPreview: [],
+          feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 0.7,
+          }),
         });
         await wait(EXECUTION_STEP_MS);
 
@@ -510,12 +661,11 @@ export const useGameStore = create<GameStore>((set, get) => {
       let nextSmokes = state.smokes;
 
       if (contactEvent) {
-        const contactMovement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
-        movementTiles = contactMovement.movementTiles;
-        walkableTiles = contactMovement.walkableTiles;
+        nextSelectedUnitId = nextUnits[finalUnitIdx].alive
+          ? unit.id
+          : getFirstAvailableUnitId(nextUnits, round.activeTeam);
       } else if (newAp > 0) {
-        movementTiles = getMovementTiles(mapData, nextUnits[finalUnitIdx].position, rangePerAP, newAp);
-        walkableTiles = movementTiles.map(({ x, y }) => ({ x, y }));
+        nextSelectedUnitId = unit.id;
       } else {
         nextSelectedUnitId = getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
         if (nextSelectedUnitId === null) {
@@ -536,10 +686,20 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
       }
 
+      const preferredSelectedUnitId = getPreferredSelection(
+        nextUnits,
+        nextRound,
+        contactEvent ? nextSelectedUnitId : get().selectedUnitId,
+        nextSelectedUnitId
+      );
+      const movement = getMovementForSelection(nextUnits, preferredSelectedUnitId, mapData, nextRound);
+      movementTiles = movement.movementTiles;
+      walkableTiles = movement.walkableTiles;
+
       set({
         units: nextUnits,
         round: nextRound,
-        selectedUnitId: nextSelectedUnitId,
+        selectedUnitId: preferredSelectedUnitId,
         hoveredTile: null,
         movementTiles,
         walkableTiles,
@@ -553,7 +713,13 @@ export const useGameStore = create<GameStore>((set, get) => {
         )),
         smokes: nextSmokes,
         combatLog: contactEvent ? [contactEvent, ...state.combatLog].slice(0, 8) : state.combatLog,
+        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: contactEvent ? 1.2 : 0.9,
+        }),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     setInputMode: (mode) => {
@@ -639,7 +805,13 @@ export const useGameStore = create<GameStore>((set, get) => {
           heldAngle,
         ],
         smokes: nextSmokes,
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'hold_angle', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 0.9,
+        }),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     throwSmoke: (targetTile) => {
@@ -706,7 +878,13 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'smoke_throw', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 1,
+        }),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     shootUnit: (targetId) => {
@@ -774,6 +952,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog: [event, ...state.combatLog].slice(0, 8),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     queueMove: (targetTile) => {
@@ -840,6 +1019,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         hoveredTile: null,
         pathPreview: [],
         inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'plan_add', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 0.65,
+        }),
       });
     },
 
@@ -927,12 +1111,15 @@ export const useGameStore = create<GameStore>((set, get) => {
         walkableTiles: [],
         pathPreview: [],
         inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'move_step', {
+          team: round.activeTeam,
+          intensity: 0.8,
+        }),
       });
 
       const maxSteps = Math.max(...runtimes.map((runtime) => runtime.pathToTravel.length));
       for (let step = 0; step < maxSteps; step++) {
         let movedThisStep = false;
-        let stepSelectedUnitId = state.selectedUnitId;
 
         for (const runtime of runtimes) {
           if (runtime.stopped || step >= runtime.pathToTravel.length) continue;
@@ -962,18 +1149,18 @@ export const useGameStore = create<GameStore>((set, get) => {
             facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
           };
           runtime.tilesMoved = step + 1;
-          stepSelectedUnitId = runtime.action.unitId;
           movedThisStep = true;
         }
 
         if (movedThisStep) {
           set({
             units: nextUnits,
-            selectedUnitId: stepSelectedUnitId,
             hoveredTile: null,
-            movementTiles: [],
-            walkableTiles: [],
             pathPreview: [],
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
+              team: round.activeTeam,
+              intensity: 0.75,
+            }),
           });
           await wait(EXECUTION_STEP_MS);
         }
@@ -1046,6 +1233,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         selectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
       }
 
+      selectedUnitId = getPreferredSelection(
+        nextUnits,
+        nextRound,
+        contactEvent ? selectedUnitId : get().selectedUnitId,
+        selectedUnitId
+      );
       const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, nextRound);
       const combatLog = contactEvent
         ? [contactEvent, ...state.combatLog].slice(0, 8)
@@ -1068,7 +1261,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         )),
         smokes: nextSmokes,
         combatLog,
+        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+          team: round.activeTeam,
+          intensity: contactEvent ? 1.2 : 1,
+        }),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     clearPlannedActions: () => {
@@ -1136,7 +1334,13 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+          team: nextRound.activeTeam,
+          unitId: unit.id,
+          intensity: 0.8,
+        }),
       });
+      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
     },
 
     endTurn: () => {
@@ -1168,6 +1372,239 @@ export const useGameStore = create<GameStore>((set, get) => {
         isExecuting: false,
         inputMode: 'move',
         smokes: advanced.smokes,
+        aiStatus: null,
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+          team: advanced.round.activeTeam,
+          intensity: 1,
+        }),
+      });
+      if (advanced.round.activeTeam === 'CT') maybeRunCtAiTurn();
+    },
+
+    runCtAiTurn: async () => {
+      const state = get();
+      if (state.isExecuting || state.round.activeTeam !== 'CT') return;
+
+      let nextUnits = [...state.units];
+      const mapData = state.map;
+      const round = state.round;
+      let heldAngles = state.heldAngles.filter((angle) => angle.team !== 'CT');
+      let combatLog = state.combatLog;
+      let nextSmokes = state.smokes;
+
+      set({
+        isExecuting: true,
+        aiStatus: { team: 'CT', message: 'CT reading the map' },
+        selectedUnitId: null,
+        hoveredTile: null,
+        movementTiles: [],
+        walkableTiles: [],
+        pathPreview: [],
+        plannedActions: [],
+        planningMode: false,
+        inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'ai_start', {
+          team: 'CT',
+          intensity: 1,
+        }),
+      });
+
+      await wait(AI_THINK_MS);
+
+      const ctUnitIds = nextUnits
+        .filter((unit) => unit.alive && unit.team === 'CT' && unit.ap > 0)
+        .map((unit) => unit.id);
+
+      for (const unitId of ctUnitIds) {
+        let unitIdx = nextUnits.findIndex((unit) => unit.id === unitId);
+        if (unitIdx === -1) continue;
+
+        let unit = nextUnits[unitIdx];
+        if (!unit.alive || unit.team !== 'CT' || unit.ap <= 0) continue;
+
+        set({
+          aiStatus: { team: 'CT', message: `${unit.role.displayName} ${unit.name} responding` },
+          selectedUnitId: unit.id,
+          feedbackEvents: appendFeedback(get().feedbackEvents, 'select_unit', {
+            team: 'CT',
+            unitId: unit.id,
+            intensity: 0.45,
+          }),
+        });
+
+        await wait(AI_THINK_MS);
+
+        const bestShot = round.phase !== 'setup'
+          ? getBestAiShot(mapData, unit, nextUnits, nextSmokes)
+          : null;
+
+        if (bestShot && bestShot.preview.hitChance >= 25) {
+          const targetIdx = nextUnits.findIndex((candidate) => candidate.id === bestShot.target.id);
+          if (targetIdx !== -1) {
+            const event = resolveShot(mapData, unit, bestShot.target, bestShot.target.position, 0, 'direct_fire', nextSmokes);
+            const distance = tileDistance(unit.position, bestShot.target.position);
+            const newTargetHp = event.hit ? Math.max(0, nextUnits[targetIdx].hp - event.damage) : nextUnits[targetIdx].hp;
+
+            nextUnits = [...nextUnits];
+            nextUnits[targetIdx] = {
+              ...nextUnits[targetIdx],
+              hp: newTargetHp,
+              alive: newTargetHp > 0,
+            };
+            nextUnits[unitIdx] = {
+              ...unit,
+              ap: 0,
+              shotsFiredThisTurn: unit.shotsFiredThisTurn + 1,
+              hasMoved: true,
+              facing: {
+                x: Math.round((bestShot.target.position.x - unit.position.x) / (distance || 1)),
+                y: Math.round((bestShot.target.position.y - unit.position.y) / (distance || 1)),
+              },
+            };
+
+            combatLog = [event, ...combatLog].slice(0, 8);
+            set({
+              units: nextUnits,
+              combatLog,
+              aiStatus: { team: 'CT', message: `${unit.name} took an opening shot` },
+            });
+            await wait(AI_THINK_MS + 120);
+            continue;
+          }
+        }
+
+        const rangePerAp = getMoveRangePerAP(unit, round.phase === 'setup');
+        const anchor = getCtAiAnchor(unit, mapData);
+        const moveBudget = round.phase === 'setup'
+          ? rangePerAp * unit.ap
+          : (tileDistance(unit.position, anchor) > 3 ? rangePerAp : 0);
+        const destination = moveBudget > 0
+          ? getReachableAiDestination(mapData, nextUnits, unit, anchor, moveBudget)
+          : null;
+
+        if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
+          const path = findPath(mapData, unit.position, destination);
+          const pathToTravel = path.slice(0, moveBudget);
+
+          for (const step of pathToTravel) {
+            unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
+            if (unitIdx === -1) break;
+
+            unit = nextUnits[unitIdx];
+            if (!unit.alive) break;
+
+            const dx = step.x - unit.position.x;
+            const dy = step.y - unit.position.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            nextUnits = [...nextUnits];
+            nextUnits[unitIdx] = {
+              ...unit,
+              position: { ...step },
+              hasMoved: true,
+              facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+            };
+
+            set({
+              units: nextUnits,
+              selectedUnitId: unit.id,
+              pathPreview: [],
+              feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
+                team: 'CT',
+                unitId: unit.id,
+                intensity: 0.55,
+              }),
+            });
+            await wait(AI_EXECUTION_STEP_MS);
+          }
+
+          unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
+          if (unitIdx === -1) continue;
+          unit = nextUnits[unitIdx];
+          const apSpent = round.phase === 'setup'
+            ? unit.ap
+            : Math.min(unit.ap, Math.max(1, Math.ceil(pathToTravel.length / rangePerAp)));
+          nextUnits = [...nextUnits];
+          nextUnits[unitIdx] = {
+            ...unit,
+            ap: Math.max(0, unit.ap - apSpent),
+            hasMoved: true,
+          };
+          unit = nextUnits[unitIdx];
+        }
+
+        if (round.phase !== 'setup' && unit.ap > 0) {
+          const holdTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
+          const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
+          const laneTiles = getWatchedLane(mapData, unit.position, holdTarget, maxTiles);
+          const dx = holdTarget.x - unit.position.x;
+          const dy = holdTarget.y - unit.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          nextUnits = [...nextUnits];
+          nextUnits[unitIdx] = {
+            ...unit,
+            ap: 0,
+            hasMoved: true,
+            facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+          };
+
+          if (laneTiles.length > 0) {
+            heldAngles = [
+              ...heldAngles.filter((angle) => angle.unitId !== unit.id),
+              {
+                id: `${unit.id}:ai-hold:${Date.now()}`,
+                unitId: unit.id,
+                team: 'CT',
+                origin: { ...unit.position },
+                target: { ...holdTarget },
+                laneTiles,
+                remainingShots: 1,
+                aimBonus: unit.role.id === 'awper' ? 15 : 5,
+              },
+            ];
+          }
+
+          set({
+            units: nextUnits,
+            heldAngles,
+            aiStatus: { team: 'CT', message: `${unit.name} is holding contact` },
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'hold_angle', {
+              team: 'CT',
+              unitId: unit.id,
+              intensity: 0.55,
+            }),
+          });
+          await wait(AI_THINK_MS);
+        }
+      }
+
+      const advanced = advanceTurn(round, nextUnits, nextSmokes);
+      nextUnits = advanced.units;
+      nextSmokes = advanced.smokes;
+      const selectedUnitId = getFirstAvailableUnitId(nextUnits, advanced.round.activeTeam);
+      const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, advanced.round);
+
+      set({
+        units: nextUnits,
+        round: advanced.round,
+        selectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        plannedActions: [],
+        planningMode: false,
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles,
+        smokes: nextSmokes,
+        combatLog,
+        aiStatus: null,
+        feedbackEvents: appendFeedback(get().feedbackEvents, 'ai_end', {
+          team: 'CT',
+          intensity: 1,
+        }),
       });
     },
 
@@ -1200,6 +1637,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         heldAngles: [],
         smokes: [],
         combatLog: [],
+        feedbackEvents: [],
+        aiStatus: null,
       });
     },
 
@@ -1272,6 +1711,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         heldAngles: [heldAngle],
         smokes: [],
         combatLog: [],
+        feedbackEvents: [],
+        aiStatus: null,
       });
     },
   };
