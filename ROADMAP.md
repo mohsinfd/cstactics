@@ -285,6 +285,9 @@ Work:
 - High-DPI render pass for crisper zoom/readability. First pass implemented.
 - Better unit silhouettes and animations. Higher-resolution generated sprite
   overlays are started; authored art pipeline still needed.
+- Player visualization and movement smoothing specialist handoffs are captured
+  in `docs/player-visualization-roadmap.md` and
+  `docs/movement-smoothing-roadmap.md`.
 - Onboarding overlay for first-time players.
 - Settings for performance and accessibility.
 
@@ -319,6 +322,8 @@ Acceptance:
   `docs/human-usability-regression.md`.
 - Browser human-click regression should run with `npm run test:browser` before
   a feature is called done.
+- Use `docs/orchestrator-framework.md` for future main-thread + specialist-agent
+  work: explore in parallel, execute with owned write sets, integrate centrally.
 - Keep game logic rendering-independent.
 - Prefer small, testable systems over large opaque rewrites.
 - Optimize for a professional vertical slice before expanding content.

@@ -99,6 +99,11 @@ verbs that make those nouns matter.
   across desktop, narrow laptop, and compact HUD viewports.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
+- Main-thread orchestration, specialist-agent ownership, and done-definition
+  rules are documented in `docs/orchestrator-framework.md`.
+- Player visualization and movement smoothing now have bounded specialist
+  handoff artifacts in `docs/player-visualization-roadmap.md` and
+  `docs/movement-smoothing-roadmap.md`.
 - Planned movement resolves in short visible ticks and interrupts on held-angle
   contact. Unit interpolation now advances through smaller, overlapping ticks
   for smoother motion.
