@@ -58,7 +58,11 @@ Acceptance criteria:
 
 ### P0 - Blocked Room Behind Car / Banana Boundary
 
-Status: not implemented.
+Status: started.
+
+Change:
+- Opened the single walkable mask tile at `(42,51)` so the enlarged Banana Car
+  no longer seals lower Banana from logs/top Banana.
 
 Recommended next data change:
 - Regenerate or hand-correct the walkable mask around lower Banana/car so the
@@ -112,9 +116,9 @@ Checks:
   logs, sandbags, CT Spawn to sandbags, and Top Banana to B site.
 - `npm run map:validate` now reports adjacent walkable tile counts for Banana
   car, logs, sandbags, half-wall, coffins, and oranges.
-- Current suspicious metric: `T_to_Banana_Logs` is much longer than
-  `T_to_Banana_Car`, which reinforces the need to audit the lower/mid Banana
-  mask before tuning utility or LOS.
+- After the `(42,51)` mask fix, `T_to_Banana_Logs` dropped from `152` to `63`
+  tiles and `T_to_Banana_Sandbags` reads `67`, which is a better route-order
+  sanity check for lower-to-top Banana.
 - Contact Drill: held lane, movement warning, smoke blocking, flash radius, shot
   preview, and contact break.
 - Debug screenshot: capture Banana/B after each mask or cover edit and compare
