@@ -119,7 +119,7 @@ Checks:
 - After the `(42,51)` mask fix, `T_to_Banana_Logs` dropped from `152` to `63`
   tiles and `T_to_Banana_Sandbags` reads `67`, which is a better route-order
   sanity check for lower-to-top Banana.
-- Contact Drill: held lane, movement warning, smoke blocking, flash radius, shot
+- Banana Drill: held lane, movement warning, smoke blocking, flash radius, shot
   preview, and contact break.
 - Debug screenshot: capture Banana/B after each mask or cover edit and compare
   car, sandbags, logs, top Banana choke, coffins, oranges, and construction.

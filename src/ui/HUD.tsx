@@ -1409,8 +1409,8 @@ function CommandBar() {
         data-testid="hud-command-plan"
         onClick={() => !isExecuting && !isRoundOver && setPlanningMode(!planningMode)}
         disabled={isExecuting || isRoundOver}
-        title={planningMode ? 'Click destination tiles to queue synchronized moves.' : 'Queue movement orders before resolving them together.'}
-        aria-label={planningMode ? 'Planning mode is on' : 'Plan moves'}
+        title={planningMode ? 'Click destination tiles to queue synchronized execute orders.' : 'Queue movement and utility orders before resolving them together.'}
+        aria-label={planningMode ? 'Planning execute mode is on' : 'Plan execute'}
         style={{
           border: `1px solid ${teamColor}88`,
           background: planningMode ? teamColor : `${teamColor}22`,
@@ -1426,7 +1426,7 @@ function CommandBar() {
           ...commandButtonStyle,
         }}
       >
-        {planningMode ? 'Planning' : 'Plan Moves'}
+        {planningMode ? 'Planning' : 'Plan Execute'}
       </button>
 
       <button
@@ -1434,7 +1434,7 @@ function CommandBar() {
         onClick={() => !isExecuting && startContactDrill()}
         disabled={isExecuting}
         title="Load a prepared first-contact scenario for testing movement, danger, and held angles."
-        aria-label="Start contact drill"
+        aria-label="Start Banana contact drill"
         style={{
           border: '1px solid #3a2f35',
           background: 'rgba(255,78,106,0.16)',
@@ -1450,7 +1450,7 @@ function CommandBar() {
           ...commandButtonStyle,
         }}
       >
-        Contact Drill
+        Banana Drill
       </button>
 
       {plannedActions.length > 0 ? (
@@ -1485,7 +1485,7 @@ function CommandBar() {
           onClick={() => !isExecuting && !isRoundOver && endTurn()}
           disabled={isExecuting || isRoundOver}
           title={`Pass control from ${activeTeam} side to the other team.`}
-          aria-label={`End ${activeTeam} side`}
+          aria-label={`End turn for ${activeTeam} side`}
           style={{
             border: 'none',
             background: teamColor,
@@ -1503,7 +1503,7 @@ function CommandBar() {
             ...commandButtonStyle,
           }}
         >
-          End {activeTeam} Side
+          End Turn
         </button>
       )}
 
@@ -1513,7 +1513,7 @@ function CommandBar() {
           onClick={() => !isExecuting && !isRoundOver && endTurn()}
           disabled={isExecuting || isRoundOver}
           title={`Discard remaining tempo and pass control from ${activeTeam} side.`}
-          aria-label={`End ${activeTeam} side`}
+          aria-label={`End turn for ${activeTeam} side`}
           style={{
             border: '1px solid #3a2f2f',
             background: 'rgba(130, 60, 50, 0.28)',
@@ -1527,7 +1527,7 @@ function CommandBar() {
             textTransform: 'uppercase',
           }}
         >
-          End {activeTeam} Side
+          End Turn
         </button>
       )}
     </div>

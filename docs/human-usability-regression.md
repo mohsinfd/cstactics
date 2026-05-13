@@ -34,7 +34,7 @@ The orchestrator keeps implementation authority. The tester agent reports:
 At every supported viewport, after camera abuse, these must remain visible and
 clickable without panning the page or searching:
 
-- `hud-command-bar`: plan, contact drill, run execute/end side.
+- `hud-command-bar`: plan execute, Banana drill, run execute/end turn.
 - `hud-view-controls`: zoom in, zoom out, reset.
 - `hud-top-bar`: score/round/phase.
 - `hud-team-roster`: active side unit selection.
@@ -48,12 +48,12 @@ HUD containers and primary action buttons.
 ### Mouse
 
 - Start at `http://127.0.0.1:5174/`.
-- Click `Contact Drill`.
+- Click `Banana Drill`.
 - Wheel zoom in three times.
 - Drag quickly from lower-left to upper-right, then back.
 - Wheel zoom out twice.
 - Click `Reset camera`.
-- Click `Plan Moves`, `Move`, `Shoot`, `Hold`, and `Done` where enabled.
+- Click `Plan Execute`, `Move`, `Shoot`, `Hold`, and `Done` where enabled.
 - Verify visible target buttons remain reachable in shoot mode.
 
 ### Laptop Trackpad
@@ -87,13 +87,13 @@ For each sequence, assert:
 - Primary buttons can be clicked by visible label or `data-testid`.
 - After zoom/pan/reset, no fresh console errors appear.
 - Canvas still receives tile hover/click input after HUD clicks.
-- The player can return to a known state with `Reset camera` and `Contact Drill`.
+- The player can return to a known state with `Reset camera` and `Banana Drill`.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 
 ## Immediate Failure Examples
 
-- Zooming or panning makes `End Side`, `Run Execute`, or action buttons disappear.
+- Zooming or panning makes `End Turn`, `Run Execute`, or action buttons disappear.
 - Camera controls are visible but not clickable because another HUD layer covers
   them.
 - A button can only be found through DOM automation, not by visible human scan.

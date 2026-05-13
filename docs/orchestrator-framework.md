@@ -106,7 +106,7 @@ Focus:
 
 Required checks:
 - `npm run map:validate`
-- Browser Contact Drill
+- Browser Banana Drill
 - Human visual check of first viewport
 
 ### Player Visualization

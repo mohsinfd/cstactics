@@ -43,7 +43,7 @@ verbs that make those nouns matter.
   queue.
 - Queued move rows and planned destination markers show `WATCH` or `DANGER`
   when the planned route/destination is risky.
-- Command bar with planning, execute, and end-turn controls.
+- Command bar with clearer Plan Execute, Banana Drill, Run Execute, and End Turn controls.
 - Basic team turn switching and auto-advance between usable units.
 - Line-of-sight helper for grid-based visibility.
 - Hold Angle action foundation.
@@ -85,7 +85,7 @@ verbs that make those nouns matter.
   misses, and eliminations.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
   the immediate trade decision.
-- Contact Drill prototype scenario for testing the Banana hold/crossing loop.
+- Banana Drill prototype scenario for testing the Banana hold/crossing loop.
 - Pointer hover updates are gated by tile to reduce redundant path recalculation
   during dragging.
 - Wheel/trackpad scroll pans the tactical board by default; modified wheel and
