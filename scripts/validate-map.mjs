@@ -379,6 +379,26 @@ function getCoverAdjacencyWarnings(map) {
   return warnings;
 }
 
+function getRouteSanityWarnings(routes) {
+  const warnings = [];
+  const distance = (routeName) => routes[routeName]?.distance;
+  const expectBefore = (earlier, later, reason) => {
+    const earlierDistance = distance(earlier);
+    const laterDistance = distance(later);
+    if (earlierDistance === null || laterDistance === null) return;
+    if (earlierDistance > laterDistance) {
+      warnings.push(`${earlier} (${earlierDistance}) should be before ${later} (${laterDistance}): ${reason}.`);
+    }
+  };
+
+  expectBefore('T_to_Banana_Car', 'T_to_Banana_Logs', 'lower Banana should route around car into logs');
+  expectBefore('T_to_Banana_Logs', 'T_to_Banana_Sandbags', 'logs should stage before the top-Banana sandbags pocket');
+  expectBefore('T_to_Banana_Sandbags', 'T_to_B', 'sandbags should be reached before the B plant area');
+  expectBefore('T_to_Top_Banana', 'T_to_B', 'top Banana should be reached before the B plant area');
+
+  return warnings;
+}
+
 function summarize() {
   const map = loadInfernoMap();
   const counts = {};
@@ -419,6 +439,7 @@ function summarize() {
   const components = getConnectedComponents(map);
   const coverWarnings = getCoverPlacementWarnings(map);
   const coverAdjacencyWarnings = getCoverAdjacencyWarnings(map);
+  const routeSanityWarnings = getRouteSanityWarnings(routes);
   const coverAdjacency = Object.fromEntries(
     ['Banana Car', 'Logs', 'Sandbags', 'Half Wall', 'Coffins', 'First Oranges', 'Second Oranges'].map((label) => [
       label,
@@ -446,6 +467,7 @@ function summarize() {
     coverAdjacency,
     coverPlacementWarnings: coverWarnings.length,
     coverAdjacencyWarnings: coverAdjacencyWarnings.length,
+    routeSanityWarnings: routeSanityWarnings.length,
     output: {
       svg: path.relative(root, outputPath),
       png: path.relative(root, outputPngPath),
@@ -472,6 +494,11 @@ function summarize() {
   }
 
   for (const warning of coverAdjacencyWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
+  }
+
+  for (const warning of routeSanityWarnings) {
     console.warn(`Map warning: ${warning}`);
     process.exitCode = 1;
   }

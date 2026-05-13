@@ -116,6 +116,9 @@ Checks:
   logs, sandbags, CT Spawn to sandbags, and Top Banana to B site.
 - `npm run map:validate` now reports adjacent walkable tile counts for Banana
   car, logs, sandbags, half-wall, coffins, and oranges.
+- `npm run map:validate` now fails when Banana route ordering regresses: car
+  should precede logs, logs should precede sandbags, and sandbags/top Banana
+  should precede B site.
 - After the `(42,51)` mask fix, `T_to_Banana_Logs` dropped from `152` to `63`
   tiles and `T_to_Banana_Sandbags` reads `67`, which is a better route-order
   sanity check for lower-to-top Banana.
