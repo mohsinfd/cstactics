@@ -28,6 +28,8 @@ import type {
   InputMode,
   CombatEvent,
   ExecuteInterrupt,
+  ExecuteInterruptBombPressure,
+  ExecuteInterruptTimelineItem,
   ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
@@ -137,6 +139,85 @@ function getBestTradeShot(
   };
 }
 
+function getInterruptResultText(event: CombatEvent): string {
+  if (!event.hit) return 'miss';
+  if (event.killed && event.critical) return `HS kill -${event.damage}`;
+  if (event.killed) return `kill -${event.damage}`;
+  if (event.critical) return `headshot -${event.damage}`;
+  return `hit -${event.damage} HP`;
+}
+
+function getBombPressureTimelineText(bombPressure: ExecuteInterruptBombPressure): string | null {
+  if (bombPressure.bombPlanted) return `bomb ${bombPressure.bombTimer} turns`;
+  if (bombPressure.bombDropped) return 'bomb dropped';
+  return null;
+}
+
+function buildExecuteInterruptTimeline({
+  event,
+  map,
+  source,
+  beatLabel,
+  phaseLabel,
+  contactTile,
+  tradeShot,
+  bombPressure,
+}: {
+  event: CombatEvent;
+  map: GameState['map'];
+  source: ExecuteInterrupt['source'];
+  beatLabel: string;
+  phaseLabel: string;
+  contactTile: TileCoord;
+  tradeShot: ExecuteInterruptTradeShot | null;
+  bombPressure: ExecuteInterruptBombPressure;
+}): ExecuteInterruptTimelineItem[] {
+  const tileLabel = map.grid[contactTile.y]?.[contactTile.x]?.label ?? `tile ${contactTile.x},${contactTile.y}`;
+  const moveKind = source === 'planned_execute' ? 'swing' : 'move';
+  const moveTitle = moveKind === 'swing' ? `${event.targetName} swung` : `${event.targetName} moved`;
+  const resultText = getInterruptResultText(event);
+  const tradeText = tradeShot
+    ? `trade ${tradeShot.shooterName} ${tradeShot.hitChance}%/${tradeShot.damage}`
+    : 'no clean trade';
+  const bombText = getBombPressureTimelineText(bombPressure);
+  const decisionDetail = bombText ? `${tradeText}; ${bombText}` : tradeText;
+
+  return [
+    {
+      id: 'crossed-lane',
+      kind: moveKind,
+      timeLabel: beatLabel,
+      phaseLabel,
+      title: moveTitle,
+      detail: `crossed ${tileLabel}`,
+    },
+    {
+      id: 'held-lane',
+      kind: 'hold',
+      timeLabel: beatLabel,
+      phaseLabel: 'HOLD',
+      title: `${event.attackerName} held lane`,
+      detail: `${event.weaponName} ready`,
+    },
+    {
+      id: 'reaction-shot',
+      kind: 'shot',
+      timeLabel: beatLabel,
+      phaseLabel: 'SHOT',
+      title: `${event.weaponName} reaction`,
+      detail: `${event.hitChance}% ${resultText}`,
+    },
+    {
+      id: 'decision',
+      kind: 'decision',
+      timeLabel: beatLabel,
+      phaseLabel: 'CALL',
+      title: tradeShot ? 'trade available' : 'hold decision',
+      detail: decisionDetail,
+    },
+  ];
+}
+
 function createExecuteInterrupt({
   event,
   map,
@@ -156,25 +237,40 @@ function createExecuteInterrupt({
   beatTimeMs: number;
   phaseLabel: string;
 }): ExecuteInterrupt {
+  const beatLabel = formatExecuteTime(beatTimeMs);
+  const contactTile = { ...event.tile };
+  const tradeShot = getBestTradeShot(map, units, round, smokes, event);
+  const bombPressure = {
+    bombPlanted: round.bombPlanted,
+    bombDropped: !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition),
+    bombTimer: round.bombTimer,
+    bombPosition: round.bombPosition ? { ...round.bombPosition } : null,
+    bombCarrierId: round.bombCarrierId,
+  };
+
   return {
     id: `${event.id}:interrupt`,
     createdAt: Date.now(),
     source,
     beatTimeMs,
-    beatLabel: formatExecuteTime(beatTimeMs),
+    beatLabel,
     phaseLabel,
-    contactTile: { ...event.tile },
+    contactTile,
     event,
     shooterId: event.attackerId,
     stoppedUnitId: event.targetId,
-    tradeShot: getBestTradeShot(map, units, round, smokes, event),
-    bombPressure: {
-      bombPlanted: round.bombPlanted,
-      bombDropped: !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition),
-      bombTimer: round.bombTimer,
-      bombPosition: round.bombPosition ? { ...round.bombPosition } : null,
-      bombCarrierId: round.bombCarrierId,
-    },
+    timeline: buildExecuteInterruptTimeline({
+      event,
+      map,
+      source,
+      beatLabel,
+      phaseLabel,
+      contactTile,
+      tradeShot,
+      bombPressure,
+    }),
+    tradeShot,
+    bombPressure,
   };
 }
 

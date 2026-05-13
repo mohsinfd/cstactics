@@ -106,6 +106,17 @@ export interface ExecuteInterruptBombPressure {
   bombCarrierId: number | null;
 }
 
+export type ExecuteInterruptTimelineKind = 'move' | 'swing' | 'hold' | 'shot' | 'decision';
+
+export interface ExecuteInterruptTimelineItem {
+  id: string;
+  kind: ExecuteInterruptTimelineKind;
+  timeLabel: string;
+  phaseLabel: string;
+  title: string;
+  detail: string;
+}
+
 export interface ExecuteInterrupt {
   id: string;
   createdAt: number;
@@ -117,6 +128,7 @@ export interface ExecuteInterrupt {
   event: CombatEvent;
   shooterId: number;
   stoppedUnitId: number;
+  timeline: ExecuteInterruptTimelineItem[];
   tradeShot: ExecuteInterruptTradeShot | null;
   bombPressure: ExecuteInterruptBombPressure;
 }

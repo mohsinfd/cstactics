@@ -86,6 +86,9 @@ verbs that make those nouns matter.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
   immediate trade shot, and bomb pressure until the player responds.
+- Contact Break interrupts now carry a compact four-step timeline that explains
+  the lane cross, held defender, shot result, and trade/bomb call without
+  changing combat resolution.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
 - First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit

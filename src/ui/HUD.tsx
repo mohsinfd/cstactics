@@ -12,7 +12,7 @@
 // ============================================================
 import { useGameStore } from '../game/store';
 import { useEffect, useState } from 'react';
-import type { MapData, TileCoord } from '../game/types';
+import type { ExecuteInterruptTimelineItem, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
@@ -67,6 +67,13 @@ function getCoverStateColor(preview: Pick<ShotPreview, 'coverState' | 'coverLabe
   if (preview.coverLabel === 'full') return '#58ff9a';
   if (preview.coverLabel === 'half') return '#f2c94c';
   return '#aaa';
+}
+
+function getTimelineItemColor(kind: ExecuteInterruptTimelineItem['kind'], shotColor: string): string {
+  if (kind === 'move' || kind === 'swing') return '#58ff9a';
+  if (kind === 'hold') return '#75b9ff';
+  if (kind === 'shot') return shotColor;
+  return '#d8c170';
 }
 
 function formatPenalty(value: number): string {
@@ -180,7 +187,6 @@ function ContactBreakPanel() {
   if (!interrupt) return null;
 
   const event = interrupt.event;
-  const attacker = units.find((unit) => unit.id === event.attackerId);
   const target = units.find((unit) => unit.id === event.targetId);
   const tile = map.grid[interrupt.contactTile.y]?.[interrupt.contactTile.x];
   const tileLabel = tile?.label ?? 'contact tile';
@@ -267,8 +273,78 @@ function ContactBreakPanel() {
       <div style={{ color: '#ddd', fontSize: compact ? 10 : 11, lineHeight: 1.35, fontWeight: 750 }}>
         {target?.name ?? event.targetName} stopped at {tileLabel}
       </div>
-      <div style={{ color: '#8e7d82', fontSize: compact ? 9 : 10, lineHeight: 1.35, marginTop: 3 }}>
-        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired {event.weaponName} from a held angle - {event.hitChance}% - {resultText}
+      <div data-testid="hud-contact-timeline" style={{
+        display: 'grid',
+        gap: compact ? 3 : 4,
+        marginTop: compact ? 5 : 7,
+      }}>
+        {interrupt.timeline.map((item) => {
+          const itemColor = getTimelineItemColor(item.kind, shot.color);
+          return (
+            <div
+              key={item.id}
+              data-testid="hud-contact-timeline-item"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: compact ? '34px minmax(0, 1fr)' : '42px minmax(0, 1fr)',
+                gap: compact ? 5 : 7,
+                alignItems: 'start',
+                paddingTop: compact ? 3 : 4,
+                borderTop: '1px solid rgba(255,255,255,0.055)',
+              }}
+            >
+              <span style={{
+                color: itemColor,
+                fontSize: compact ? 7 : 8,
+                fontWeight: 950,
+                fontFamily: "'Courier New', monospace",
+                lineHeight: 1.4,
+                whiteSpace: 'nowrap',
+              }}>
+                {item.timeLabel}
+              </span>
+              <span style={{ minWidth: 0, display: 'grid', gap: 1 }}>
+                <span style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: compact ? 4 : 6,
+                  minWidth: 0,
+                }}>
+                  <span style={{
+                    color: itemColor,
+                    fontSize: compact ? 7 : 8,
+                    fontWeight: 950,
+                    letterSpacing: compact ? 0.4 : 0.6,
+                    textTransform: 'uppercase',
+                    flex: '0 0 auto',
+                  }}>
+                    {item.phaseLabel}
+                  </span>
+                  <span style={{
+                    color: '#e5e8ee',
+                    fontSize: compact ? 8 : 9,
+                    fontWeight: 850,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {item.title}
+                  </span>
+                </span>
+                <span style={{
+                  color: '#8e7d82',
+                  fontSize: compact ? 8 : 9,
+                  lineHeight: 1.25,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {item.detail}
+                </span>
+              </span>
+            </div>
+          );
+        })}
       </div>
       <div style={{
         display: 'grid',

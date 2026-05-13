@@ -273,6 +273,12 @@ test.describe('human usability regression', () => {
     await queueBananaDrillContact(page);
 
     await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
+    await expect(page.getByTestId('hud-contact-timeline')).toBeVisible();
+    const timelineItemCount = await page.getByTestId('hud-contact-timeline-item').count();
+    expect(timelineItemCount, 'contact break should show the short execute sequence').toBeGreaterThanOrEqual(4);
+    const timelineText = await page.getByTestId('hud-contact-timeline').innerText();
+    expect(timelineText, 'contact timeline should include the shot beat').toContain('SHOT');
+    expect(timelineText, 'contact timeline should include the trade/no-trade call').toMatch(/trade|no clean trade/i);
     await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
 
     const viewport = page.viewportSize();

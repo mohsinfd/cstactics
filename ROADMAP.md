@@ -137,8 +137,11 @@ move, trigger contact, and freeze into a trade decision. See
   identity, board damage numbers show HP loss, tracer/recoil/audio/HUD styling
   differs by weapon class, and contact breaks get a stronger pulse/readout.
   Implemented.
-- Next: expand interrupt presentation into a true multi-event contact timeline
-  without losing tactical readability.
+- First-pass Contact Break timeline: interrupts now show the lane cross, held
+  defender, shot result, and trade/bomb call as compact presentation scaffolding
+  for future multi-event queues. Implemented.
+- Next: generalize Contact Break timeline data into broader multi-event execute
+  queues without rewriting combat math.
 
 ### Milestone C: Utility Timing
 
