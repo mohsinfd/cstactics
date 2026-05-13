@@ -110,7 +110,8 @@ for:
 - Unit selection, AP movement, A* pathing, movement range, and path preview.
 - Plan Execute mode with queued movement, smoke, and flash orders.
 - Run Execute with visible ticked movement and held-angle contact interrupts.
-- Hold Angle, watched-lane overlays, reaction fire, and contact break.
+- Hold Angle, watched-lane overlays, reaction fire, and durable Contact Break
+  decision state with beat, trade-shot, and bomb-pressure context.
 - Direct Shoot action, hit chance, damage, headshot/crit, combat log, and
   kill/casualty feedback.
 - Directional cover readouts: protected, flanked, exposed, and corner cover.
@@ -121,7 +122,7 @@ for:
 - Basic CT auto-response for testing.
 - Procedural feedback audio and first-pass combat VFX.
 - Human usability browser regression across desktop, narrow laptop, and compact
-  HUD viewports.
+  HUD viewports, including Banana Drill contact-freeze coverage.
 
 Read `docs/current-state.md` for the full updated list.
 

@@ -170,41 +170,67 @@ export function HUD() {
 }
 
 function ContactBreakPanel() {
-  const combatLog = useGameStore((s) => s.combatLog);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
-  const event = combatLog[0];
-  if (!event || event.type !== 'reaction_fire') return null;
+  const selectedId = useGameStore((s) => s.selectedUnitId);
+  const selectUnit = useGameStore((s) => s.selectUnit);
+  const compact = useIsCompactViewport();
+  if (!interrupt) return null;
 
+  const event = interrupt.event;
   const attacker = units.find((unit) => unit.id === event.attackerId);
   const target = units.find((unit) => unit.id === event.targetId);
-  const tile = map.grid[event.tile.y]?.[event.tile.x];
+  const tile = map.grid[interrupt.contactTile.y]?.[interrupt.contactTile.x];
   const tileLabel = tile?.label ?? 'contact tile';
+  const trade = interrupt.tradeShot;
+  const bomb = interrupt.bombPressure;
+  const bombText = bomb.bombPlanted
+    ? `Bomb planted: ${bomb.bombTimer} turns`
+    : bomb.bombDropped
+      ? 'Bomb dropped: recover it'
+      : null;
+  const takeTrade = () => {
+    if (!trade) return;
+    if (selectedId !== trade.shooterId) selectUnit(trade.shooterId);
+    window.setTimeout(() => useGameStore.getState().shootUnit(trade.targetId), 0);
+  };
 
   return (
-    <div style={{
+    <div data-testid="hud-contact-break-panel" style={{
       position: 'absolute',
-      top: 184,
+      top: compact ? 118 : 184,
       left: '50%',
       transform: 'translateX(-50%)',
-      width: 'min(360px, calc(100vw - 40px))',
+      width: 'min(390px, calc(100vw - 32px))',
       background: 'rgba(10, 7, 10, 0.94)',
       border: '1px solid rgba(255,78,106,0.45)',
       borderLeft: '3px solid #ff4e6a',
       borderRadius: 6,
       padding: '10px 12px',
-      pointerEvents: 'none',
+      pointerEvents: 'auto',
       boxShadow: '0 10px 28px rgba(0,0,0,0.38)',
     }}>
-      <div style={{
-        color: '#ff6b82',
-        fontSize: 10,
-        fontWeight: 950,
-        letterSpacing: 1.8,
-        textTransform: 'uppercase',
-        marginBottom: 5,
-      }}>
-        Contact Break
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+        <div style={{
+          color: '#ff6b82',
+          fontSize: 10,
+          fontWeight: 950,
+          letterSpacing: 1.8,
+          textTransform: 'uppercase',
+        }}>
+          Contact Break
+        </div>
+        <div style={{
+          marginLeft: 'auto',
+          color: '#d8c170',
+          fontSize: 9,
+          fontWeight: 950,
+          letterSpacing: 0.7,
+          textTransform: 'uppercase',
+        }}>
+          {interrupt.beatLabel} {interrupt.phaseLabel}
+        </div>
       </div>
       <div style={{ color: '#ddd', fontSize: 11, lineHeight: 1.35, fontWeight: 750 }}>
         {target?.name ?? event.targetName} stopped at {tileLabel}
@@ -214,6 +240,62 @@ function ContactBreakPanel() {
       </div>
       <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
+      </div>
+      <div style={{
+        marginTop: 8,
+        paddingTop: 7,
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        display: 'grid',
+        gap: 6,
+      }}>
+        {trade ? (
+          <button
+            type="button"
+            data-testid="hud-contact-trade-shot"
+            onClick={takeTrade}
+            style={{
+              border: '1px solid rgba(216,193,112,0.55)',
+              background: 'rgba(216,193,112,0.16)',
+              color: '#f4e7b4',
+              borderRadius: 4,
+              padding: '7px 8px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: 8,
+              alignItems: 'center',
+              fontSize: 10,
+              fontWeight: 850,
+            }}
+          >
+            <span>
+              Trade: {trade.shooterName} on {trade.targetName}
+            </span>
+            <span style={{ color: '#fff', fontFamily: "'Courier New', monospace" }}>
+              {trade.hitChance}% / {trade.damage}
+            </span>
+            <span style={{
+              gridColumn: '1 / 3',
+              color: getCoverStateColor(trade),
+              fontSize: 8,
+              fontWeight: 800,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+            }}>
+              {getCoverStateLabel(trade)} | HS {trade.critChance}%/{trade.critDamage}
+            </span>
+          </button>
+        ) : (
+          <div data-testid="hud-contact-no-trade" style={{ color: '#756870', fontSize: 9, lineHeight: 1.35 }}>
+            No clean trade is available from current AP, ammo, and line of sight.
+          </div>
+        )}
+        {bombText && (
+          <div style={{ color: '#ffd166', fontSize: 9, fontWeight: 850, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            {bombText}
+          </div>
+        )}
       </div>
     </div>
   );

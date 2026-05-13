@@ -88,6 +88,8 @@ For each sequence, assert:
 - After zoom/pan/reset, no fresh console errors appear.
 - Canvas still receives tile hover/click input after HUD clicks.
 - The player can return to a known state with `Reset camera` and `Banana Drill`.
+- Banana Drill can queue a watched crossing, run execute, and show the Contact
+  Break decision panel without hiding the command bar or trade action.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 

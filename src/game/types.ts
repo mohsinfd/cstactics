@@ -81,6 +81,43 @@ export interface CombatEvent {
   summary: string;
 }
 
+export interface ExecuteInterruptTradeShot {
+  shooterId: number;
+  shooterName: string;
+  targetId: number;
+  targetName: string;
+  hitChance: number;
+  damage: number;
+  critChance: number;
+  critDamage: number;
+  coverLabel: CoverLabel;
+  coverState: CoverState;
+  coverQuality: CoverQuality;
+}
+
+export interface ExecuteInterruptBombPressure {
+  bombPlanted: boolean;
+  bombDropped: boolean;
+  bombTimer: number;
+  bombPosition: TileCoord | null;
+  bombCarrierId: number | null;
+}
+
+export interface ExecuteInterrupt {
+  id: string;
+  createdAt: number;
+  source: 'direct_move' | 'planned_execute';
+  beatTimeMs: number;
+  beatLabel: string;
+  phaseLabel: string;
+  contactTile: TileCoord;
+  event: CombatEvent;
+  shooterId: number;
+  stoppedUnitId: number;
+  tradeShot: ExecuteInterruptTradeShot | null;
+  bombPressure: ExecuteInterruptBombPressure;
+}
+
 export type FeedbackEventType =
   | 'select_unit'
   | 'plan_add'
@@ -315,6 +352,7 @@ export interface GameState {
   smokes: SmokeCloud[];
   flashBursts: FlashBurst[];
   combatLog: CombatEvent[];
+  executeInterrupt: ExecuteInterrupt | null;
   feedbackEvents: FeedbackEvent[];
   aiStatus: AiStatus | null;
 }

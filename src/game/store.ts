@@ -28,6 +28,8 @@ import type {
   HeldAngle,
   InputMode,
   CombatEvent,
+  ExecuteInterrupt,
+  ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
   SmokeCloud,
@@ -41,7 +43,12 @@ import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
-import { getDefaultExecuteAtMs, getPlannedActionExecuteAtMs } from './executeTimeline';
+import {
+  formatExecuteTime,
+  getDefaultExecuteAtMs,
+  getPlannedActionBeat,
+  getPlannedActionExecuteAtMs,
+} from './executeTimeline';
 
 const EXECUTION_STEP_MS = 95;
 const AI_EXECUTION_STEP_MS = 55;
@@ -76,6 +83,98 @@ function appendFeedback(
     },
     ...events,
   ].slice(0, FEEDBACK_LOG_LIMIT);
+}
+
+function getBestTradeShot(
+  map: GameState['map'],
+  units: Unit[],
+  round: RoundState,
+  smokes: SmokeCloud[],
+  event: CombatEvent
+): ExecuteInterruptTradeShot | null {
+  const target = units.find((unit) => unit.id === event.attackerId);
+  if (!target?.alive) return null;
+  if (round.phase === 'setup' && !RULES.setupFiringAllowed) return null;
+
+  const options = units
+    .filter((unit) => (
+      unit.alive &&
+      unit.team === round.activeTeam &&
+      unit.id !== target.id &&
+      unit.ap >= getWeaponShotApCost(unit.weapon) &&
+      unit.ammoInClip > 0
+    ))
+    .map((shooter) => ({
+      shooter,
+      preview: getShotPreview(map, shooter, target, 0, target.position, smokes),
+    }))
+    .filter(({ preview }) => preview.hasLineOfSight && preview.inRange)
+    .sort((a, b) => {
+      const stoppedUnitBonusA = a.shooter.id === event.targetId ? 1000 : 0;
+      const stoppedUnitBonusB = b.shooter.id === event.targetId ? 1000 : 0;
+      return (
+        stoppedUnitBonusB + b.preview.hitChance + b.preview.damage * 0.1 -
+        (stoppedUnitBonusA + a.preview.hitChance + a.preview.damage * 0.1)
+      );
+    });
+
+  const best = options[0];
+  if (!best) return null;
+
+  return {
+    shooterId: best.shooter.id,
+    shooterName: best.shooter.name,
+    targetId: target.id,
+    targetName: target.name,
+    hitChance: best.preview.hitChance,
+    damage: best.preview.damage,
+    critChance: best.preview.critChance,
+    critDamage: best.preview.critDamage,
+    coverLabel: best.preview.coverLabel,
+    coverState: best.preview.coverState,
+    coverQuality: best.preview.coverQuality,
+  };
+}
+
+function createExecuteInterrupt({
+  event,
+  map,
+  units,
+  round,
+  smokes,
+  source,
+  beatTimeMs,
+  phaseLabel,
+}: {
+  event: CombatEvent;
+  map: GameState['map'];
+  units: Unit[];
+  round: RoundState;
+  smokes: SmokeCloud[];
+  source: ExecuteInterrupt['source'];
+  beatTimeMs: number;
+  phaseLabel: string;
+}): ExecuteInterrupt {
+  return {
+    id: `${event.id}:interrupt`,
+    createdAt: Date.now(),
+    source,
+    beatTimeMs,
+    beatLabel: formatExecuteTime(beatTimeMs),
+    phaseLabel,
+    contactTile: { ...event.tile },
+    event,
+    shooterId: event.attackerId,
+    stoppedUnitId: event.targetId,
+    tradeShot: getBestTradeShot(map, units, round, smokes, event),
+    bombPressure: {
+      bombPlanted: round.bombPlanted,
+      bombDropped: !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition),
+      bombTimer: round.bombTimer,
+      bombPosition: round.bombPosition ? { ...round.bombPosition } : null,
+      bombCarrierId: round.bombCarrierId,
+    },
+  };
 }
 
 // Movement range per AP point
@@ -589,6 +688,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     smokes: [],
     flashBursts: [],
     combatLog: [],
+    executeInterrupt: null,
     feedbackEvents: [],
     aiStatus: null,
 
@@ -737,6 +837,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       set({
         isExecuting: true,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -881,6 +982,18 @@ export const useGameStore = create<GameStore>((set, get) => {
       const movement = getMovementForSelection(nextUnits, preferredSelectedUnitId, mapData, nextRound);
       movementTiles = movement.movementTiles;
       walkableTiles = movement.walkableTiles;
+      const executeInterrupt = contactEvent
+        ? createExecuteInterrupt({
+          event: contactEvent,
+          map: mapData,
+          units: nextUnits,
+          round: nextRound,
+          smokes: nextSmokes,
+          source: 'direct_move',
+          beatTimeMs: 0,
+          phaseLabel: 'CONTACT',
+        })
+        : null;
 
       set({
         units: nextUnits,
@@ -899,6 +1012,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         )),
         smokes: nextSmokes,
         combatLog: contactEvent ? [contactEvent, ...state.combatLog].slice(0, 8) : state.combatLog,
+        executeInterrupt,
         feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
           team: unit.team,
           unitId: unit.id,
@@ -981,6 +1095,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles,
         walkableTiles,
@@ -1010,6 +1125,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         set({
           plannedActions: plan.plannedActions,
           selectedUnitId: plan.selectedUnitId,
+          executeInterrupt: null,
           movementTiles: plan.movementTiles,
           walkableTiles: plan.walkableTiles,
           hoveredTile: null,
@@ -1078,6 +1194,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1103,6 +1220,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         set({
           plannedActions: plan.plannedActions,
           selectedUnitId: plan.selectedUnitId,
+          executeInterrupt: null,
           movementTiles: plan.movementTiles,
           walkableTiles: plan.walkableTiles,
           hoveredTile: null,
@@ -1193,6 +1311,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1262,6 +1381,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1317,6 +1437,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1377,6 +1498,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1422,6 +1544,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: unit.id,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -1494,6 +1617,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
         hoveredTile: null,
@@ -1565,6 +1689,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       set({
         plannedActions,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
         hoveredTile: null,
@@ -1595,6 +1720,8 @@ export const useGameStore = create<GameStore>((set, get) => {
       let nextFlashBursts = state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000);
       let contactEvent: CombatEvent | null = null;
       let consumedHeldAngleId: string | null = null;
+      let contactBeatTimeMs = 0;
+      let contactPhaseLabel = 'CONTACT';
       const runtimes: Array<{
         action: PlannedAction;
         pathToTravel: TileCoord[];
@@ -1608,6 +1735,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       set({
         planningMode: false,
         isExecuting: true,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -1800,6 +1928,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           plannedActions: [],
           pathPreview: [],
           isExecuting: false,
+          executeInterrupt: null,
           inputMode: 'move',
           smokes: nextSmokes,
           flashBursts: nextFlashBursts,
@@ -1889,6 +2018,9 @@ export const useGameStore = create<GameStore>((set, get) => {
           if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
             contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, nextSmokes);
             consumedHeldAngleId = runtime.crossedAngle.id;
+            const beat = getPlannedActionBeat(runtime.action);
+            contactBeatTimeMs = beat.timeMs;
+            contactPhaseLabel = beat.phaseLabel;
             const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (targetIdx !== -1 && contactEvent.hit) {
               const newHp = Math.max(0, nextUnits[targetIdx].hp - contactEvent.damage);
@@ -1960,6 +2092,18 @@ export const useGameStore = create<GameStore>((set, get) => {
       const combatLog = contactEvent
         ? [contactEvent, ...state.combatLog].slice(0, 8)
         : state.combatLog;
+      const executeInterrupt = contactEvent
+        ? createExecuteInterrupt({
+          event: contactEvent,
+          map: mapData,
+          units: nextUnits,
+          round: nextRound,
+          smokes: nextSmokes,
+          source: 'planned_execute',
+          beatTimeMs: contactBeatTimeMs,
+          phaseLabel: contactPhaseLabel,
+        })
+        : null;
 
       set({
         units: nextUnits,
@@ -1979,6 +2123,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         flashBursts: nextFlashBursts,
         combatLog,
+        executeInterrupt,
         feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
           team: round.activeTeam,
           intensity: contactEvent ? 1.2 : 1,
@@ -2046,6 +2191,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles,
         walkableTiles,
@@ -2082,6 +2228,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: advanced.units,
         round: advanced.round,
         selectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         walkableTiles,
         movementTiles,
@@ -2112,6 +2259,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       set({
         isExecuting: true,
+        executeInterrupt: null,
         aiStatus: { team: 'CT', message: 'CT reading the map' },
         selectedUnitId: null,
         hoveredTile: null,
@@ -2310,6 +2458,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: advanced.round,
         selectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -2369,6 +2518,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: [],
         flashBursts: [],
         combatLog: [],
+        executeInterrupt: null,
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2417,6 +2567,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: [],
         flashBursts: [],
         combatLog: [],
+        executeInterrupt: null,
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2494,9 +2645,20 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: [],
         flashBursts: [],
         combatLog: [],
+        executeInterrupt: null,
         feedbackEvents: [],
         aiStatus: null,
       });
     },
   };
 });
+
+declare global {
+  interface Window {
+    __CS_TACTICS_STORE__?: typeof useGameStore;
+  }
+}
+
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  window.__CS_TACTICS_STORE__ = useGameStore;
+}

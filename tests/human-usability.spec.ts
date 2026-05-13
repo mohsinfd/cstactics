@@ -30,6 +30,7 @@ const CLICK_TARGET_IDS = new Set([
   'hud-command-end-side',
   'hud-command-end-side-secondary',
   'hud-command-run-execute',
+  'hud-contact-trade-shot',
   'hud-action-move',
   'hud-action-shoot',
   'hud-action-hold-angle',
@@ -83,9 +84,45 @@ async function expectHudReachable(page: Page, ids: readonly string[]) {
 }
 
 async function trialClickIfEnabled(locator: Locator) {
+  if (await locator.count() === 0) return;
   if (await locator.isEnabled()) {
     await locator.click({ trial: true, timeout: 5_000 });
   }
+}
+
+async function queueBananaDrillContact(page: Page) {
+  const result = await page.evaluate(async () => {
+    const store = window.__CS_TACTICS_STORE__;
+    if (!store) return { ok: false, reason: 'debug store unavailable' };
+
+    store.getState().startContactDrill();
+
+    const targets = [
+      { x: 43, y: 66 },
+      { x: 43, y: 65 },
+      { x: 43, y: 64 },
+      { x: 43, y: 63 },
+      { x: 43, y: 62 },
+    ];
+
+    for (const target of targets) {
+      store.getState().queueMove(target);
+      if (store.getState().plannedActions.length > 0) break;
+    }
+
+    if (store.getState().plannedActions.length === 0) {
+      return { ok: false, reason: 'no planned movement queued' };
+    }
+
+    await store.getState().commitPlannedActions();
+    const interrupt = store.getState().executeInterrupt;
+    return {
+      ok: Boolean(interrupt),
+      reason: interrupt ? '' : 'execute completed without contact interrupt',
+    };
+  });
+
+  expect(result.ok, result.reason).toBe(true);
 }
 
 test.describe('human usability regression', () => {
@@ -125,6 +162,28 @@ test.describe('human usability regression', () => {
     await trialClickIfEnabled(page.getByTestId('hud-action-shoot'));
     await trialClickIfEnabled(page.getByTestId('hud-action-hold-angle'));
     await trialClickIfEnabled(page.getByTestId('hud-action-done'));
+
+    await expectHudReachable(page, BASE_HUD_IDS);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('Banana drill contact freeze explains the decision and keeps HUD actions reachable', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+    await page.goto('/');
+    await queueBananaDrillContact(page);
+
+    await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
+    await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
+
+    const tradeShot = page.getByTestId('hud-contact-trade-shot');
+    if (await tradeShot.count() > 0) {
+      await tradeShot.click({ trial: true });
+    }
 
     await expectHudReachable(page, BASE_HUD_IDS);
     expect(consoleErrors).toEqual([]);

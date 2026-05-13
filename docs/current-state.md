@@ -78,7 +78,9 @@ verbs that make those nouns matter.
 - First-pass kill feed clarity: combat log, contact break copy, shot marker, and
   tracer labels distinguish eliminations from normal hits.
 - Dead units now leave a small team/role casualty marker on the tactical board.
-- Contact Break panel for reaction-fire interrupts.
+- Durable Contact Break decision panel for reaction-fire interrupts. The store
+  now records the execute beat, contact tile, shooter/stopped unit, best
+  immediate trade shot, and bomb pressure until the player responds.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
 - First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit
@@ -86,7 +88,8 @@ verbs that make those nouns matter.
 - Procedural shot/contact audio cues play for direct fire, reaction fire, hits,
   misses, and eliminations.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
-  the immediate trade decision.
+  the immediate trade decision, while the Contact Break panel keeps showing the
+  trade/bomb context.
 - Banana Drill prototype scenario for testing the Banana hold/crossing loop.
 - Pointer hover updates are gated by tile to reduce redundant path recalculation
   during dragging.
@@ -99,6 +102,8 @@ verbs that make those nouns matter.
   human-click browser usability checks.
 - Automated browser usability regression runs through `npm run test:browser`
   across desktop, narrow laptop, and compact HUD viewports.
+- Browser regression now includes a deterministic Banana Drill contact-freeze
+  flow so the decision panel and trade action stay reachable after execute.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
 - Main-thread orchestration, specialist-agent ownership, and done-definition
@@ -165,7 +170,7 @@ verbs that make those nouns matter.
 - Full shot preview breakdown before commit.
 - Richer kill feed beyond first-pass headshot and elimination markers.
 - Production-grade Hold Angle / overwatch lifecycle.
-- Full freeze-on-contact state machine and cinematic interrupt timeline.
+- Production-grade cinematic interrupt timeline and multi-event contact queue.
 - Production-grade cover fidelity for complex geometry, peeking, and multi-tile
   objects.
 - Molly, HE, and production-grade utility timing.
@@ -174,7 +179,8 @@ verbs that make those nouns matter.
 - Save/hunt outcomes.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
-- Real synchronized execute timeline.
+- Editable synchronized execute timeline beyond the current fixed utility/swing
+  beat contract.
 
 ## Immediate Focus
 
@@ -187,8 +193,8 @@ Finish hardening the first contact vertical slice before broadening the game:
 5. Movement resolves in short ticks and stops when contact occurs.
 6. The CT sees the crossing and reaction fire triggers.
 7. Hit chance, cover state, and damage resolve with visible/audio feedback.
-8. The game surfaces a contact break so the player can make the trade/continue
-   call.
+8. The game surfaces a durable contact break so the player can make the
+   trade/continue call with beat, cover, trade, and bomb context visible.
 
 This is the first moment where the game can feel like Counter-Strike slowed into
 XCOM-style decisions.

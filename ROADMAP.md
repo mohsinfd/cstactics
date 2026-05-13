@@ -110,6 +110,11 @@ move, trigger contact, and freeze into a trade decision. See
   matching queue rows and map markers. Implemented.
 - Planned actions now carry an `executeAtMs` timing contract, and the resolver
   waits for the swing beat before movement starts. Implemented as a first pass.
+- Durable execute-interrupt decision state now records the contact beat, tile,
+  shooter, stopped unit, best trade shot, and bomb pressure for the Contact
+  Break panel. Implemented as a first pass.
+- Browser regression now exercises Banana Drill -> queued crossing -> Run
+  Execute -> Contact Break across desktop, narrow laptop, and compact HUD.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -126,9 +131,9 @@ move, trigger contact, and freeze into a trade decision. See
   testing the one-player loop.
 - First-pass hit/death presentation VFX: shooter recoil, muzzle flash, target hit
   shock, and casualty death pulse. Implemented.
-- Next: replace fixed execute beats with editable timeline offsets, then add a
-  durable execute-interrupt decision state and deepen damage numbers/per-weapon
-  shot feel.
+- Next: replace fixed execute beats with editable timeline offsets, deepen
+  damage numbers/per-weapon shot feel, and make the interrupt presentation more
+  cinematic without losing tactical readability.
 
 ### Milestone C: Utility Timing
 
