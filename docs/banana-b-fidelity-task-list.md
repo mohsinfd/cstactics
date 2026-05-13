@@ -1,5 +1,21 @@
 # Banana / B Fidelity Task List
 
+## Specialist Memory Contract
+
+A future map-fidelity specialist should start here after reading `CLAUDE.md`,
+`AGENTS.md`, and `docs/current-state.md`.
+
+When improving Inferno:
+
+- Banana/B cover truth is gameplay-critical. Utility, LOS, route timing, and
+  contact fairness depend on these tiles.
+- Never resize or move cover without running `npm run map:validate`.
+- Preserve route order: T reaches car, then logs, then sandbags/top Banana, then
+  B site.
+- Update this file after every map slice with exact coordinates, route metrics,
+  what became better, and what remains suspicious.
+- Prefer tiny validated mask/cover edits over broad unverified rewrites.
+
 ## Purpose
 
 Banana and B site geometry must become a reliable gameplay contract before

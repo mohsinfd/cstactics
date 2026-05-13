@@ -1,5 +1,23 @@
 # Movement Smoothing Roadmap
 
+## Specialist Memory Contract
+
+A future movement-feel specialist should start here after reading `CLAUDE.md`,
+`AGENTS.md`, and `docs/current-state.md`.
+
+When improving movement/camera/input:
+
+- Preserve tactical truth. Game state remains tile-based; renderer motion is
+  presentation.
+- Optimize for human hands: quick mouse drags, trackpad pans, pinch/zoom,
+  high-zoom vertical movement, and finding HUD controls after camera abuse.
+- Keep timing helpers centralized in `src/renderer/movementEasing.ts`.
+- Avoid broad store rewrites unless the orchestrator explicitly scopes them.
+- After every movement/input slice, update this file with the decision, test
+  result, and remaining friction.
+- Run `npm run build`, `npm run lint`, and `npm run test:browser` after
+  integration.
+
 ## Scope
 
 This pass is additive only. `src/renderer/UnitRenderer.tsx` is the likely overlap

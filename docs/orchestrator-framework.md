@@ -18,6 +18,28 @@ slices without fragmenting the codebase.
 4. The orchestrator reviews every agent result before integration.
 5. A milestone is not complete until it is tested, documented, committed, and
    pushed.
+6. Durable specialist learning is written back into repo docs so the next agent
+   starts with better context than the previous one.
+
+## Cold-Start Entry Points
+
+Future orchestrator threads and specialist agents should begin with the root
+handoff files:
+
+- `CLAUDE.md`: full current agent brief and product/process context.
+- `AGENTS.md`: compact cross-agent entry point.
+- `HANDOFF_PROMPT.md`: copy-paste prompt for new orchestrator threads.
+
+Then read:
+
+- `docs/current-state.md`
+- `ROADMAP.md`
+- the specialist memory doc that matches the task.
+
+Current active handoff:
+
+- Branch: `codex/cs2-xcom-roadmap-slice`
+- Draft PR: https://github.com/mohsinfd/cstactics/pull/1
 
 ## Agent Types
 
@@ -83,6 +105,40 @@ Rules:
 7. Spawn a read-only tester agent for major UX/gameplay milestones.
 8. Commit and push a small named milestone.
 9. Update the user with what shipped, what passed, and what is next.
+10. If the milestone changes handoff context, update `CLAUDE.md`,
+    `AGENTS.md`, `HANDOFF_PROMPT.md`, or the draft PR body.
+
+## Specialist Memory Loop
+
+Specialists should improve the repo's memory, not just the code.
+
+When a specialist finishes, the orchestrator should capture durable learnings in
+the matching file:
+
+- Map/Inferno truth:
+  `docs/banana-b-fidelity-task-list.md`
+- Player/unit visuals:
+  `docs/player-visualization-roadmap.md`
+- Movement/camera/input feel:
+  `docs/movement-smoothing-roadmap.md`
+- Human usability:
+  `docs/human-usability-regression.md`
+- Product status:
+  `docs/current-state.md`
+- Process/handoff:
+  `docs/orchestrator-framework.md`, `CLAUDE.md`, `AGENTS.md`,
+  `HANDOFF_PROMPT.md`
+
+Examples of durable learning:
+
+- exact coordinates that made Banana route order plausible;
+- a visual design rule for making CT/T readable at tactical zoom;
+- a trackpad or mouse interaction bug found by human-style testing;
+- a failed approach that should not be repeated;
+- route timing or cover-adjacency numbers that should remain stable.
+
+Do not write every chat thought into docs. Capture only lessons that should
+change how the next agent acts.
 
 ## Write-Set Rules
 
@@ -114,6 +170,8 @@ Required checks:
 Focus:
 - T/CT identity, role silhouettes, weapon readability, casualty/readability
   states, hit feedback.
+- Maintain and improve `docs/player-visualization-roadmap.md` after every visual
+  slice so a future visual designer agent inherits the latest decisions.
 
 Required checks:
 - `npm run build`

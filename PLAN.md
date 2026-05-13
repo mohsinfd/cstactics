@@ -1,5 +1,11 @@
 # CS2 Tactics: Web Edition — Implementation Plan
 
+> Historical note: this was the early web-edition implementation plan. It still
+> has useful product/architecture ideas, but it is not the current source of
+> truth for agent handoff. Start with `CLAUDE.md`, `AGENTS.md`,
+> `docs/current-state.md`, `ROADMAP.md`, and `docs/orchestrator-framework.md`.
+> The app now lives at the repo root, not `cs2-web/`.
+
 ## What We're Building
 
 A 2.5D isometric tactical game in the browser. Think Age of Empires 2's camera angle applied to CS2's competitive 5v5.  The game board is Inferno (and later any CS2 map), rendered as isometric tiles with walls that have real height, cover objects you can read at a glance, and unit figures that look like CS operators.

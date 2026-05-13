@@ -1,5 +1,24 @@
 # Player Visualization Roadmap
 
+## Specialist Memory Contract
+
+A future visual designer agent should start here after reading `CLAUDE.md`,
+`AGENTS.md`, and `docs/current-state.md`.
+
+When improving player visuals:
+
+- Preserve team readability before role flair. CT and T should be recognizable
+  at tactical zoom before labels are read.
+- Preserve role readability before decorative detail. AWPer, Entry, IGL,
+  Support, and Lurker should have distinct silhouettes, weapons, and base marks.
+- Keep visual edits scoped. `src/renderer/UnitRenderer.tsx` is high-conflict;
+  prefer extending `src/renderer/unitVisualIdentity.ts` and small renderer
+  patches.
+- After every visual slice, update this file with the decision, what worked,
+  what failed, and the next visual target.
+- Run `npm run build`, `npm run lint`, and a browser screenshot/human usability
+  pass after integration.
+
 ## Scope
 
 This roadmap began as a renderer audit plus an additive identity artifact. The

@@ -1,29 +1,72 @@
-# Handoff Prompt for Claude Code
+# Handoff Prompt
 
-Copy-paste this into Claude Code when you start:
+Use this when starting a new orchestrator thread or another coding agent:
 
 ---
 
-I'm building CS2 Tactics, a turn-based tactical shooter browser game in React Three Fiber. The repo is cloned from https://github.com/mohsinfd/cstactics.git. The main app is in `cs2-web/`.
+You are continuing CS2 Tactics, a browser-based turn-based tactical game that
+should feel like Counter-Strike slowed down into readable XCOM-style decisions.
 
-Read `cs2-web/CLAUDE.md` for full project context, then read `cs2-web/MAP_REBUILD_GUIDE.md`.
+Repo: https://github.com/mohsinfd/cstactics
 
-**Immediate priority: The Inferno map layout is broken.** I've tried hand-coding tile coordinates 3 times and it never matches real CS2 Inferno. The corridors, proportions, and positions are all wrong.
+Active branch: `codex/cs2-xcom-roadmap-slice`
 
-**What I want you to do:**
+Draft PR for handoff: https://github.com/mohsinfd/cstactics/pull/1
 
-1. Find or download a top-down CS2 Inferno radar overview image (the official `de_inferno_radar` from game files, or any clean top-down callout map PNG).
+Local workspace may already be running at `http://127.0.0.1:5174/`.
 
-2. Write a Node script that reads that image and generates accurate tile data for a 90x100 grid by tracing walkable pixels (light = floor, dark = wall). Use the de_inferno.txt radar config values (pos_x: -2087, pos_y: 3870, scale: 4.9) for coordinate mapping.
+First, read:
 
-3. Replace the ZONES array in `src/game/maps/inferno.ts` with the generated data. Keep the same interface (CalloutZone with name, xMin/yMin/xMax/yMax, tileType). Overlay callout names using known positions.
+1. `CLAUDE.md`
+2. `AGENTS.md`
+3. `docs/current-state.md`
+4. `ROADMAP.md`
+5. `docs/orchestrator-framework.md`
 
-4. Verify by running `npm run dev` and checking that the rendered isometric map silhouette matches real Inferno: T Spawn bottom area, Banana curving left to B Site (top-left), Mid through center, Apartments on right to A Site (right side), CT Spawn top-right.
+Then check:
 
-5. After the map is fixed, the camera in `IsometricScene.tsx` should show A-site on the LEFT and B-site on the RIGHT (CT's perspective). Adjust if needed.
+```powershell
+git status --short
+git log --oneline -8
+```
 
-There's a reference 3D isometric image of Inferno at `cs2-web/VGp3Yed.png` showing the correct structure.
+You are the main orchestrator unless explicitly assigned as a specialist. Keep
+the project moving through small milestones. Use focused agents for bounded
+subtasks, but integrate, test, commit, push, and update the PR from the
+orchestrator thread.
 
-After the map is working, the next priorities are: combat system (shooting/damage), bomb plant/defuse, round win conditions, then economy and buy phase.
+Current product thesis:
+
+- The game should be a polished CS2/XCOM amalgamation.
+- Map recognition comes first: a CS player should instantly recognize Inferno.
+- The core gameplay soul is angle ownership, utility timing, trades, bomb
+  pressure, and synchronized executes/retakes.
+- Do not build generic XCOM with CS labels.
+
+Current labels:
+
+- Plan Execute
+- Run Execute
+- Banana Drill
+- End Turn
+
+Current Banana route sanity from `npm run map:validate`:
+
+- `T_to_Banana_Car`: 46
+- `T_to_Banana_Logs`: 63
+- `T_to_Banana_Sandbags`: 67
+- `T_to_B`: 80
+- `routeSanityWarnings`: 0
+
+Next likely work:
+
+- Continue Banana/B fidelity: lower/mid Banana mask, B-entry, coffins, oranges,
+  construction, and cover truth.
+- Continue player visual design through `docs/player-visualization-roadmap.md`.
+- Continue movement/camera smoothness through `docs/movement-smoothing-roadmap.md`.
+- After major UX/gameplay changes, run `npm run test:browser`.
+
+Important: durable learning must be written back to the matching memory doc so
+future specialist agents start better than the previous one.
 
 ---

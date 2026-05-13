@@ -1,103 +1,217 @@
-# CS2 Tactics — Browser Game (React Three Fiber)
+# CS2 Tactics Agent Brief
 
-## What This Is
-A round-based tactical shooter simulation inspired by CS2, rendered as a 2.5D isometric browser game. NOT an XCOM mod (originally planned as one, pivoted to standalone web game).
+## Cold-Start Protocol
+
+If you are Claude Code, Codex, or any other coding agent starting cold, do this
+before changing files:
+
+1. Read this file completely.
+2. Read `docs/current-state.md`.
+3. Read `ROADMAP.md`.
+4. Read `docs/orchestrator-framework.md`.
+5. For the active slice, read the matching specialist memory doc:
+   - Map and Inferno fidelity: `docs/banana-b-fidelity-task-list.md`
+   - Player/unit visuals: `docs/player-visualization-roadmap.md`
+   - Movement/camera/input feel: `docs/movement-smoothing-roadmap.md`
+   - Human testing: `docs/human-usability-regression.md`
+6. Check `git status --short` and protect any existing user/agent changes.
+7. Continue from the latest pushed branch/PR context, not from old assumptions.
+
+Current active roadmap branch:
+
+- Branch: `codex/cs2-xcom-roadmap-slice`
+- Draft PR: https://github.com/mohsinfd/cstactics/pull/1
+- Local dev URL usually used for testing: `http://127.0.0.1:5174/`
+
+## Product North Star
+
+CS2 Tactics is a browser-based turn-based tactical game that should feel like
+Counter-Strike slowed down into readable, XCOM-style decisions.
+
+It is not "XCOM with CS skins." The soul is CS timing:
+
+- map recognition;
+- angle ownership;
+- utility timing;
+- trades;
+- bomb pressure;
+- role identity;
+- synchronized executes/retakes that resolve in short readable beats.
+
+The first five seconds matter. A CS player should look at the board and say:
+"That is Inferno." Indie-looking is acceptable; vague, rough, or toy-like is not.
+
+## Orchestrator Model
+
+The preferred workflow is one main orchestrator thread plus focused specialist
+agents.
+
+The orchestrator owns:
+
+- product direction and roadmap truth;
+- task decomposition into small milestones;
+- branch hygiene, integration, commits, pushes, and PR updates;
+- deciding which specialist agents run in parallel;
+- reviewing specialist output before integrating it;
+- running final checks before each pushed milestone.
+
+Specialists should be used for bounded work only:
+
+- Map Fidelity specialist
+- Player Visualization / Visual Design specialist
+- Movement Feel specialist
+- Human Usability tester
+- Gameplay Systems specialist
+- Audio/VFX specialist
+
+Every specialist prompt must say:
+
+- "You are not alone in the codebase."
+- Do not revert or overwrite others' edits.
+- Owned write set.
+- Files/systems to avoid.
+- Expected final output: findings, files changed, tests run, next integration
+  risk.
+
+After every major feature or UX-facing slice, spawn or run a read-only tester
+pass using `docs/human-usability-regression.md`.
+
+## Living Memory Rule
+
+Do not let specialist learning disappear into chat history.
+
+When a specialist learns something durable, update the relevant memory doc in
+the same milestone:
+
+- Map geometry, route timings, cover truth:
+  `docs/banana-b-fidelity-task-list.md`
+- Unit silhouettes, role readability, sprite/model direction:
+  `docs/player-visualization-roadmap.md`
+- Movement interpolation, camera, trackpad/mouse quirks:
+  `docs/movement-smoothing-roadmap.md`
+- Testing sequences, human friction, HUD reachability:
+  `docs/human-usability-regression.md`
+- Broad project truth:
+  `docs/current-state.md`
+- Orchestrator process:
+  `docs/orchestrator-framework.md`
+
+This is how future agents avoid cold start and how visual/gameplay context keeps
+improving over time.
+
+## Current Implementation Snapshot
+
+The repo is no longer just a movement demo. It already has first-pass systems
+for:
+
+- Inferno-inspired map data and radar-derived walkable mask.
+- Banana/B cover validation and route-order guardrails.
+- Angled orthographic tactical camera.
+- Unit selection, AP movement, A* pathing, movement range, and path preview.
+- Plan Execute mode with queued movement, smoke, and flash orders.
+- Run Execute with visible ticked movement and held-angle contact interrupts.
+- Hold Angle, watched-lane overlays, reaction fire, and contact break.
+- Direct Shoot action, hit chance, damage, headshot/crit, combat log, and
+  kill/casualty feedback.
+- Directional cover readouts: protected, flanked, exposed, and corner cover.
+- First-pass smoke and flash utility.
+- Bomb plant, defuse, dropped bomb, pickup, detonation/defuse/time/elimination
+  round outcomes, and score progression.
+- Ammo, reload, weapon AP shot costs, and role-aware loadouts.
+- Basic CT auto-response for testing.
+- Procedural feedback audio and first-pass combat VFX.
+- Human usability browser regression across desktop, narrow laptop, and compact
+  HUD viewports.
+
+Read `docs/current-state.md` for the full updated list.
+
+## Latest Critical Map Truth
+
+Banana/B is a priority because utility, LOS, and gameplay fairness depend on it.
+
+Recent validation route sanity:
+
+- `T_to_Banana_Car`: 46
+- `T_to_Banana_Logs`: 63
+- `T_to_Banana_Sandbags`: 67
+- `T_to_B`: 80
+- `coverPlacementWarnings`: 0
+- `coverAdjacencyWarnings`: 0
+- `routeSanityWarnings`: 0
+
+Important recent fix:
+
+- Enlarging Banana Car accidentally sealed lower Banana.
+- The validation script exposed it.
+- A single walkable-mask tile at `(42,51)` restored the intended route order.
+
+Do not edit Inferno cover/mask casually. Run `npm run map:validate` after any
+map or cover change.
 
 ## Tech Stack
-- **React + TypeScript + Vite** (localhost:5173)
-- **React Three Fiber** (R3F) for 3D rendering
-- **@react-three/drei** for helpers (Text, OrthographicCamera, MapControls)
-- **Zustand** for state management
-- **Three.js** InstancedMesh for performant tile rendering
-- **tsconfig**: `verbatimModuleSyntax` is ON — use `import type` for type-only imports
 
-## Project Structure
-```
-src/
-  game/
-    types.ts           — All interfaces (Unit, Tile, MapData, GameState, etc.)
-    store.ts           — Zustand store: movement, turn system, AP, selection
-    pathfinding.ts     — A* pathfinding + BFS flood fill for walkable range
-    maps/
-      inferno.ts       — MAP DATA: zones, cover, spawns, bombsites (NEEDS REBUILD)
-    config/
-      rules.ts         — Game rules (AP, phases, bomb timer, cover values)
-      roles.ts         — 5 roles: AWPer, Entry, IGL, Support, Lurker
-      weapons.ts       — All weapon stats (AK, M4, AWP, SMGs, pistols, knife)
-      economy.ts       — Economy rules
-    systems/           — (placeholder for combat, abilities)
-  renderer/
-    IsometricScene.tsx — Canvas, orthographic camera, lighting, fog
-    MapRenderer.tsx    — Floor tiles, walls, cover, bombsite markers, callout labels,
-                         walkable highlights, path preview, interactive click plane
-    UnitRenderer.tsx   — 3D soldier models with role distinction, selection ring,
-                         AP dots, HP bar, team colors (CT navy / T olive)
-    effects/           — (placeholder for visual effects)
-  ui/
-    HUD.tsx            — Top bar (scores), team roster, selected unit panel,
-                         end turn button, phase announcement, tile info tooltip
-  styles/
-    global.css         — Dark theme, Inter + JetBrains Mono fonts
-```
+- React + TypeScript + Vite
+- React Three Fiber and Three.js
+- Zustand for game state
+- Playwright for browser usability regression
+- `tsconfig` uses `verbatimModuleSyntax`; use `import type` for type-only
+  imports.
 
-## Game Rules (from rules.ts)
-- 2 AP per unit per turn
-- Setup phase: turns 1-2, sprint bonus +12 tiles, no firing
-- Combat phase: turn 3+, standard rules
-- Turn order: T acts → CT acts → next turn
-- Bomb: 2 AP to plant, 8 turn timer, 15-tile blast radius
-- Win: eliminate all enemies OR bomb detonates/defuses OR time expires
-- MR12 format (first to 13, side swap at 12)
+Useful commands:
 
-## 5 Player Roles
-| Role    | Pro     | Mob | Aim | Ability                                    |
-|---------|---------|-----|-----|--------------------------------------------|
-| AWPer   | m0NESY  | 18  | 75  | FlickShot: move + shoot with +40% Aim      |
-| Entry   | donk    | 16  | 80  | SprayTransfer: kill triggers free shot      |
-| IGL     | Karrigan| 14  | 65  | ExecuteCall: +1 AP to nearby allies         |
-| Support | Aleksib | 15  | 70  | PopFlash: blind enemies, boost ally aim     |
-| Lurker  | ropz    | 17  | 78  | GhostRotate: silent move, bypass overwatch  |
+- `npm run dev -- --host 127.0.0.1 --port 5174`
+- `npm run build`
+- `npm run lint`
+- `npm run map:validate`
+- `npm run test:browser`
 
-## Map: Inferno
-- Grid: 90 wide x 100 tall, 1 tile = 1.5m
-- THE MAP TILE DATA IS WRONG. See MAP_REBUILD_GUIDE.md for the fix approach.
-- Reference image: VGp3Yed.png in this folder
+## Key Files
 
-## What Works
-- Tile rendering with InstancedMesh (floor, walls, cover objects)
-- Unit rendering with role-specific 3D models and team colors
-- Click-to-select units (via InteractiveFloor tile detection)
-- AP-based movement with A* pathfinding and BFS flood fill
-- Walkable range highlight and path preview on hover
-- Turn system (T → CT alternation, turn counter, phase transitions)
-- End Turn button, phase announcements
-- HUD with scores, roster, selected unit panel, tile info tooltip
-- Callout labels floating above map zones
-- Bombsite markers with plant zone indicators
+- `src/game/store.ts`: game state, movement, actions, execute, bomb, AI.
+- `src/game/combat.ts`: shot preview/resolution and cover math.
+- `src/game/los.ts`: line of sight.
+- `src/game/maps/inferno.ts`: cover, zones, map assembly.
+- `src/game/maps/infernoWalkable.ts`: walkable mask.
+- `src/renderer/IsometricScene.tsx`: camera, controls, lighting.
+- `src/renderer/MapRenderer.tsx`: map, cover props, overlays, input plane.
+- `src/renderer/UnitRenderer.tsx`: unit miniatures, sprites, combat VFX.
+- `src/renderer/unitVisualIdentity.ts`: shared team/role visual identity.
+- `src/renderer/movementEasing.ts`: movement timing/easing helpers.
+- `src/ui/HUD.tsx`: command bar, roster, selected unit panel, objective panels.
+- `scripts/validate-map.mjs`: map connectivity, routes, cover validation.
+- `tests/human-usability.spec.ts`: mouse/trackpad-style HUD/camera regression.
 
-## What Does NOT Work / Needs Fixing
-1. **MAP LAYOUT IS WRONG** — the tile coordinates in inferno.ts do not match real CS2 Inferno. Multiple attempts to hand-code coordinates have failed. See MAP_REBUILD_GUIDE.md for the recommended automated approach.
-2. **Camera orientation** — needs verification after map rebuild (A-site should appear LEFT, B-site RIGHT from CT perspective)
-3. **Combat system** — not implemented (shooting, damage, abilities)
-4. **Buy phase** — not implemented
-5. **Economy** — not implemented beyond initial $800
-6. **Abilities** — not implemented (FlickShot, SprayTransfer, etc.)
-7. **Utility items** — not implemented (smoke, flash, molotov)
-8. **Round win conditions** — not implemented (elimination, bomb, timer)
-9. **Player models could be better** — current box-based models work but lack polish
+## Current Player-Facing Labels
 
-## Forbidden Patterns
-- Do NOT use XCOM "Concealment" or "Pod" mechanics
-- Do NOT make cover destructible
-- Do NOT use procedural map generation (Inferno is a static map)
-- Do NOT give any role more than 100 HP
-- Do NOT use 8-digit hex colors in Three.js (e.g. `#aaaaaa55` — use `fillOpacity` instead)
+Use these terms consistently:
 
-## Development Priority
-1. Fix the map (see MAP_REBUILD_GUIDE.md)
-2. Verify camera + unit selection work with correct map
-3. Implement combat (shooting with aim calculation, damage, death)
-4. Implement bomb plant/defuse
-5. Implement round win conditions
-6. Implement economy + buy phase
-7. Implement abilities
+- `Plan Execute`: queue orders before simultaneous resolution.
+- `Run Execute`: resolve queued orders.
+- `Banana Drill`: prepared first-contact Banana scenario.
+- `End Turn`: pass control to the other side.
+
+Avoid reverting to old labels like `Plan Moves`, `Contact Drill`, or `End Side`
+unless there is a deliberate UX reason.
+
+## Working Rules
+
+- Keep changes small and shippable.
+- Prefer existing patterns over new architecture.
+- Do not make unrelated refactors.
+- Use `apply_patch` or normal editor-style changes; do not rewrite files through
+  shell hacks.
+- Protect dirty worktree changes you did not make.
+- For renderer/HUD/input changes, run `npm run test:browser`.
+- For map/cover/LOS changes, run `npm run map:validate`.
+- For most code changes, run `npm run build` and `npm run lint`.
+- Commit and push clean milestones to `codex/cs2-xcom-roadmap-slice`.
+- Update the draft PR when a milestone meaningfully changes handoff context.
+
+## Forbidden Product Drift
+
+- Do not add XCOM concealment/pod mechanics.
+- Do not make cover destructible.
+- Do not use procedural map generation for Inferno gameplay.
+- Do not let roles exceed 100 HP.
+- Do not make this generic squad tactics; CS timing and map knowledge must stay
+  central.
