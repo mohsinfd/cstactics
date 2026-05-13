@@ -147,6 +147,27 @@ function tilesWithLabel(map, label) {
   return tiles;
 }
 
+function tilesAdjacentToCover(map, label) {
+  const coverObjects = map.coverObjects.filter((cover) => cover.label === label);
+  const adjacent = new Map();
+
+  for (const cover of coverObjects) {
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        for (const [dx, dy] of DIRS) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const tile = map.grid[ny]?.[nx];
+          if (!tile?.walkable) continue;
+          adjacent.set(tileKey(nx, ny), { x: nx, y: ny });
+        }
+      }
+    }
+  }
+
+  return [...adjacent.values()];
+}
+
 function shortestPath(map, start, goals) {
   const goalKeys = new Set(goals.map((goal) => tileKey(goal.x, goal.y)));
   const startKey = tileKey(start.x, start.y);
@@ -178,6 +199,20 @@ function shortestPath(map, start, goals) {
   }
 
   return { distance: null, path: [] };
+}
+
+function shortestPathFromAny(map, starts, goals) {
+  const startTiles = Array.isArray(starts) ? starts : [starts];
+  let best = { distance: null, path: [] };
+
+  for (const start of startTiles) {
+    if (!start || !map.grid[start.y]?.[start.x]?.walkable) continue;
+    const route = shortestPath(map, start, goals);
+    if (route.distance === null) continue;
+    if (best.distance === null || route.distance < best.distance) best = route;
+  }
+
+  return best;
 }
 
 const TILE_COLORS = {
@@ -330,6 +365,20 @@ function getCoverPlacementWarnings(map) {
   return warnings;
 }
 
+function getCoverAdjacencyWarnings(map) {
+  const warnings = [];
+  const bananaCoverLabels = ['Banana Car', 'Logs', 'Sandbags', 'Half Wall'];
+
+  for (const label of bananaCoverLabels) {
+    const adjacentTiles = tilesAdjacentToCover(map, label);
+    if (adjacentTiles.length < 2) {
+      warnings.push(`${label} has only ${adjacentTiles.length} adjacent walkable tile(s).`);
+    }
+  }
+
+  return warnings;
+}
+
 function summarize() {
   const map = loadInfernoMap();
   const counts = {};
@@ -348,6 +397,11 @@ function summarize() {
     T_to_B: [map.spawns.T[0], tilesInBox(map, map.plantZones.B)],
     CT_to_A: [map.spawns.CT[0], tilesInBox(map, map.plantZones.A)],
     CT_to_B: [map.spawns.CT[0], tilesInBox(map, map.plantZones.B)],
+    T_to_Banana_Car: [map.spawns.T, tilesAdjacentToCover(map, 'Banana Car')],
+    T_to_Banana_Logs: [map.spawns.T, tilesAdjacentToCover(map, 'Logs')],
+    T_to_Banana_Sandbags: [map.spawns.T, tilesAdjacentToCover(map, 'Sandbags')],
+    CT_to_Banana_Sandbags: [map.spawns.CT, tilesAdjacentToCover(map, 'Sandbags')],
+    Top_Banana_to_B_Site: [tilesWithLabel(map, 'Top Banana'), tilesInBox(map, map.plantZones.B)],
     T_to_Top_Banana: [map.spawns.T[0], tilesWithLabel(map, 'Top Banana')],
     CT_to_Coffins: [map.spawns.CT[0], tilesWithLabel(map, 'Coffins')],
     T_to_A_Short: [map.spawns.T[0], tilesWithLabel(map, 'A Short')],
@@ -356,14 +410,21 @@ function summarize() {
   };
 
   const routes = Object.fromEntries(
-    Object.entries(routeTargets).map(([name, [start, goals]]) => [
+    Object.entries(routeTargets).map(([name, [starts, goals]]) => [
       name,
-      shortestPath(map, start, goals),
+      shortestPathFromAny(map, starts, goals),
     ])
   );
 
   const components = getConnectedComponents(map);
   const coverWarnings = getCoverPlacementWarnings(map);
+  const coverAdjacencyWarnings = getCoverAdjacencyWarnings(map);
+  const coverAdjacency = Object.fromEntries(
+    ['Banana Car', 'Logs', 'Sandbags', 'Half Wall', 'Coffins', 'First Oranges', 'Second Oranges'].map((label) => [
+      label,
+      tilesAdjacentToCover(map, label).length,
+    ])
+  );
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(outputPath, renderSvg(map, routes));
   fs.writeFileSync(outputPngPath, renderPng(map, routes));
@@ -382,7 +443,9 @@ function summarize() {
     routes: Object.fromEntries(
       Object.entries(routes).map(([name, route]) => [name, route.distance])
     ),
+    coverAdjacency,
     coverPlacementWarnings: coverWarnings.length,
+    coverAdjacencyWarnings: coverAdjacencyWarnings.length,
     output: {
       svg: path.relative(root, outputPath),
       png: path.relative(root, outputPngPath),
@@ -404,6 +467,11 @@ function summarize() {
   }
 
   for (const warning of coverWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
+  }
+
+  for (const warning of coverAdjacencyWarnings) {
     console.warn(`Map warning: ${warning}`);
     process.exitCode = 1;
   }

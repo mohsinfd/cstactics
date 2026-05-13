@@ -105,11 +105,16 @@ Acceptance criteria:
 
 ### P2 - Verification Checklist
 
-Status: not implemented.
+Status: started.
 
 Checks:
-- Route timings: T Spawn to car, T Spawn to top Banana, CT Spawn to coffins,
-  CT Spawn to B site, construction to B site.
+- `npm run map:validate` now reports Banana/B landmark routes: T Spawn to car,
+  logs, sandbags, CT Spawn to sandbags, and Top Banana to B site.
+- `npm run map:validate` now reports adjacent walkable tile counts for Banana
+  car, logs, sandbags, half-wall, coffins, and oranges.
+- Current suspicious metric: `T_to_Banana_Logs` is much longer than
+  `T_to_Banana_Car`, which reinforces the need to audit the lower/mid Banana
+  mask before tuning utility or LOS.
 - Contact Drill: held lane, movement warning, smoke blocking, flash radius, shot
   preview, and contact break.
 - Debug screenshot: capture Banana/B after each mask or cover edit and compare
