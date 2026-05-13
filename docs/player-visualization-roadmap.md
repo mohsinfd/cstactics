@@ -2,9 +2,9 @@
 
 ## Scope
 
-This pass is a read-only renderer audit plus an additive identity artifact. It
-does not edit `src/renderer/UnitRenderer.tsx`, because movement smoothing work
-may be touching that file at the same time.
+This roadmap began as a renderer audit plus an additive identity artifact. The
+current player-visualization slice now makes a small renderer-only polish pass
+in `src/renderer/UnitRenderer.tsx`, limited to team headgear and sprite marks.
 
 ## Current Visual Vocabulary
 
@@ -63,20 +63,22 @@ without requiring integration yet.
 
 ## Next UnitRenderer Patch
 
-The orchestrator can integrate this safely with a small renderer-only patch:
+The first integration patch has landed: `UnitRenderer.tsx` reads team and role
+identity from `src/renderer/unitVisualIdentity.ts`. Remaining safe follow-ups:
 
-1. Import `getRoleVisualIdentity`, `getTeamVisualIdentity`, and
-   `ROLE_VISUAL_IDENTITIES` from `src/renderer/unitVisualIdentity.ts`.
-2. Replace local `CT_PALETTE`, `T_PALETTE`, `ROLE_TAGS`, and `ROLE_CONFIG` reads
-   with adapter objects from the helper. Keep geometry and animation unchanged
-   for the first wiring patch.
-3. Keep `UnitRenderer.tsx` behavior visually equivalent on the first commit:
-   same colors, same role tags, same body scales, same weapon lengths.
-4. In a follow-up polish patch, tune the actual meshes around the contract:
+1. Continue tuning actual meshes around the contract:
    stronger team-first headgear/chest marks, role silhouettes readable without
    text, and less saturated role accents on inactive units.
-5. After integration, run `npm run build` and a quick browser screenshot check at
+2. Keep each slice renderer-only unless identity data needs a small extension.
+3. After each visual slice, run `npm run build` and a quick browser screenshot check at
    normal and zoomed-out tactical camera distances.
+
+## Completed Polish Slices
+
+- CT vs T headgear read: CT helmets now have a pale top armor strip and side ear
+  guards in both the 3D miniature and sprite canvas. T headwraps now get a
+  darker crown wrap plus a second trailing cloth tab, making the red cloth
+  silhouette clearer from tactical zoom without adding imported assets.
 
 ## Acceptance Checks
 

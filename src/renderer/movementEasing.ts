@@ -15,6 +15,7 @@ export const DEFAULT_MOVEMENT_TIMING: MovementTimingConfig = {
 };
 
 export const TACTICAL_MOVEMENT_TICK_MS = 95;
+export const STRIDE_LINEARITY = 0.22;
 
 export function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -31,6 +32,11 @@ export function easeInOutCubic(value: number): number {
 export function easeOutCubic(value: number): number {
   const t = clamp01(value);
   return 1 - Math.pow(1 - t, 3);
+}
+
+export function easeInOutStride(value: number): number {
+  const t = clamp01(value);
+  return t * STRIDE_LINEARITY + easeInOutCubic(t) * (1 - STRIDE_LINEARITY);
 }
 
 export function getDampedAlpha(lambda: number, deltaSeconds: number): number {
@@ -59,7 +65,7 @@ export function getMovementSegmentDurationSeconds(
 export function getSegmentProgress(
   elapsedSeconds: number,
   durationSeconds: number,
-  easing: (value: number) => number = easeInOutCubic
+  easing: (value: number) => number = easeInOutStride
 ): number {
   if (!Number.isFinite(elapsedSeconds) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     return 1;

@@ -260,12 +260,25 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   if (isCt) {
     ctx.fillStyle = '#09111f';
     ctx.fillRect(78, 61, 36, 6);
+    ctx.fillStyle = '#dfeaff';
+    ctx.fillRect(88, 34, 16, 5);
+    ctx.fillStyle = head;
+    ctx.fillRect(65, 54, 8, 22);
+    ctx.fillRect(119, 54, 8, 22);
   } else {
     ctx.fillStyle = '#cc3333';
     ctx.beginPath();
     ctx.moveTo(119, 58);
     ctx.lineTo(139, 70);
     ctx.lineTo(122, 74);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#8e2424';
+    ctx.fillRect(76, 43, 42, 7);
+    ctx.beginPath();
+    ctx.moveTo(74, 48);
+    ctx.lineTo(58, 62);
+    ctx.lineTo(75, 67);
     ctx.closePath();
     ctx.fill();
   }
@@ -632,6 +645,16 @@ function TeamHeadgear({ team, scale, mats, palette }: {
           <boxGeometry args={[0.25, 0.055, 0.055]} />
           <meshStandardMaterial color="#070b12" roughness={0.28} metalness={0.35} emissive="#1a5b91" emissiveIntensity={0.12} />
         </mesh>
+        <mesh position={[0, 1.365 * scale, 0.012]} castShadow>
+          <boxGeometry args={[0.17, 0.025, 0.16]} />
+          <meshStandardMaterial color="#dfeaff" roughness={0.4} emissive="#8ec5ff" emissiveIntensity={0.1} />
+        </mesh>
+        {[-0.13, 0.13].map((x) => (
+          <mesh key={x} position={[x * scale, 1.26 * scale, 0.005]} castShadow>
+            <boxGeometry args={[0.045, 0.12, 0.12]} />
+            <meshStandardMaterial color={palette.helmetRim} roughness={0.66} metalness={0.08} />
+          </mesh>
+        ))}
         <mesh position={[0, 1.22 * scale, -0.07]} castShadow>
           <boxGeometry args={[0.25, 0.16, 0.05]} />
           <meshStandardMaterial color={palette.helmetRim} roughness={0.62} metalness={0.1} />
@@ -649,9 +672,17 @@ function TeamHeadgear({ team, scale, mats, palette }: {
         <boxGeometry args={[0.28, 0.055, 0.05]} />
         <meshStandardMaterial color="#c43232" roughness={0.72} emissive="#4a0808" emissiveIntensity={0.1} />
       </mesh>
+      <mesh position={[0, 1.335 * scale, 0.02]} rotation={[0, 0, 0.1]} castShadow>
+        <boxGeometry args={[0.24, 0.045, 0.13]} />
+        <meshStandardMaterial color="#8e2424" roughness={0.78} emissive="#3a0606" emissiveIntensity={0.08} />
+      </mesh>
       <mesh position={[0.14, 1.25 * scale, -0.16]} rotation={[0.15, 0.3, -0.35]} castShadow>
         <boxGeometry args={[0.08, 0.22, 0.035]} />
         <meshStandardMaterial color="#c43232" roughness={0.8} />
+      </mesh>
+      <mesh position={[-0.12, 1.24 * scale, -0.15]} rotation={[0.05, -0.25, 0.42]} castShadow>
+        <boxGeometry args={[0.065, 0.18, 0.032]} />
+        <meshStandardMaterial color="#8e2424" roughness={0.82} />
       </mesh>
     </group>
   );

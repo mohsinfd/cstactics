@@ -67,6 +67,9 @@ modifying renderer code:
 - `getMovementSegmentDurationSeconds` aligns segment duration with both tile
   distance and store tick cadence.
 - `easeInOutCubic` is available for readable start/stop movement.
+- `easeInOutStride` is the default segment progress curve. It blends a small
+  linear component into the cubic ease so repeated `95ms` tile retargets do not
+  visually restart from a dead stop every step.
 - `getDampedAlpha` gives renderer code a Three-independent way to damp toward a
   target while preserving frame-rate independence.
 
@@ -75,14 +78,15 @@ The helper is intentionally pure and small so it can be imported into
 
 ## Recommended Integration Patch
 
-1. In `UnitRenderer.tsx`, replace local movement constants/easing with
-   `movementEasing.ts`.
+1. Keep `UnitRenderer.tsx` on `movementEasing.ts` for segment durations and
+   progress curves.
 2. Keep tactical truth tile-based, but treat the renderer position as a
    continuous presentation position:
    - when `targetKey` changes, keep the current displayed position as `from`;
    - use `getMovementSegmentDurationSeconds(tileDistance)` for duration;
-   - use `easeInOutCubic` for standalone moves, or `getDampedAlpha` for
-     continuous catch-up while a run is receiving rapid tile ticks;
+   - use the default stride-blended `getSegmentProgress` for tile steps, or
+     `getDampedAlpha` for continuous catch-up while a run is receiving rapid
+     tile ticks;
    - snap to the exact tile center only when progress is complete or when the
      target distance exceeds the teleport threshold.
 3. Add a short settle window (`DEFAULT_MOVEMENT_TIMING.settleSeconds`) before

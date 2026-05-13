@@ -7,40 +7,115 @@ utility, LOS, cover penalties, and execute timing can feel fair. The player
 should understand car, logs, sandbags, top Banana, coffins, oranges,
 construction, and site cover from the board without needing debug labels.
 
-## Acceptance
+## Current Findings
 
-- Banana reads as a curved, narrow pressure lane with believable car/logs/
-  sandbags/top-Banana cover.
-- Car is large enough to be recognizable and to create real full-cover behavior,
-  but it does not over-block the lane.
-- Sandbags exist as a meaningful half-cover pocket near top Banana.
-- The room/building mass behind car does not visually or mechanically swallow
-  the route/site.
-- B site has playable lanes from Banana, coffins, oranges, construction, and CT.
-- Smoke/flash/LOS previews use the same blocked/walkable/cover truth as
-  movement and shooting.
+- `src/game/maps/inferno.ts` has Banana/B callout zones and cover objects, but
+  the props are still too thin to carry gameplay readability on their own.
+- `Banana Car` was present at `(38,51)` with a `3x2` footprint. That reads
+  smaller than the landmark should and only blocks six full-cover tiles.
+- `Sandbags` are present in data at `(43,68)` with a `2x1` half-cover footprint,
+  but that is too subtle to solve the user-reported "missing sandbags" problem.
+- `Logs` at `(37,61)` and `Half Wall` at `(42,71)` are both `3x1`/`2x1` strips.
+  They create cover rules, but not yet a believable staged Banana fight.
+- The walkable mask around car/top Banana appears to be the larger fidelity
+  risk: the blocked room/building mass behind car and the top-Banana transition
+  need a coordinated mask pass, not a one-tile tweak.
+- B site has the expected first-pass objects (`Coffins`, `First Oranges`,
+  `Second Oranges`, `Fountain`, `New Box`), but route timing and LOS from
+  Banana, CT, coffins, construction, and oranges are not validated yet.
 
-## Tasks
+## Ranked Implementation Slices
 
-- [x] Audit current Banana/B walkable mask tiles against an Inferno radar reference:
-  bottom Banana, car, logs, sandbags, top Banana, B entry, coffins, oranges,
-  construction, CT.
-- [x] Fix the car area first: resize/reposition `Banana Car` so it is visually
-  obvious, occupies plausible full-cover tiles, and leaves a readable route
-  around it.
-- [x] Fix sandbags next: place a visible `Sandbags` half-cover object in the real
-  top-Banana pocket and verify it affects directional cover from CT/site angles.
-- [ ] Split the oversized wall/building mass behind car into smaller boundary
-  contours so it frames Banana instead of covering the whole site/read.
-- [x] Add or adjust `Logs`, `Half Wall`, and top-Banana cover so Banana has staged
-  decisions instead of one giant exposed corridor.
-- [x] Verify that cover objects produce the intended walkability: cover tiles block
-  movement where they are physical props, nearby floor tiles remain playable.
-- [ ] Validate key route timings after geometry edits: T Spawn to car, T Spawn to
-  top Banana, CT Spawn to coffins, CT Spawn to B site, construction to B site.
-- [ ] Add a debug screenshot/checklist for Banana/B that can be compared after each
-  map edit.
-- [ ] Test gameplay from the Contact Drill after every map change: held lane,
-  movement warning, smoke blocking, flash radius, shot preview, and contact
-  break.
-- [ ] Only after Banana/B is stable, tune utility radii and LOS around that area.
+### P0 - Banana Car Landmark
+
+Status: started.
+
+Change:
+- Increase `Banana Car` from `(38,51) 3x2` to `(38,51) 4x2`.
+
+Acceptance criteria:
+- Car is recognizable at normal camera distance without relying on its label.
+- Car remains full cover and blocks LOS through its physical footprint.
+- Banana still has a playable path around the car on adjacent walkable floor.
+- T-side approach to lower Banana is not sealed or reduced to an accidental
+  one-way dead end.
+
+### P0 - Sandbags Pocket
+
+Status: not implemented.
+
+Recommended next data change:
+- Rework `Sandbags` from the current `(43,68) 2x1` strip into a visible
+  half-cover pocket near top Banana, likely around `(42,67)` to `(45,69)`.
+- Keep at least one continuous walkable lane between upper Banana and B entry.
+
+Acceptance criteria:
+- Sandbags are visible as a distinct top-Banana prop from the default camera.
+- A unit adjacent to sandbags receives half cover from CT/site-facing angles.
+- A unit can route around sandbags without pathfinding pinches.
+- Smoke and flash previews can target both the sandbags pocket and the B-entry
+  side of top Banana.
+
+### P0 - Blocked Room Behind Car / Banana Boundary
+
+Status: not implemented.
+
+Recommended next data change:
+- Regenerate or hand-correct the walkable mask around lower Banana/car so the
+  building mass frames the lane instead of creating a wrong room/blocker shape.
+- Audit roughly `x34..45, y48..58` against a radar reference before changing
+  cover placement further.
+
+Acceptance criteria:
+- The car-side wall mass reads as a Banana boundary, not an accessible or
+  swallowed room.
+- Movement, LOS, and smoke previews agree on blocked versus playable tiles.
+- The car fight has readable approach tiles on both the T-side and top-Banana
+  side of the prop.
+
+### P1 - Logs / Half-Wall Staging
+
+Status: not implemented.
+
+Recommended next data change:
+- Resize/reposition `Logs` from `(37,61) 3x1` and `Half Wall` from `(42,71) 2x1`
+  after the mask pass, so they create distinct lower, middle, and top Banana
+  decisions rather than thin decorative strips.
+
+Acceptance criteria:
+- Logs, car, sandbags, and half-wall form a sequence of recognizable cover beats.
+- A unit can hold or clear each beat with meaningful flanking/covered states.
+- No cover object overlaps a non-walkable-only area without intentionally
+  representing a blocker.
+
+### P1 - B Entry, Coffins, Oranges, Construction
+
+Status: not implemented.
+
+Recommended next data change:
+- Validate B-site object footprints around `Coffins` `(39,79) 2x2`, `First
+  Oranges` `(45,74) 1x2`, `Second Oranges` `(47,76) 1x2`, and construction
+  entry lanes from `x49..63, y70..84`.
+
+Acceptance criteria:
+- Banana-to-site entry has playable lanes into coffins/oranges/default.
+- Coffins and oranges create expected cover without sealing site circulation.
+- Construction to site and CT to site routes remain navigable.
+- Plant zone B remains reachable and not dominated by accidental blockers.
+
+### P2 - Verification Checklist
+
+Status: not implemented.
+
+Checks:
+- Route timings: T Spawn to car, T Spawn to top Banana, CT Spawn to coffins,
+  CT Spawn to B site, construction to B site.
+- Contact Drill: held lane, movement warning, smoke blocking, flash radius, shot
+  preview, and contact break.
+- Debug screenshot: capture Banana/B after each mask or cover edit and compare
+  car, sandbags, logs, top Banana choke, coffins, oranges, and construction.
+
+Acceptance criteria:
+- A screenshot/checklist artifact exists for Banana/B map edits.
+- Build passes after map-data changes.
+- Utility tuning waits until Banana/B blocked/walkable/cover truth is stable.
