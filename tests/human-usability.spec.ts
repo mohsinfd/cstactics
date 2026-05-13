@@ -11,6 +11,7 @@ const BASE_HUD_IDS = [
   'hud-camera-reset-camera',
   'hud-command-plan',
   'hud-command-contact-drill',
+  'hud-command-duel-lab',
   'hud-command-end-side',
 ] as const;
 
@@ -35,6 +36,7 @@ const CLICK_TARGET_IDS = new Set([
   'hud-camera-reset-camera',
   'hud-command-plan',
   'hud-command-contact-drill',
+  'hud-command-duel-lab',
   'hud-command-end-side',
   'hud-command-end-side-secondary',
   'hud-command-run-execute',
@@ -285,6 +287,116 @@ test.describe('human usability regression', () => {
     await expectHudTargetReachableIfEnabled(page, 'hud-contact-trade-shot');
 
     await expectHudReachable(page, BASE_HUD_IDS);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('Duel Lab loads a compact 1v1 combat state with immediate actions', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+    await page.goto('/');
+    await page.getByTestId('hud-command-duel-lab').click();
+
+    await expectHudReachable(page, [
+      ...BASE_HUD_IDS,
+      ...SELECTED_UNIT_IDS,
+      'hud-action-shoot',
+      'hud-action-smoke',
+      'hud-action-flash',
+      'hud-action-reload',
+    ]);
+
+    await expect(page.locator('[data-testid^="hud-visible-target-"]')).toHaveCount(1);
+
+    const labState = await page.evaluate(() => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+
+      const state = store.getState();
+      const liveT = state.units.filter((unit) => unit.alive && unit.team === 'T');
+      const liveCT = state.units.filter((unit) => unit.alive && unit.team === 'CT');
+      const deadUnits = state.units.filter((unit) => !unit.alive);
+      const selected = state.units.find((unit) => unit.id === state.selectedUnitId);
+      const targetCards = Array.from(document.querySelectorAll('[data-testid^="hud-visible-target-"]'))
+        .map((element) => element.getAttribute('data-testid'));
+
+      return {
+        ok: true,
+        reason: '',
+        unitCount: state.units.length,
+        unitIds: state.units.map((unit) => unit.id),
+        deadUnitIds: deadUnits.map((unit) => unit.id),
+        phase: state.round.phase,
+        activeTeam: state.round.activeTeam,
+        bombCarrierId: state.round.bombCarrierId,
+        planningMode: state.planningMode,
+        inputMode: state.inputMode,
+        plannedActions: state.plannedActions.length,
+        heldAngles: state.heldAngles.length,
+        combatLog: state.combatLog.length,
+        hasInterrupt: Boolean(state.executeInterrupt),
+        hasAiStatus: Boolean(state.aiStatus),
+        liveTCount: liveT.length,
+        liveCTCount: liveCT.length,
+        liveTIds: liveT.map((unit) => unit.id),
+        liveCTIds: liveCT.map((unit) => unit.id),
+        selectedId: selected?.id ?? null,
+        selectedTeam: selected?.team ?? null,
+        selectedPosition: selected?.position ?? null,
+        selectedHasBomb: selected?.hasBomb ?? false,
+        selectedApFull: selected ? selected.ap === selected.maxAp : false,
+        selectedAmmoFull: selected ? selected.ammoInClip === selected.weapon.clipSize : false,
+        selectedHasSmoke: selected ? selected.smokeGrenades > 0 : false,
+        selectedHasFlash: selected ? selected.flashbangs > 0 : false,
+        ctPosition: liveCT[0]?.position ?? null,
+        targetCards,
+      };
+    });
+
+    expect(labState.ok, labState.reason).toBe(true);
+    expect(labState).toMatchObject({
+      unitCount: 2,
+      unitIds: [0, 6],
+      deadUnitIds: [],
+      phase: 'combat',
+      activeTeam: 'T',
+      bombCarrierId: 0,
+      planningMode: false,
+      inputMode: 'move',
+      plannedActions: 0,
+      heldAngles: 0,
+      combatLog: 0,
+      hasInterrupt: false,
+      hasAiStatus: false,
+      liveTCount: 1,
+      liveCTCount: 1,
+      liveTIds: [0],
+      liveCTIds: [6],
+      selectedId: 0,
+      selectedTeam: 'T',
+      selectedPosition: { x: 43, y: 61 },
+      selectedHasBomb: true,
+      selectedApFull: true,
+      selectedAmmoFull: true,
+      selectedHasSmoke: true,
+      selectedHasFlash: true,
+      ctPosition: { x: 43, y: 69 },
+      targetCards: ['hud-visible-target-6'],
+    });
+
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-move');
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-shoot');
+    await expectHudTargetReachableIfEnabled(page, 'hud-visible-target-6');
+
+    await page.getByTestId('hud-action-shoot').click();
+    await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().inputMode)).toBe('shoot');
+
+    await page.getByTestId('hud-action-move').click();
+    await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().inputMode)).toBe('move');
+
     expect(consoleErrors).toEqual([]);
   });
 

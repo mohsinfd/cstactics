@@ -633,6 +633,7 @@ interface GameStore extends GameState {
   initGame: () => void;
   startNextRound: () => void;
   startContactDrill: () => void;
+  startDuelLab: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => {
@@ -2692,6 +2693,91 @@ export const useGameStore = create<GameStore>((set, get) => {
         isExecuting: false,
         inputMode: 'move',
         heldAngles: [heldAngle],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        feedbackEvents: [],
+        aiStatus: null,
+      });
+    },
+
+    startDuelLab: () => {
+      if (get().isExecuting) return;
+      const mapData = createInfernoMap();
+      const tDuelistId = 0;
+      const ctDuelistId = 6;
+      const tStart = findNearestWalkable(mapData, { x: 43, y: 61 });
+      const ctStart = findNearestWalkable(mapData, { x: 43, y: 69 });
+      const baseUnits = createUnits();
+      const tDuelist = baseUnits.find((unit) => unit.id === tDuelistId);
+      const ctDuelist = baseUnits.find((unit) => unit.id === ctDuelistId);
+      if (!tDuelist || !ctDuelist) return;
+
+      const nextUnits: Unit[] = [
+        {
+          ...tDuelist,
+          hp: tDuelist.maxHp,
+          position: tStart,
+          ap: tDuelist.maxAp,
+          alive: true,
+          shotsFiredThisTurn: 0,
+          hasMoved: false,
+          hasBomb: true,
+          smokeGrenades: 1,
+          flashbangs: 1,
+          flashTurns: 0,
+          ammoInClip: tDuelist.weapon.clipSize,
+          reserveAmmo: tDuelist.weapon.clipSize * 3,
+          facing: { x: 0, y: 1 },
+        },
+        {
+          ...ctDuelist,
+          hp: ctDuelist.maxHp,
+          position: ctStart,
+          ap: ctDuelist.maxAp,
+          alive: true,
+          shotsFiredThisTurn: 0,
+          hasMoved: false,
+          hasBomb: false,
+          smokeGrenades: 0,
+          flashbangs: 0,
+          flashTurns: 0,
+          ammoInClip: ctDuelist.weapon.clipSize,
+          reserveAmmo: ctDuelist.weapon.clipSize * 3,
+          facing: { x: 0, y: -1 },
+        },
+      ];
+
+      const round: RoundState = {
+        phase: 'combat',
+        turn: RULES.setupPhaseTurns + 1,
+        activeTeam: 'T',
+        bombPlanted: false,
+        bombDefused: false,
+        bombPosition: null,
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: tDuelistId,
+        roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
+      };
+      const movement = getMovementForSelection(nextUnits, tDuelistId, mapData, round);
+
+      set({
+        map: mapData,
+        units: nextUnits,
+        round,
+        selectedUnitId: tDuelistId,
+        hoveredTile: null,
+        walkableTiles: movement.walkableTiles,
+        movementTiles: movement.movementTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles: [],
         smokes: [],
         flashBursts: [],
         combatLog: [],

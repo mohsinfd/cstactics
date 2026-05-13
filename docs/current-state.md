@@ -96,6 +96,8 @@ verbs that make those nouns matter.
   the immediate trade decision, while the Contact Break panel keeps showing the
   trade/bomb context.
 - Banana Drill prototype scenario for testing the Banana hold/crossing loop.
+- Duel Lab debug scenario for quickly testing a one-T versus one-CT combat
+  state with immediate movement, shooting, utility, cover, and weapon feedback.
 - Pointer hover updates are gated by tile to reduce redundant path recalculation
   during dragging.
 - Wheel/trackpad scroll pans the tactical board by default; modified wheel and

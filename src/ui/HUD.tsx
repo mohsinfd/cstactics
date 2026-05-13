@@ -1563,6 +1563,7 @@ function CommandBar() {
   const setPlanningMode = useGameStore((s) => s.setPlanningMode);
   const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
   const startContactDrill = useGameStore((s) => s.startContactDrill);
+  const startDuelLab = useGameStore((s) => s.startDuelLab);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
   const isRoundOver = phase === 'roundend';
@@ -1581,14 +1582,14 @@ function CommandBar() {
       bottom: compact ? 14 : 18,
       left: compact ? 10 : '50%',
       transform: compact ? 'none' : 'translateX(-50%)',
-      width: compact ? 'min(370px, calc(100vw - 20px))' : 'min(640px, calc(100vw - 40px))',
+      width: compact ? 'min(370px, calc(100vw - 20px))' : 'min(760px, calc(100vw - 40px))',
       background: 'rgba(8, 8, 12, 0.94)',
       border: '1px solid #2a2f3a',
       borderRadius: 7,
       padding: compact ? 8 : '9px 10px',
       pointerEvents: 'auto',
       display: compact ? 'grid' : 'flex',
-      gridTemplateColumns: compact ? '1fr 1fr' : undefined,
+      gridTemplateColumns: compact ? 'repeat(3, minmax(0, 1fr))' : undefined,
       flexWrap: compact ? undefined : 'wrap',
       alignItems: 'center',
       gap: 8,
@@ -1664,6 +1665,30 @@ function CommandBar() {
         }}
       >
         Banana Drill
+      </button>
+
+      <button
+        data-testid="hud-command-duel-lab"
+        onClick={() => !isExecuting && startDuelLab()}
+        disabled={isExecuting}
+        title="Load a compact 1v1 lab for testing movement, shooting, cover, utility, and weapon feel."
+        aria-label="Start Duel Lab"
+        style={{
+          border: '1px solid #29403a',
+          background: 'rgba(91, 214, 158, 0.14)',
+          color: isExecuting ? '#4d6b5f' : '#9fe6c8',
+          borderRadius: 5,
+          padding: '9px 10px',
+          cursor: isExecuting ? 'default' : 'pointer',
+          fontSize: 10,
+          fontWeight: 900,
+          letterSpacing: 0.8,
+          textTransform: 'uppercase',
+          minWidth: 96,
+          ...commandButtonStyle,
+        }}
+      >
+        Duel Lab
       </button>
 
       {plannedActions.length > 0 ? (
