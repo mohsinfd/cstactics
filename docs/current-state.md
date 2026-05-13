@@ -36,10 +36,12 @@ verbs that make those nouns matter.
 - Planning mode that queues move orders.
 - Planning mode can queue first-pass smoke and flash orders, resolving utility
   before movement during `Run Execute`.
-- Execute queue now shows first-pass CS timing beats: utility at `0.0s` and
-  movement/swing orders at `0.6s`.
+- Execute queue now shows first-pass CS timing bands: utility starts at `0.0s`
+  and movement/swing starts at `0.6s` by default.
 - Planned actions now carry authored execute timing (`executeAtMs`), and the
-  resolver waits for the swing beat instead of treating `0.6s` as display-only.
+  execute queue exposes bounded `-/+` controls for first-pass per-order timing.
+- The resolver honors utility beat delays and staggered movement starts instead
+  of treating queue timing as display-only.
 - Planned path/destination previews for queued move orders.
 - Planned map markers include timing labels so board state matches the execute
   queue.
@@ -158,9 +160,9 @@ verbs that make those nouns matter.
 - Bomb state now supports a first playable plant/defuse/drop/pickup loop, but
   save/hunt logic is still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
-- Planning exists for movement with a first-pass ticked execute and visible
-  timing beats, but not yet a full multi-order CS timeline with editable offsets
-  and simultaneous combat beats.
+- Planning exists for movement with a first-pass ticked execute and editable
+  timing beats, but not yet a full multi-order CS timeline with simultaneous
+  combat beats and production interrupt sequencing.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 
@@ -179,8 +181,8 @@ verbs that make those nouns matter.
 - Save/hunt outcomes.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
-- Editable synchronized execute timeline beyond the current fixed utility/swing
-  beat contract.
+- Production-grade synchronized execute timeline beyond the current bounded
+  per-order utility/swing timing contract.
 
 ## Immediate Focus
 

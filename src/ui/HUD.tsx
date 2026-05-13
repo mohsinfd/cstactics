@@ -18,9 +18,9 @@ import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
 import {
-  EXECUTE_SWING_MS,
-  EXECUTE_UTILITY_MS,
+  EXECUTE_TIMING_STEP_MS,
   formatExecuteTime,
+  getExecuteTimingBounds,
   getPlannedActionBeat,
   sortPlannedActionsByBeat,
 } from '../game/executeTimeline';
@@ -582,8 +582,12 @@ function ExecutePlanner() {
   const activeTeam = useGameStore((s) => s.round.activeTeam);
   const phase = useGameStore((s) => s.round.phase);
   const clearPlannedActions = useGameStore((s) => s.clearPlannedActions);
+  const setPlannedActionTiming = useGameStore((s) => s.setPlannedActionTiming);
+  const isExecuting = useGameStore((s) => s.isExecuting);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const timelineActions = sortPlannedActionsByBeat(plannedActions);
+  const utilityTiming = getExecuteTimingBounds('smoke');
+  const swingTiming = getExecuteTimingBounds('move');
 
   if (!planningMode && plannedActions.length === 0) return null;
 
@@ -642,9 +646,13 @@ function ExecutePlanner() {
             letterSpacing: 0.6,
             textTransform: 'uppercase',
           }}>
-            <span style={{ color: '#d8c170' }}>{formatExecuteTime(EXECUTE_UTILITY_MS)} Utility</span>
+            <span style={{ color: '#d8c170' }}>
+              Utility {formatExecuteTime(utilityTiming.minMs)}-{formatExecuteTime(utilityTiming.maxMs)}
+            </span>
             <span style={{ color: '#4b5362' }}>-&gt;</span>
-            <span style={{ color: '#58ff9a' }}>{formatExecuteTime(EXECUTE_SWING_MS)} Swing</span>
+            <span style={{ color: '#58ff9a' }}>
+              Swing {formatExecuteTime(swingTiming.minMs)}-{formatExecuteTime(swingTiming.maxMs)}
+            </span>
           </div>
           <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
             {timelineActions.map((action) => {
@@ -660,6 +668,22 @@ function ExecutePlanner() {
               const statusColor = !isMove ? utilityColor : (isWatched ? '#ff6b82' : (isDanger ? '#ff9d3d' : (action.apCost <= 1 ? '#58ff9a' : '#f2c94c')));
               const statusLabel = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
               const beat = getPlannedActionBeat(action);
+              const timingBounds = getExecuteTimingBounds(action.kind);
+              const canShiftEarlier = beat.timeMs > timingBounds.minMs;
+              const canShiftLater = beat.timeMs < timingBounds.maxMs;
+              const timingButtonStyle = {
+                width: 19,
+                height: 21,
+                border: `1px solid ${statusColor}44`,
+                background: 'rgba(255,255,255,0.045)',
+                color: statusColor,
+                borderRadius: 3,
+                padding: 0,
+                fontSize: 11,
+                fontWeight: 950,
+                lineHeight: 1,
+                cursor: isExecuting ? 'default' : 'pointer',
+              };
               return (
                 <div
                   key={action.id}
@@ -673,18 +697,46 @@ function ExecutePlanner() {
                     paddingTop: 4,
                   }}
                 >
-                  <span style={{
-                    color: statusColor,
-                    border: `1px solid ${statusColor}55`,
-                    background: `${statusColor}12`,
-                    borderRadius: 3,
-                    padding: '2px 4px',
-                    fontSize: 8,
-                    fontWeight: 900,
-                    minWidth: 32,
-                    textAlign: 'center',
-                  }}>
-                    {beat.timeLabel}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 2, flex: '0 0 auto' }}>
+                    <button
+                      onClick={() => setPlannedActionTiming(action.id, beat.timeMs - EXECUTE_TIMING_STEP_MS)}
+                      disabled={isExecuting || !canShiftEarlier}
+                      title={`${unit?.name ?? 'Unit'} earlier`}
+                      aria-label={`${unit?.name ?? 'Unit'} earlier`}
+                      style={{
+                        ...timingButtonStyle,
+                        opacity: isExecuting || !canShiftEarlier ? 0.32 : 1,
+                        cursor: isExecuting || !canShiftEarlier ? 'default' : 'pointer',
+                      }}
+                    >
+                      -
+                    </button>
+                    <span style={{
+                      color: statusColor,
+                      border: `1px solid ${statusColor}55`,
+                      background: `${statusColor}12`,
+                      borderRadius: 3,
+                      padding: '2px 4px',
+                      fontSize: 8,
+                      fontWeight: 900,
+                      minWidth: 32,
+                      textAlign: 'center',
+                    }}>
+                      {beat.timeLabel}
+                    </span>
+                    <button
+                      onClick={() => setPlannedActionTiming(action.id, beat.timeMs + EXECUTE_TIMING_STEP_MS)}
+                      disabled={isExecuting || !canShiftLater}
+                      title={`${unit?.name ?? 'Unit'} later`}
+                      aria-label={`${unit?.name ?? 'Unit'} later`}
+                      style={{
+                        ...timingButtonStyle,
+                        opacity: isExecuting || !canShiftLater ? 0.32 : 1,
+                        cursor: isExecuting || !canShiftLater ? 'default' : 'pointer',
+                      }}
+                    >
+                      +
+                    </button>
                   </span>
                   <span style={{ color: teamColor, fontWeight: 800, minWidth: 28 }}>
                     {ROLE_ICONS[unit?.role.id ?? 'entry']}

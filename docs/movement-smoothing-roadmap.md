@@ -110,8 +110,8 @@ The helper is intentionally pure and small so it can be imported into
 3. Add a short settle window (`DEFAULT_MOVEMENT_TIMING.settleSeconds`) before
    body bob/leg swing reset to zero, so the figure does not visibly pop upright
    between closely spaced tile updates.
-4. In planned execute, build editable timeline offsets on top of the current
-   `executeAtMs` contract.
+4. Continue evolving planned execute offsets on top of the current `executeAtMs`
+   contract toward a true simultaneous combat timeline.
 5. In `MapRenderer.tsx`, keep hover path calculation tile-gated, but add a
    pointer-leave clear and a light path-preview visual transition:
    - the committed tactical path remains tile-crisp;
@@ -127,3 +127,14 @@ The helper is intentionally pure and small so it can be imported into
 - No edits to `UnitRenderer.tsx`.
 - No broad store refactor.
 - No change to pathfinding correctness or tactical tile/AP rules.
+
+## Completed Timing Follow-Up
+
+- The execute queue now has bounded `-/+` timing controls per planned action.
+- Smoke/flash plans can be nudged inside the pre-swing utility band, while move
+  plans can be staggered across the swing band.
+- `commitPlannedActions` now honors utility delays and each movement runtime's
+  own `executeAtMs` start instead of launching every move at the earliest swing
+  beat.
+- Remaining friction: this is still a two-band utility/swing contract, not yet a
+  production timeline with simultaneous shot, utility, and interrupt ordering.

@@ -188,4 +188,59 @@ test.describe('human usability regression', () => {
     await expectHudReachable(page, BASE_HUD_IDS);
     expect(consoleErrors).toEqual([]);
   });
+
+  test('execute queue timing controls update planned beats', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+    await page.goto('/');
+
+    const result = await page.evaluate(() => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+
+      store.getState().startContactDrill();
+
+      const targets = [
+        { x: 43, y: 66 },
+        { x: 43, y: 65 },
+        { x: 43, y: 64 },
+        { x: 43, y: 63 },
+        { x: 43, y: 62 },
+      ];
+
+      for (const target of targets) {
+        store.getState().queueMove(target);
+        if (store.getState().plannedActions.length > 0) break;
+      }
+
+      let action = store.getState().plannedActions[0];
+      if (!action) return { ok: false, reason: 'no planned movement queued' };
+
+      store.getState().setPlannedActionTiming(action.id, 1100);
+      action = store.getState().plannedActions[0];
+      if (action.executeAtMs !== 1100) return { ok: false, reason: `expected 1100ms, got ${action.executeAtMs}` };
+
+      store.getState().setPlannedActionTiming(action.id, 9999);
+      action = store.getState().plannedActions[0];
+      if (action.executeAtMs !== 1200) return { ok: false, reason: `expected capped 1200ms, got ${action.executeAtMs}` };
+
+      store.getState().setPlannedActionTiming(action.id, -10);
+      action = store.getState().plannedActions[0];
+      if (action.executeAtMs !== 400) return { ok: false, reason: `expected floor 400ms, got ${action.executeAtMs}` };
+
+      return { ok: true, reason: '' };
+    });
+
+    expect(result.ok, result.reason).toBe(true);
+    await expectHudReachable(page, [
+      ...BASE_HUD_IDS.filter((id) => id !== 'hud-command-end-side'),
+      'hud-command-run-execute',
+      'hud-command-end-side-secondary',
+    ]);
+    expect(consoleErrors).toEqual([]);
+  });
 });

@@ -12,8 +12,7 @@
 //     first contact vertical slice
 //   - "End Turn" advances to next team / next turn
 //
-// Missing: generic action pipeline, editable execute offsets, production AI,
-// and economy.
+// Missing: generic action pipeline, production AI, and economy.
 // ============================================================
 import { create } from 'zustand';
 import type {
@@ -44,10 +43,12 @@ import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
 import {
+  clampExecuteAtMs,
   formatExecuteTime,
   getDefaultExecuteAtMs,
   getPlannedActionBeat,
   getPlannedActionExecuteAtMs,
+  sortPlannedActionsByBeat,
 } from './executeTimeline';
 
 const EXECUTION_STEP_MS = 95;
@@ -624,6 +625,7 @@ interface GameStore extends GameState {
   queueMove: (targetTile: TileCoord) => void;
   commitPlannedActions: () => void;
   clearPlannedActions: () => void;
+  setPlannedActionTiming: (actionId: string, executeAtMs: number) => void;
   setPlanningMode: (enabled: boolean) => void;
   finishUnit: () => void;
   endTurn: () => void;
@@ -1724,6 +1726,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       let contactPhaseLabel = 'CONTACT';
       const runtimes: Array<{
         action: PlannedAction;
+        startAtMs: number;
         pathToTravel: TileCoord[];
         crossedAngle: HeldAngle | null;
         contactTile: TileCoord | null;
@@ -1743,8 +1746,16 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
       });
 
+      let executeClockMs = 0;
       let utilityExecuted = false;
-      for (const action of utilityPlans) {
+      for (const action of sortPlannedActionsByBeat(utilityPlans)) {
+        const actionAtMs = getPlannedActionExecuteAtMs(action);
+        const delayMs = Math.max(0, actionAtMs - executeClockMs);
+        if (delayMs > 0) {
+          await wait(delayMs);
+          executeClockMs = actionAtMs;
+        }
+
         const unitIdx = nextUnits.findIndex((unit) => unit.id === action.unitId);
         if (unitIdx === -1) continue;
 
@@ -1785,6 +1796,11 @@ export const useGameStore = create<GameStore>((set, get) => {
           ];
           utilityExecuted = true;
           set({
+            units: nextUnits,
+            smokes: nextSmokes,
+            flashBursts: nextFlashBursts,
+            hoveredTile: null,
+            pathPreview: [],
             feedbackEvents: appendFeedback(get().feedbackEvents, 'smoke_throw', {
               team: unit.team,
               unitId: unit.id,
@@ -1837,6 +1853,11 @@ export const useGameStore = create<GameStore>((set, get) => {
           ].slice(0, FLASH_BURST_LOG_LIMIT);
           utilityExecuted = true;
           set({
+            units: nextUnits,
+            smokes: nextSmokes,
+            flashBursts: nextFlashBursts,
+            hoveredTile: null,
+            pathPreview: [],
             feedbackEvents: appendFeedback(get().feedbackEvents, 'flash_throw', {
               team: unit.team,
               unitId: unit.id,
@@ -1846,23 +1867,19 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
       }
 
-      if (utilityExecuted) {
-        set({
-          units: nextUnits,
-          smokes: nextSmokes,
-          flashBursts: nextFlashBursts,
-          hoveredTile: null,
-          pathPreview: [],
-        });
+      const utilitySettleMs = utilityExecuted ? EXECUTION_STEP_MS * 2 : 0;
+      if (utilitySettleMs > 0) {
+        await wait(utilitySettleMs);
+        executeClockMs += utilitySettleMs;
       }
 
       const firstMoveAtMs = movePlans.length > 0
         ? Math.min(...movePlans.map(getPlannedActionExecuteAtMs))
         : 0;
-      if (movePlans.length > 0) {
-        await wait(Math.max(utilityExecuted ? EXECUTION_STEP_MS * 2 : 0, firstMoveAtMs));
-      } else if (utilityExecuted) {
-        await wait(EXECUTION_STEP_MS * 2);
+      if (movePlans.length > 0 && executeClockMs < firstMoveAtMs) {
+        const delayMs = firstMoveAtMs - executeClockMs;
+        await wait(delayMs);
+        executeClockMs = firstMoveAtMs;
       }
 
       for (const action of movePlans) {
@@ -1899,6 +1916,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
         runtimes.push({
           action,
+          startAtMs: getPlannedActionExecuteAtMs(action),
           pathToTravel,
           crossedAngle,
           contactTile,
@@ -1949,12 +1967,17 @@ export const useGameStore = create<GameStore>((set, get) => {
         }),
       });
 
-      const maxSteps = Math.max(...runtimes.map((runtime) => runtime.pathToTravel.length));
-      for (let step = 0; step < maxSteps; step++) {
+      const hasPendingRuntime = () => runtimes.some((runtime) => (
+        !runtime.stopped && runtime.tilesMoved < runtime.pathToTravel.length
+      ));
+      let safetyTicks = 0;
+      while (hasPendingRuntime() && safetyTicks < 160) {
+        safetyTicks += 1;
         let movedThisStep = false;
 
         for (const runtime of runtimes) {
-          if (runtime.stopped || step >= runtime.pathToTravel.length) continue;
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (executeClockMs < runtime.startAtMs) continue;
 
           const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
           if (unitIdx === -1) {
@@ -1968,7 +1991,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             continue;
           }
 
-          const destination = runtime.pathToTravel[step];
+          const destination = runtime.pathToTravel[runtime.tilesMoved];
           const dx = destination.x - unit.position.x;
           const dy = destination.y - unit.position.y;
           const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1980,8 +2003,23 @@ export const useGameStore = create<GameStore>((set, get) => {
             hasMoved: true,
             facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
           };
-          runtime.tilesMoved = step + 1;
+          runtime.tilesMoved += 1;
           movedThisStep = true;
+        }
+
+        if (!movedThisStep) {
+          const nextStartAtMs = runtimes.reduce((next, runtime) => {
+            if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) return next;
+            if (runtime.startAtMs <= executeClockMs) return next;
+            return Math.min(next, runtime.startAtMs);
+          }, Number.POSITIVE_INFINITY);
+
+          if (!Number.isFinite(nextStartAtMs)) break;
+          const delayMs = Math.max(0, nextStartAtMs - executeClockMs);
+          if (delayMs <= 0) break;
+          await wait(delayMs);
+          executeClockMs = nextStartAtMs;
+          continue;
         }
 
         if (movedThisStep) {
@@ -1995,6 +2033,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             }),
           });
           await wait(EXECUTION_STEP_MS);
+          executeClockMs += EXECUTION_STEP_MS;
         }
 
         for (const runtime of runtimes) {
@@ -2134,6 +2173,17 @@ export const useGameStore = create<GameStore>((set, get) => {
 
     clearPlannedActions: () => {
       set({ plannedActions: [], pathPreview: [] });
+    },
+
+    setPlannedActionTiming: (actionId, executeAtMs) => {
+      if (get().isExecuting) return;
+      set((state) => ({
+        plannedActions: state.plannedActions.map((action) => (
+          action.id === actionId
+            ? { ...action, executeAtMs: clampExecuteAtMs(action.kind, executeAtMs) }
+            : action
+        )),
+      }));
     },
 
     setPlanningMode: (enabled) => {

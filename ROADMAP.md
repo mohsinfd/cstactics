@@ -106,10 +106,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Shoot-mode line-of-fire overlay. Implemented.
 - Automatic shoot-mode trade prompt after contact break. Implemented.
 - First-pass ticked movement/contact resolution. Implemented.
-- First-pass execute beat UI: utility at `0.0s`, movement/swing at `0.6s`, with
-  matching queue rows and map markers. Implemented.
-- Planned actions now carry an `executeAtMs` timing contract, and the resolver
-  waits for the swing beat before movement starts. Implemented as a first pass.
+- First-pass execute beat UI: utility starts at `0.0s`, movement/swing starts
+  at `0.6s`, with matching queue rows and map markers. Implemented.
+- Planned actions now carry an editable `executeAtMs` timing contract, and the
+  resolver honors utility and movement offsets. Implemented as a first pass.
 - Durable execute-interrupt decision state now records the contact beat, tile,
   shooter, stopped unit, best trade shot, and bomb pressure for the Contact
   Break panel. Implemented as a first pass.
@@ -131,9 +131,10 @@ move, trigger contact, and freeze into a trade decision. See
   testing the one-player loop.
 - First-pass hit/death presentation VFX: shooter recoil, muzzle flash, target hit
   shock, and casualty death pulse. Implemented.
-- Next: replace fixed execute beats with editable timeline offsets, deepen
-  damage numbers/per-weapon shot feel, and make the interrupt presentation more
-  cinematic without losing tactical readability.
+- Bounded editable execute offsets in the queue, with the resolver honoring
+  utility beat delays and staggered movement starts. Implemented as a first pass.
+- Next: deepen damage numbers/per-weapon shot feel, and make the interrupt
+  presentation more cinematic without losing tactical readability.
 
 ### Milestone C: Utility Timing
 
@@ -141,6 +142,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Queue smoke/flash in planning mode and resolve utility before movement.
   Implemented as first pass.
 - Smoke, flash, molly, and HE as planned orders.
+- Editable smoke/flash offsets in the execute queue. Implemented as a first
+  pass.
 - Timeline offsets: flash pops before entry swing, smoke blooms before cross,
   molly denies retake path.
 - Utility preview volumes on the map. Implemented for smoke/flash first pass.
@@ -151,8 +154,10 @@ move, trigger contact, and freeze into a trade decision. See
   implemented for movement/contact.
 - Interrupt resolution on contact, death, bomb event, or major utility effect.
   First pass implemented for held-angle contact.
+- Per-order execute offsets with bounded queue controls and staggered movement
+  starts. Implemented as a first pass.
 - Show a compact execute timeline: `0.0 smoke`, `0.5 flash`, `0.7 entry swing`.
-  First-pass fixed beat UI is implemented.
+  First-pass timeline UI is implemented.
 
 ### Milestone E: CS Match Loop
 
