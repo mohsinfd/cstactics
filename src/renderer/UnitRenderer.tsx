@@ -27,44 +27,64 @@ import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
 import type { Unit, RoleId } from '../game/types';
 import { getShotPreview } from '../game/combat';
+import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds, getSegmentProgress } from './movementEasing';
+import {
+  ROLE_VISUAL_IDENTITIES,
+  TEAM_VISUAL_IDENTITIES,
+  type RoleVisualIdentity,
+  type TeamVisualIdentity,
+} from './unitVisualIdentity';
 
-const CT_PALETTE = {
-  vest: '#1e3f7a',
-  vestDark: '#0f2040',
-  pants: '#1a2535',
-  helmet: '#2a4e8a',
-  helmetRim: '#1a3060',
-  skin: '#d4a574',
-  armband: '#ffffff',
-  accent: '#5599ee',
-  weapon: '#2a2a2a',
-  base: '#0e1e3a',
-  dimFactor: 0.4,
+type TeamPalette = TeamVisualIdentity & {
+  helmet: TeamVisualIdentity['headgear'];
+  helmetRim: TeamVisualIdentity['headgearDark'];
 };
 
-const T_PALETTE = {
-  vest: '#5c5030',
-  vestDark: '#3a3420',
-  pants: '#3a3528',
-  helmet: '#8a7050',    // bandana/balaclava
-  helmetRim: '#5c4a30',
-  skin: '#c8a882',
-  armband: '#cc3333',   // red arm band
-  accent: '#e8b630',
-  weapon: '#333333',
-  base: '#3a2a10',
-  dimFactor: 0.4,
+const TEAM_RENDER_PALETTES = {
+  CT: {
+    ...TEAM_VISUAL_IDENTITIES.CT,
+    helmet: TEAM_VISUAL_IDENTITIES.CT.headgear,
+    helmetRim: TEAM_VISUAL_IDENTITIES.CT.headgearDark,
+  },
+  T: {
+    ...TEAM_VISUAL_IDENTITIES.T,
+    helmet: TEAM_VISUAL_IDENTITIES.T.headgear,
+    helmetRim: TEAM_VISUAL_IDENTITIES.T.headgearDark,
+  },
+} satisfies Record<Unit['team'], TeamPalette>;
+
+type RoleRenderConfig = RoleVisualIdentity & {
+  weaponLen: RoleVisualIdentity['weaponLength'];
+  baseShape: RoleVisualIdentity['baseGlyph'];
 };
 
-type TeamPalette = typeof CT_PALETTE;
-
-const ROLE_TAGS: Record<string, string> = {
-  awper: 'AWP',
-  entry: 'ENT',
-  igl: 'IGL',
-  support: 'SUP',
-  lurker: 'LRK',
-};
+const ROLE_RENDER_CONFIG = {
+  awper: {
+    ...ROLE_VISUAL_IDENTITIES.awper,
+    weaponLen: ROLE_VISUAL_IDENTITIES.awper.weaponLength,
+    baseShape: ROLE_VISUAL_IDENTITIES.awper.baseGlyph,
+  },
+  entry: {
+    ...ROLE_VISUAL_IDENTITIES.entry,
+    weaponLen: ROLE_VISUAL_IDENTITIES.entry.weaponLength,
+    baseShape: ROLE_VISUAL_IDENTITIES.entry.baseGlyph,
+  },
+  igl: {
+    ...ROLE_VISUAL_IDENTITIES.igl,
+    weaponLen: ROLE_VISUAL_IDENTITIES.igl.weaponLength,
+    baseShape: ROLE_VISUAL_IDENTITIES.igl.baseGlyph,
+  },
+  support: {
+    ...ROLE_VISUAL_IDENTITIES.support,
+    weaponLen: ROLE_VISUAL_IDENTITIES.support.weaponLength,
+    baseShape: ROLE_VISUAL_IDENTITIES.support.baseGlyph,
+  },
+  lurker: {
+    ...ROLE_VISUAL_IDENTITIES.lurker,
+    weaponLen: ROLE_VISUAL_IDENTITIES.lurker.weaponLength,
+    baseShape: ROLE_VISUAL_IDENTITIES.lurker.baseGlyph,
+  },
+} satisfies Record<RoleId, RoleRenderConfig>;
 
 function SafeText(props: ComponentProps<typeof Text>) {
   return (
@@ -74,29 +94,8 @@ function SafeText(props: ComponentProps<typeof Text>) {
   );
 }
 
-// Role-specific weapon lengths and body modifications
-const ROLE_CONFIG: Record<RoleId, {
-  weaponLen: number;
-  bodyScale: number;
-  hasScope: boolean;
-  hasAntenna: boolean;
-  accent: string;
-  baseShape: 'long' | 'wedge' | 'command' | 'utility' | 'stealth';
-}> = {
-  awper:   { weaponLen: 1.55, bodyScale: 1.04, hasScope: true,  hasAntenna: false, accent: '#70d6ff', baseShape: 'long' },
-  entry:   { weaponLen: 0.98, bodyScale: 1.18, hasScope: false, hasAntenna: false, accent: '#ff5a4f', baseShape: 'wedge' },
-  igl:     { weaponLen: 0.82, bodyScale: 1.04, hasScope: false, hasAntenna: true,  accent: '#f6d365', baseShape: 'command' },
-  support: { weaponLen: 0.78, bodyScale: 1.12, hasScope: false, hasAntenna: false, accent: '#6ee7b7', baseShape: 'utility' },
-  lurker:  { weaponLen: 0.9,  bodyScale: 0.96, hasScope: false, hasAntenna: false, accent: '#c084fc', baseShape: 'stealth' },
-};
-
-const MOVE_STEP_SECONDS = 0.19;
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
-
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
 
 function dampAngle(current: number, target: number, lambda: number, delta: number): number {
   const angleDelta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
@@ -281,7 +280,7 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.fillStyle = '#f7f8fb';
   ctx.strokeStyle = '#07080d';
   ctx.lineWidth = 5;
-  const tag = ROLE_TAGS[roleId] ?? '???';
+  const tag = ROLE_RENDER_CONFIG[roleId].shortTag;
   ctx.strokeText(tag, 96, 236);
   ctx.fillText(tag, 96, 236);
 
@@ -456,7 +455,7 @@ function TeamChestBadge({
 }
 
 function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) {
-  const cfg = ROLE_CONFIG[roleId];
+  const cfg = ROLE_RENDER_CONFIG[roleId];
 
   return (
     <group>
@@ -621,7 +620,7 @@ function TeamHeadgear({ team, scale, mats, palette }: {
     helmet: THREE.MeshStandardMaterial;
     skin: THREE.MeshStandardMaterial;
   };
-  palette: typeof CT_PALETTE;
+  palette: TeamPalette;
 }) {
   if (team === 'CT') {
     return (
@@ -695,7 +694,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     from: new THREE.Vector3(),
     to: new THREE.Vector3(),
     startedAt: 0,
-    duration: MOVE_STEP_SECONDS,
+    duration: DEFAULT_MOVEMENT_TIMING.tileSeconds,
     targetKey: '',
   });
 
@@ -715,8 +714,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const isVisibleTarget = Boolean(shotPreview?.hasLineOfSight);
   const isShootableTarget = Boolean(shotPreview?.hasLineOfSight && shotPreview.inRange);
   const isSpent = isActiveTeam && unit.ap <= 0;
-  const p = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
-  const rc = ROLE_CONFIG[unit.role.id];
+  const p = TEAM_RENDER_PALETTES[unit.team];
+  const rc = ROLE_RENDER_CONFIG[unit.role.id];
   const spriteTexture = useMemo(
     () => createUnitSpriteTexture(unit.team, unit.role.id, rc.accent),
     [rc.accent, unit.role.id, unit.team]
@@ -767,7 +766,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       }
     }
 
-    let isMoving = false;
+    let movementIntensity = 0;
     if (groupRef.current) {
       const movement = movementRef.current;
 
@@ -784,19 +783,27 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         } else {
           movement.from.copy(groupRef.current.position);
           movement.to.copy(targetPosition);
-          movement.duration = THREE.MathUtils.clamp(tileDistance * MOVE_STEP_SECONDS, 0.12, 0.28);
+          movement.duration = getMovementSegmentDurationSeconds(tileDistance);
         }
       }
 
       if (movement.duration > 0) {
+        const elapsedMovement = state.clock.elapsedTime - movement.startedAt;
         const progress = THREE.MathUtils.clamp(
-          (state.clock.elapsedTime - movement.startedAt) / movement.duration,
+          elapsedMovement / movement.duration,
           0,
           1
         );
-        const easedProgress = easeOutCubic(progress);
+        const easedProgress = getSegmentProgress(
+          elapsedMovement,
+          movement.duration
+        );
         groupRef.current.position.lerpVectors(movement.from, movement.to, easedProgress);
-        isMoving = progress < 1;
+        movementIntensity = progress < 1
+          ? 1
+          : elapsedMovement < movement.duration + DEFAULT_MOVEMENT_TIMING.settleSeconds
+            ? 0.35
+            : 0;
       } else {
         groupRef.current.position.copy(targetPosition);
       }
@@ -804,7 +811,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       groupRef.current.rotation.y = dampAngle(
         groupRef.current.rotation.y,
         angle,
-        isMoving ? 15 : 10,
+        movementIntensity > 0 ? 15 : 10,
         delta
       );
     }
@@ -813,13 +820,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (bodyRef.current) {
       bodyRef.current.position.y = THREE.MathUtils.damp(
         bodyRef.current.position.y,
-        isMoving ? Math.abs(Math.sin(walkPhase)) * 0.07 : 0,
+        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.07,
         16,
         delta
       );
       bodyRef.current.rotation.x = THREE.MathUtils.damp(
         bodyRef.current.rotation.x,
-        isMoving ? Math.sin(walkPhase) * 0.045 : 0,
+        movementIntensity * Math.sin(walkPhase) * 0.045,
         14,
         delta
       );
@@ -827,7 +834,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (leftLegRef.current) {
       leftLegRef.current.rotation.x = THREE.MathUtils.damp(
         leftLegRef.current.rotation.x,
-        isMoving ? Math.sin(walkPhase) * 0.42 : 0,
+        movementIntensity * Math.sin(walkPhase) * 0.42,
         18,
         delta
       );
@@ -835,7 +842,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (rightLegRef.current) {
       rightLegRef.current.rotation.x = THREE.MathUtils.damp(
         rightLegRef.current.rotation.x,
-        isMoving ? -Math.sin(walkPhase) * 0.42 : 0,
+        movementIntensity * -Math.sin(walkPhase) * 0.42,
         18,
         delta
       );
@@ -843,13 +850,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (weaponRef.current) {
       weaponRef.current.rotation.x = THREE.MathUtils.damp(
         weaponRef.current.rotation.x,
-        (isMoving ? Math.sin(walkPhase + 0.8) * 0.055 : 0) - shotPulse * 0.22,
+        movementIntensity * Math.sin(walkPhase + 0.8) * 0.055 - shotPulse * 0.22,
         14,
         delta
       );
       weaponRef.current.rotation.y = THREE.MathUtils.damp(
         weaponRef.current.rotation.y,
-        isMoving ? Math.sin(walkPhase * 0.5) * 0.025 : 0,
+        movementIntensity * Math.sin(walkPhase * 0.5) * 0.025,
         14,
         delta
       );
@@ -1235,7 +1242,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           outlineColor="#07080d"
           font={undefined}
         >
-          {ROLE_TAGS[unit.role.id] || '???'}
+          {rc.shortTag}
         </SafeText>
 
         {/* === NAME === */}
@@ -1327,8 +1334,8 @@ function CasualtyMarker({ unit }: { unit: Unit }) {
   const ts = map.tileSize;
   const wx = (map.width - 1 - unit.position.x) * ts + ts / 2;
   const wz = unit.position.y * ts + ts / 2;
-  const palette = unit.team === 'CT' ? CT_PALETTE : T_PALETTE;
-  const accent = ROLE_CONFIG[unit.role.id].accent;
+  const palette = TEAM_RENDER_PALETTES[unit.team];
+  const accent = ROLE_RENDER_CONFIG[unit.role.id].accent;
   const angle = Math.atan2(-unit.facing.x, unit.facing.y);
   const deathPulseRef = useRef({ id: '', startedAt: 0, critical: false });
   const deathRingRef = useRef<THREE.MeshBasicMaterial>(null);
@@ -1444,7 +1451,7 @@ function CasualtyMarker({ unit }: { unit: Unit }) {
         outlineColor="#09090f"
         font={undefined}
       >
-        {ROLE_TAGS[unit.role.id] || 'OUT'}
+        {ROLE_RENDER_CONFIG[unit.role.id].shortTag || 'OUT'}
       </SafeText>
     </group>
   );
