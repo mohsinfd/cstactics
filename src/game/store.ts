@@ -28,8 +28,8 @@ import type {
   InputMode,
   CombatEvent,
   ExecuteInterrupt,
-  ExecuteInterruptBombPressure,
-  ExecuteInterruptTimelineItem,
+  ExecuteTimeline,
+  ExecuteTimelineEvent,
   ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
@@ -46,10 +46,19 @@ import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
 import {
   clampExecuteAtMs,
+  buildContactBreakTimelineEvents,
+  buildContactBreakTimelineItems,
+  createExecuteTimeline,
+  createExecuteTimelineEvent,
+  createMoveStartTimelineEvent,
+  createMovementBeatTimelineEvent,
+  createPlannedUtilityTimelineEvent,
+  createUtilityResolvedTimelineEvent,
   formatExecuteTime,
   getDefaultExecuteAtMs,
   getPlannedActionBeat,
   getPlannedActionExecuteAtMs,
+  sortExecuteTimelineEvents,
   sortPlannedActionsByBeat,
 } from './executeTimeline';
 
@@ -139,85 +148,6 @@ function getBestTradeShot(
   };
 }
 
-function getInterruptResultText(event: CombatEvent): string {
-  if (!event.hit) return 'miss';
-  if (event.killed && event.critical) return `HS kill -${event.damage}`;
-  if (event.killed) return `kill -${event.damage}`;
-  if (event.critical) return `headshot -${event.damage}`;
-  return `hit -${event.damage} HP`;
-}
-
-function getBombPressureTimelineText(bombPressure: ExecuteInterruptBombPressure): string | null {
-  if (bombPressure.bombPlanted) return `bomb ${bombPressure.bombTimer} turns`;
-  if (bombPressure.bombDropped) return 'bomb dropped';
-  return null;
-}
-
-function buildExecuteInterruptTimeline({
-  event,
-  map,
-  source,
-  beatLabel,
-  phaseLabel,
-  contactTile,
-  tradeShot,
-  bombPressure,
-}: {
-  event: CombatEvent;
-  map: GameState['map'];
-  source: ExecuteInterrupt['source'];
-  beatLabel: string;
-  phaseLabel: string;
-  contactTile: TileCoord;
-  tradeShot: ExecuteInterruptTradeShot | null;
-  bombPressure: ExecuteInterruptBombPressure;
-}): ExecuteInterruptTimelineItem[] {
-  const tileLabel = map.grid[contactTile.y]?.[contactTile.x]?.label ?? `tile ${contactTile.x},${contactTile.y}`;
-  const moveKind = source === 'planned_execute' ? 'swing' : 'move';
-  const moveTitle = moveKind === 'swing' ? `${event.targetName} swung` : `${event.targetName} moved`;
-  const resultText = getInterruptResultText(event);
-  const tradeText = tradeShot
-    ? `trade ${tradeShot.shooterName} ${tradeShot.hitChance}%/${tradeShot.damage}`
-    : 'no clean trade';
-  const bombText = getBombPressureTimelineText(bombPressure);
-  const decisionDetail = bombText ? `${tradeText}; ${bombText}` : tradeText;
-
-  return [
-    {
-      id: 'crossed-lane',
-      kind: moveKind,
-      timeLabel: beatLabel,
-      phaseLabel,
-      title: moveTitle,
-      detail: `crossed ${tileLabel}`,
-    },
-    {
-      id: 'held-lane',
-      kind: 'hold',
-      timeLabel: beatLabel,
-      phaseLabel: 'HOLD',
-      title: `${event.attackerName} held lane`,
-      detail: `${event.weaponName} ready`,
-    },
-    {
-      id: 'reaction-shot',
-      kind: 'shot',
-      timeLabel: beatLabel,
-      phaseLabel: 'SHOT',
-      title: `${event.weaponName} reaction`,
-      detail: `${event.hitChance}% ${resultText}`,
-    },
-    {
-      id: 'decision',
-      kind: 'decision',
-      timeLabel: beatLabel,
-      phaseLabel: 'CALL',
-      title: tradeShot ? 'trade available' : 'hold decision',
-      detail: decisionDetail,
-    },
-  ];
-}
-
 function createExecuteInterrupt({
   event,
   map,
@@ -227,6 +157,7 @@ function createExecuteInterrupt({
   source,
   beatTimeMs,
   phaseLabel,
+  timelineEvents,
 }: {
   event: CombatEvent;
   map: GameState['map'];
@@ -236,9 +167,11 @@ function createExecuteInterrupt({
   source: ExecuteInterrupt['source'];
   beatTimeMs: number;
   phaseLabel: string;
+  timelineEvents: ExecuteTimelineEvent[];
 }): ExecuteInterrupt {
   const beatLabel = formatExecuteTime(beatTimeMs);
   const contactTile = { ...event.tile };
+  const tileLabel = map.grid[contactTile.y]?.[contactTile.x]?.label ?? `tile ${contactTile.x},${contactTile.y}`;
   const tradeShot = getBestTradeShot(map, units, round, smokes, event);
   const bombPressure = {
     bombPlanted: round.bombPlanted,
@@ -247,6 +180,17 @@ function createExecuteInterrupt({
     bombPosition: round.bombPosition ? { ...round.bombPosition } : null,
     bombCarrierId: round.bombCarrierId,
   };
+  const interruptTimelineEvents = buildContactBreakTimelineEvents({
+    event,
+    source,
+    beatTimeMs,
+    phaseLabel,
+    contactTile,
+    tileLabel,
+    tradeShot,
+    bombPressure,
+    precedingEvents: timelineEvents,
+  });
 
   return {
     id: `${event.id}:interrupt`,
@@ -259,16 +203,8 @@ function createExecuteInterrupt({
     event,
     shooterId: event.attackerId,
     stoppedUnitId: event.targetId,
-    timeline: buildExecuteInterruptTimeline({
-      event,
-      map,
-      source,
-      beatLabel,
-      phaseLabel,
-      contactTile,
-      tradeShot,
-      bombPressure,
-    }),
+    timelineEvents: interruptTimelineEvents,
+    timeline: buildContactBreakTimelineItems(interruptTimelineEvents),
     tradeShot,
     bombPressure,
   };
@@ -788,6 +724,8 @@ export const useGameStore = create<GameStore>((set, get) => {
     flashBursts: [],
     combatLog: [],
     executeInterrupt: null,
+    currentExecuteTimeline: null,
+    lastExecuteTimeline: null,
     feedbackEvents: [],
     aiStatus: null,
 
@@ -933,10 +871,34 @@ export const useGameStore = create<GameStore>((set, get) => {
       let tilesMoved = 0;
       let contactEvent: CombatEvent | null = null;
       let consumedHeldAngleId: string | null = null;
+      let contactTimelineTimeMs = 0;
+      let executeTimeline = createExecuteTimeline({
+        id: `${Date.now()}:direct-move:${unit.id}`,
+        source: 'direct_move',
+        activeTeam: round.activeTeam,
+      });
+      const appendExecuteEvent = (event: ExecuteTimelineEvent) => {
+        executeTimeline = {
+          ...executeTimeline,
+          events: sortExecuteTimelineEvents([...executeTimeline.events, event]),
+        };
+        set({ currentExecuteTimeline: executeTimeline });
+      };
 
+      appendExecuteEvent(createExecuteTimelineEvent({
+        id: `${executeTimeline.id}:move-start`,
+        kind: 'move_start',
+        timeMs: 0,
+        phaseLabel: 'MOVE',
+        title: `${unit.name} move start`,
+        detail: `toward ${mapData.grid[targetTile.y]?.[targetTile.x]?.label ?? `${targetTile.x},${targetTile.y}`}`,
+        unitId: unit.id,
+        tile: unit.position,
+      }));
       set({
         isExecuting: true,
         executeInterrupt: null,
+        currentExecuteTimeline: executeTimeline,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -968,6 +930,16 @@ export const useGameStore = create<GameStore>((set, get) => {
           facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
         };
         tilesMoved += 1;
+        appendExecuteEvent(createExecuteTimelineEvent({
+          id: `${executeTimeline.id}:move:${tilesMoved}:${step.x},${step.y}`,
+          kind: 'movement_beat',
+          timeMs: Math.max(0, (tilesMoved - 1) * EXECUTION_STEP_MS),
+          phaseLabel: 'MOVE',
+          title: `${unit.name} crossed`,
+          detail: mapData.grid[step.y]?.[step.x]?.label ?? `tile ${step.x},${step.y}`,
+          unitId: unit.id,
+          tile: step,
+        }));
 
         set({
           units: nextUnits,
@@ -995,6 +967,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
               contactEvent = resolveReactionFire(mapData, attacker, target, contactTile, crossedAngle, state.smokes);
               consumedHeldAngleId = crossedAngle.id;
+              contactTimelineTimeMs = tilesMoved * EXECUTION_STEP_MS;
               if (contactEvent.hit) {
                 const newHp = Math.max(0, target.hp - contactEvent.damage);
                 nextUnits[targetIdx] = {
@@ -1020,7 +993,15 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       const finalUnitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
       if (finalUnitIdx === -1 || tilesMoved === 0) {
-        set({ isExecuting: false });
+        set({
+          isExecuting: false,
+          currentExecuteTimeline: null,
+          lastExecuteTimeline: {
+            ...executeTimeline,
+            status: 'completed',
+            events: sortExecuteTimelineEvents(executeTimeline.events),
+          },
+        });
         return;
       }
 
@@ -1089,10 +1070,21 @@ export const useGameStore = create<GameStore>((set, get) => {
           round: nextRound,
           smokes: nextSmokes,
           source: 'direct_move',
-          beatTimeMs: 0,
+          beatTimeMs: contactTimelineTimeMs,
           phaseLabel: 'CONTACT',
+          timelineEvents: executeTimeline.events,
         })
         : null;
+      const finalExecuteTimelineEvents = executeInterrupt
+        ? [...executeTimeline.events, ...executeInterrupt.timelineEvents.filter((event) => (
+          !executeTimeline.events.some((existingEvent) => existingEvent.id === event.id)
+        ))]
+        : executeTimeline.events;
+      const finalExecuteTimeline: ExecuteTimeline = {
+        ...executeTimeline,
+        status: contactEvent ? 'interrupted' : 'completed',
+        events: sortExecuteTimelineEvents(finalExecuteTimelineEvents),
+      };
 
       set({
         units: nextUnits,
@@ -1105,6 +1097,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         isExecuting: false,
         inputMode: contactEvent ? 'shoot' : 'move',
         plannedActions: [],
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: finalExecuteTimeline,
         heldAngles: state.heldAngles.filter((angle) => (
           angle.unitId !== unit.id &&
           angle.id !== consumedHeldAngleId
@@ -1821,6 +1815,28 @@ export const useGameStore = create<GameStore>((set, get) => {
       let consumedHeldAngleId: string | null = null;
       let contactBeatTimeMs = 0;
       let contactPhaseLabel = 'CONTACT';
+      let executeTimeline = createExecuteTimeline({
+        id: `${Date.now()}:planned-execute:${round.activeTeam}`,
+        source: 'planned_execute',
+        activeTeam: round.activeTeam,
+        events: sortPlannedActionsByBeat(utilityPlans)
+          .map((action) => {
+            const unit = state.units.find((candidate) => candidate.id === action.unitId);
+            return createPlannedUtilityTimelineEvent(
+              action,
+              unit?.name ?? 'Unit',
+              mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`
+            );
+          })
+          .filter((event): event is ExecuteTimelineEvent => Boolean(event)),
+      });
+      const appendExecuteEvent = (event: ExecuteTimelineEvent) => {
+        executeTimeline = {
+          ...executeTimeline,
+          events: sortExecuteTimelineEvents([...executeTimeline.events, event]),
+        };
+        set({ currentExecuteTimeline: executeTimeline });
+      };
       const runtimes: Array<{
         action: PlannedAction;
         startAtMs: number;
@@ -1829,6 +1845,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         contactTile: TileCoord | null;
         rangePerAP: number;
         tilesMoved: number;
+        started: boolean;
         stopped: boolean;
       }> = [];
 
@@ -1836,6 +1853,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         planningMode: false,
         isExecuting: true,
         executeInterrupt: null,
+        currentExecuteTimeline: executeTimeline,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -1892,6 +1910,12 @@ export const useGameStore = create<GameStore>((set, get) => {
             },
           ];
           utilityExecuted = true;
+          const timelineEvent = createUtilityResolvedTimelineEvent(
+            action,
+            unit.name,
+            mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`
+          );
+          if (timelineEvent) appendExecuteEvent(timelineEvent);
           set({
             units: nextUnits,
             smokes: nextSmokes,
@@ -1949,6 +1973,13 @@ export const useGameStore = create<GameStore>((set, get) => {
             ...nextFlashBursts,
           ].slice(0, FLASH_BURST_LOG_LIMIT);
           utilityExecuted = true;
+          const timelineEvent = createUtilityResolvedTimelineEvent(
+            action,
+            unit.name,
+            mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`,
+            affectedUnitIds.length
+          );
+          if (timelineEvent) appendExecuteEvent(timelineEvent);
           set({
             units: nextUnits,
             smokes: nextSmokes,
@@ -2019,6 +2050,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           contactTile,
           rangePerAP,
           tilesMoved: 0,
+          started: false,
           stopped: false,
         });
       }
@@ -2044,6 +2076,12 @@ export const useGameStore = create<GameStore>((set, get) => {
           pathPreview: [],
           isExecuting: false,
           executeInterrupt: null,
+          currentExecuteTimeline: null,
+          lastExecuteTimeline: {
+            ...executeTimeline,
+            status: 'completed',
+            events: sortExecuteTimelineEvents(executeTimeline.events),
+          },
           inputMode: 'move',
           smokes: nextSmokes,
           flashBursts: nextFlashBursts,
@@ -2092,6 +2130,10 @@ export const useGameStore = create<GameStore>((set, get) => {
           const dx = destination.x - unit.position.x;
           const dy = destination.y - unit.position.y;
           const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          if (!runtime.started) {
+            appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
+            runtime.started = true;
+          }
 
           nextUnits = [...nextUnits];
           nextUnits[unitIdx] = {
@@ -2101,6 +2143,13 @@ export const useGameStore = create<GameStore>((set, get) => {
             facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
           };
           runtime.tilesMoved += 1;
+          appendExecuteEvent(createMovementBeatTimelineEvent(
+            runtime.action,
+            unit.name,
+            executeClockMs,
+            destination,
+            mapData.grid[destination.y]?.[destination.x]?.label ?? `tile ${destination.x},${destination.y}`
+          ));
           movedThisStep = true;
         }
 
@@ -2155,7 +2204,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, nextSmokes);
             consumedHeldAngleId = runtime.crossedAngle.id;
             const beat = getPlannedActionBeat(runtime.action);
-            contactBeatTimeMs = beat.timeMs;
+            contactBeatTimeMs = executeClockMs;
             contactPhaseLabel = beat.phaseLabel;
             const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (targetIdx !== -1 && contactEvent.hit) {
@@ -2238,8 +2287,19 @@ export const useGameStore = create<GameStore>((set, get) => {
           source: 'planned_execute',
           beatTimeMs: contactBeatTimeMs,
           phaseLabel: contactPhaseLabel,
+          timelineEvents: executeTimeline.events,
         })
         : null;
+      const finalExecuteTimelineEvents = executeInterrupt
+        ? [...executeTimeline.events, ...executeInterrupt.timelineEvents.filter((event) => (
+          !executeTimeline.events.some((existingEvent) => existingEvent.id === event.id)
+        ))]
+        : executeTimeline.events;
+      const finalExecuteTimeline: ExecuteTimeline = {
+        ...executeTimeline,
+        status: contactEvent ? 'interrupted' : 'completed',
+        events: sortExecuteTimelineEvents(finalExecuteTimelineEvents),
+      };
 
       set({
         units: nextUnits,
@@ -2251,6 +2311,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         plannedActions: [],
         isExecuting: false,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: finalExecuteTimeline,
         inputMode: contactEvent ? 'shoot' : 'move',
         heldAngles: state.heldAngles.filter((angle) => (
           !movingUnitIds.has(angle.unitId) &&
@@ -2666,6 +2728,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         flashBursts: [],
         combatLog: [],
         executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2715,6 +2779,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         flashBursts: [],
         combatLog: [],
         executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2793,6 +2859,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         flashBursts: [],
         combatLog: [],
         executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2878,6 +2946,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         flashBursts: [],
         combatLog: [],
         executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
         feedbackEvents: [],
         aiStatus: null,
       });

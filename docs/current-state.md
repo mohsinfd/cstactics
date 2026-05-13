@@ -86,9 +86,12 @@ verbs that make those nouns matter.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
   immediate trade shot, and bomb pressure until the player responds.
-- Contact Break interrupts now carry a compact four-step timeline that explains
-  the lane cross, held defender, shot result, and trade/bomb call without
-  changing combat resolution.
+- Contact Break interrupts now carry reusable execute timeline events plus a
+  compact HUD-compatible timeline that explains the lane cross, held defender,
+  shot result, and trade/bomb call without changing combat resolution.
+- Direct moves and planned executes persist `currentExecuteTimeline` /
+  `lastExecuteTimeline` state with ordered utility, movement/swing, contact,
+  shot-result, and decision events for inspection and regression coverage.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
 - First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit
@@ -168,9 +171,10 @@ verbs that make those nouns matter.
 - Bomb state now supports a first playable plant/defuse/drop/pickup loop, but
   save/hunt logic is still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
-- Planning exists for movement with a first-pass ticked execute and editable
-  timing beats, but not yet a full multi-order CS timeline with simultaneous
-  combat beats and production interrupt sequencing.
+- Planning exists for movement with a first-pass ticked execute, editable timing
+  beats, and a reusable execute/contact event stream, but not yet a full
+  cinematic queue/replay system with simultaneous combat beats and production
+  interrupt sequencing.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 
@@ -181,7 +185,8 @@ verbs that make those nouns matter.
 - Richer kill feed beyond first-pass weapon, headshot, damage, and elimination
   markers.
 - Production-grade Hold Angle / overwatch lifecycle.
-- Production-grade cinematic interrupt timeline and multi-event contact queue.
+- Production-grade cinematic interrupt timeline, replay controls, and
+  multi-event contact queue beyond the reusable first-pass event stream.
 - Production-grade cover fidelity for complex geometry, peeking, and multi-tile
   objects.
 - Molly, HE, and production-grade utility timing.
@@ -191,7 +196,7 @@ verbs that make those nouns matter.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
 - Production-grade synchronized execute timeline beyond the current bounded
-  per-order utility/swing timing contract.
+  per-order utility/swing timing contract and inspectable event stream.
 
 ## Immediate Focus
 

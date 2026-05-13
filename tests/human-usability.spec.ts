@@ -279,6 +279,37 @@ test.describe('human usability regression', () => {
     const timelineText = await page.getByTestId('hud-contact-timeline').innerText();
     expect(timelineText, 'contact timeline should include the shot beat').toContain('SHOT');
     expect(timelineText, 'contact timeline should include the trade/no-trade call').toMatch(/trade|no clean trade/i);
+    expect(timelineText, 'contact timeline should include a move or swing beat').toMatch(/MOVE|SWING/i);
+
+    const timelineState = await page.evaluate(() => {
+      const state = window.__CS_TACTICS_STORE__?.getState();
+      const interruptEvents = state?.executeInterrupt?.timelineEvents ?? [];
+      const lastEvents = state?.lastExecuteTimeline?.events ?? [];
+      const kinds = lastEvents.map((event) => event.kind);
+      const times = lastEvents.map((event) => event.timeMs);
+      return {
+        hasLastTimeline: Boolean(state?.lastExecuteTimeline),
+        lastStatus: state?.lastExecuteTimeline?.status ?? null,
+        interruptEventCount: interruptEvents.length,
+        lastEventCount: lastEvents.length,
+        kinds,
+        hasMovementBeat: kinds.includes('movement_beat'),
+        hasSwingOrMoveStart: kinds.includes('swing_start') || kinds.includes('move_start'),
+        ordered: times.every((time, index) => index === 0 || time >= times[index - 1]),
+      };
+    });
+    expect(timelineState.hasLastTimeline, 'execute should persist a last timeline').toBe(true);
+    expect(timelineState.lastStatus, 'contact should interrupt the last timeline').toBe('interrupted');
+    expect(timelineState.interruptEventCount, 'interrupt should carry reusable timeline events').toBeGreaterThanOrEqual(4);
+    expect(timelineState.lastEventCount, 'last timeline should retain the contact sequence').toBeGreaterThanOrEqual(4);
+    expect(timelineState.ordered, 'execute timeline events should be ordered by beat').toBe(true);
+    expect(timelineState.hasMovementBeat, 'execute timeline should include movement beat events').toBe(true);
+    expect(timelineState.hasSwingOrMoveStart, 'execute timeline should include movement/swing start events').toBe(true);
+    expect(timelineState.kinds, 'timeline should include swing/move, shot, and trade decision events').toEqual(expect.arrayContaining([
+      'reaction_shot',
+      'shot_result',
+      'trade_decision',
+    ]));
     await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
 
     const viewport = page.viewportSize();
@@ -458,6 +489,67 @@ test.describe('human usability regression', () => {
       'hud-command-run-execute',
       'hud-command-end-side-secondary',
     ]);
+
+    const completedTimelineResult = await page.evaluate(async () => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+
+      store.getState().initGame();
+      store.getState().setPlanningMode(true);
+      store.getState().selectUnit(3);
+
+      const support = store.getState().units.find((unit) => unit.id === 3);
+      if (!support) return { ok: false, reason: 'support unit unavailable' };
+      store.getState().throwSmoke(support.position);
+
+      let smokeAction = store.getState().plannedActions.find((action) => action.kind === 'smoke');
+      if (!smokeAction) return { ok: false, reason: 'smoke plan unavailable' };
+      store.getState().setPlannedActionTiming(smokeAction.id, 500);
+
+      store.getState().selectUnit(1);
+      const mover = store.getState().units.find((unit) => unit.id === 1);
+      if (!mover) return { ok: false, reason: 'mover unit unavailable' };
+
+      const occupied = new Set(
+        store.getState().units
+          .filter((unit) => unit.alive && unit.id !== mover.id)
+          .map((unit) => `${unit.position.x},${unit.position.y}`)
+      );
+      const moveTarget = store.getState().walkableTiles.find((tile) => (
+        (tile.x !== mover.position.x || tile.y !== mover.position.y) &&
+        !occupied.has(`${tile.x},${tile.y}`)
+      ));
+      if (!moveTarget) return { ok: false, reason: 'move target unavailable' };
+
+      store.getState().queueMove(moveTarget);
+      const moveAction = store.getState().plannedActions.find((action) => action.kind === 'move');
+      if (!moveAction) return { ok: false, reason: 'move plan unavailable' };
+      store.getState().setPlannedActionTiming(moveAction.id, 400);
+
+      smokeAction = store.getState().plannedActions.find((action) => action.kind === 'smoke');
+      if (!smokeAction || smokeAction.executeAtMs !== 500) {
+        return { ok: false, reason: 'smoke timing was not preserved at 500ms' };
+      }
+
+      await store.getState().commitPlannedActions();
+
+      const timeline = store.getState().lastExecuteTimeline;
+      const events = timeline?.events ?? [];
+      const swingIndex = events.findIndex((event) => event.kind === 'swing_start' && event.timeMs === 400);
+      const utilityIndex = events.findIndex((event) => event.kind === 'utility_resolved' && event.timeMs === 500);
+      const ordered = events.every((event, index) => index === 0 || event.timeMs >= events[index - 1].timeMs);
+
+      return {
+        ok: timeline?.status === 'completed' &&
+          swingIndex >= 0 &&
+          utilityIndex >= 0 &&
+          swingIndex < utilityIndex &&
+          ordered,
+        reason: `status=${timeline?.status ?? 'none'} swingIndex=${swingIndex} utilityIndex=${utilityIndex} events=${events.map((event) => `${event.kind}:${event.timeMs}`).join(',')}`,
+      };
+    });
+
+    expect(completedTimelineResult.ok, completedTimelineResult.reason).toBe(true);
     expect(consoleErrors).toEqual([]);
   });
 });

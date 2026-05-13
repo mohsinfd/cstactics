@@ -106,6 +106,44 @@ export interface ExecuteInterruptBombPressure {
   bombCarrierId: number | null;
 }
 
+export type ExecuteTimelineSource = 'direct_move' | 'planned_execute';
+export type ExecuteTimelineStatus = 'running' | 'interrupted' | 'completed';
+export type ExecuteTimelineEventKind =
+  | 'utility_planned'
+  | 'utility_resolved'
+  | 'move_start'
+  | 'swing_start'
+  | 'movement_beat'
+  | 'contact'
+  | 'reaction_shot'
+  | 'shot_result'
+  | 'trade_decision'
+  | 'bomb_pressure';
+
+export interface ExecuteTimelineEvent {
+  id: string;
+  kind: ExecuteTimelineEventKind;
+  timeMs: number;
+  timeLabel: string;
+  phaseLabel: string;
+  title: string;
+  detail: string;
+  unitId?: number;
+  targetUnitId?: number;
+  actionId?: string;
+  tile?: TileCoord;
+  combatEventId?: string;
+}
+
+export interface ExecuteTimeline {
+  id: string;
+  source: ExecuteTimelineSource;
+  status: ExecuteTimelineStatus;
+  activeTeam: Team;
+  startedAt: number;
+  events: ExecuteTimelineEvent[];
+}
+
 export type ExecuteInterruptTimelineKind = 'move' | 'swing' | 'hold' | 'shot' | 'decision';
 
 export interface ExecuteInterruptTimelineItem {
@@ -120,7 +158,7 @@ export interface ExecuteInterruptTimelineItem {
 export interface ExecuteInterrupt {
   id: string;
   createdAt: number;
-  source: 'direct_move' | 'planned_execute';
+  source: ExecuteTimelineSource;
   beatTimeMs: number;
   beatLabel: string;
   phaseLabel: string;
@@ -128,6 +166,7 @@ export interface ExecuteInterrupt {
   event: CombatEvent;
   shooterId: number;
   stoppedUnitId: number;
+  timelineEvents: ExecuteTimelineEvent[];
   timeline: ExecuteInterruptTimelineItem[];
   tradeShot: ExecuteInterruptTradeShot | null;
   bombPressure: ExecuteInterruptBombPressure;
@@ -368,6 +407,8 @@ export interface GameState {
   flashBursts: FlashBurst[];
   combatLog: CombatEvent[];
   executeInterrupt: ExecuteInterrupt | null;
+  currentExecuteTimeline: ExecuteTimeline | null;
+  lastExecuteTimeline: ExecuteTimeline | null;
   feedbackEvents: FeedbackEvent[];
   aiStatus: AiStatus | null;
 }

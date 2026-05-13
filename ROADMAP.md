@@ -137,11 +137,12 @@ move, trigger contact, and freeze into a trade decision. See
   identity, board damage numbers show HP loss, tracer/recoil/audio/HUD styling
   differs by weapon class, and contact breaks get a stronger pulse/readout.
   Implemented.
-- First-pass Contact Break timeline: interrupts now show the lane cross, held
-  defender, shot result, and trade/bomb call as compact presentation scaffolding
-  for future multi-event queues. Implemented.
-- Next: generalize Contact Break timeline data into broader multi-event execute
-  queues without rewriting combat math.
+- First-pass reusable execute/contact event stream: direct moves and planned
+  executes now record ordered utility, movement/swing, contact, shot result, and
+  trade/bomb decision events, while Contact Break still renders a compact
+  timeline from the same data. Implemented.
+- Next: grow the reusable event stream into a production cinematic queue/replay
+  system without rewriting combat math.
 
 ### Milestone C: Utility Timing
 
@@ -165,6 +166,9 @@ move, trigger contact, and freeze into a trade decision. See
   starts. Implemented as a first pass.
 - Show a compact execute timeline: `0.0 smoke`, `0.5 flash`, `0.7 entry swing`.
   First-pass timeline UI is implemented.
+- Persist reusable execute/contact timeline data for inspection and regression
+  tests. Implemented as a first pass; this is not yet a full cinematic
+  queue/replay system.
 
 ### Milestone E: CS Match Loop
 
