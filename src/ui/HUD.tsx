@@ -71,16 +71,24 @@ function getBaseShotAim(preview: ShotPreview): number {
 }
 
 function useIsCompactViewport(): boolean {
+  return useViewportBelow(560);
+}
+
+function useIsNarrowViewport(): boolean {
+  return useViewportBelow(1000);
+}
+
+function useViewportBelow(width: number): boolean {
   const [isCompact, setIsCompact] = useState(() => (
-    typeof window !== 'undefined' ? window.innerWidth < 560 : false
+    typeof window !== 'undefined' ? window.innerWidth < width : false
   ));
 
   useEffect(() => {
-    const onResize = () => setIsCompact(window.innerWidth < 560);
+    const onResize = () => setIsCompact(window.innerWidth < width);
     onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, []);
+  }, [width]);
 
   return isCompact;
 }
@@ -131,7 +139,7 @@ function tileDistance(a: TileCoord, b: TileCoord): number {
 
 export function HUD() {
   return (
-    <div style={{
+    <div data-testid="hud-root" style={{
       position: 'fixed', inset: 0, pointerEvents: 'none',
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
       zIndex: 10,
@@ -213,7 +221,7 @@ function ViewControlPanel() {
   const compact = useIsCompactViewport();
 
   return (
-    <div style={{
+    <div data-testid="hud-view-controls" style={{
       position: 'absolute',
       top: compact ? 154 : '50%',
       right: compact ? 10 : 20,
@@ -259,6 +267,7 @@ function CameraButton({
   return (
     <button
       type="button"
+      data-testid={`hud-camera-${title.toLowerCase().replaceAll(' ', '-')}`}
       title={title}
       aria-label={title}
       onClick={onClick}
@@ -676,7 +685,7 @@ function TopBar() {
   const scoreSize = compact ? 24 : 28;
 
   return (
-    <div style={{
+    <div data-testid="hud-top-bar" style={{
       position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
       display: 'flex', alignItems: 'stretch',
     }}>
@@ -744,7 +753,7 @@ function TeamRoster() {
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#4488cc';
 
   return (
-    <div style={{
+    <div data-testid="hud-team-roster" style={{
       position: 'absolute', top: compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
       display: 'flex', gap: compact ? 4 : 6, pointerEvents: 'auto',
       maxWidth: 'calc(100vw - 14px)',
@@ -801,6 +810,8 @@ function SelectedUnitPanel() {
   const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
   const round = useGameStore((s) => s.round);
+  const compact = useIsCompactViewport();
+  const narrow = useIsNarrowViewport();
   const phase = round.phase;
 
   if (selectedId === null) return null;
@@ -894,12 +905,20 @@ function SelectedUnitPanel() {
   const showPickupAction = bombDropped && unit.team === 'T' && !unit.hasBomb;
 
   return (
-    <div style={{
-      position: 'absolute', bottom: 20, left: 20,
+    <div data-testid="hud-selected-unit-panel" style={{
+      position: 'absolute',
+      bottom: narrow ? 156 : 20,
+      left: compact ? 10 : 20,
+      right: compact ? 10 : undefined,
       background: 'rgba(8, 8, 12, 0.94)',
       border: `1px solid ${teamColor}33`,
       borderLeft: `3px solid ${teamColor}`,
-      borderRadius: 6, padding: '12px 16px', minWidth: 260,
+      borderRadius: 6,
+      padding: compact ? '10px 12px' : '12px 16px',
+      minWidth: compact ? 0 : 260,
+      maxWidth: compact ? undefined : 380,
+      maxHeight: narrow ? 'calc(100vh - 250px)' : 'calc(100vh - 96px)',
+      overflowY: 'auto',
       pointerEvents: 'auto',
     }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
@@ -961,6 +980,7 @@ function SelectedUnitPanel() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(72px, 1fr))', gap: 6, marginTop: 10 }}>
         <button
+          data-testid="hud-action-move"
           onClick={() => setInputMode('move')}
           disabled={unit.ap <= 0}
           style={{
@@ -979,6 +999,7 @@ function SelectedUnitPanel() {
           Move
         </button>
         <button
+          data-testid="hud-action-shoot"
           onClick={() => setInputMode(inputMode === 'shoot' ? 'move' : 'shoot')}
           disabled={Boolean(shootingDisabledReason)}
           style={{
@@ -997,6 +1018,7 @@ function SelectedUnitPanel() {
           Shoot {shotApCost}AP
         </button>
         <button
+          data-testid="hud-action-hold-angle"
           onClick={() => setInputMode(inputMode === 'hold_angle' ? 'move' : 'hold_angle')}
           disabled={unit.ap <= 0 || unit.ammoInClip <= 0}
           style={{
@@ -1015,6 +1037,7 @@ function SelectedUnitPanel() {
           Hold 1AP
         </button>
         <button
+          data-testid="hud-action-smoke"
           onClick={() => setInputMode(inputMode === 'smoke' ? 'move' : 'smoke')}
           disabled={Boolean(smokeDisabledReason)}
           style={{
@@ -1033,6 +1056,7 @@ function SelectedUnitPanel() {
           Smoke 1AP
         </button>
         <button
+          data-testid="hud-action-flash"
           onClick={() => setInputMode(inputMode === 'flash' ? 'move' : 'flash')}
           disabled={Boolean(flashDisabledReason)}
           style={{
@@ -1051,6 +1075,7 @@ function SelectedUnitPanel() {
           Flash 1AP
         </button>
         <button
+          data-testid="hud-action-reload"
           onClick={reloadWeapon}
           disabled={Boolean(reloadDisabledReason)}
           title={reloadDisabledReason ?? 'Reload weapon'}
@@ -1075,6 +1100,7 @@ function SelectedUnitPanel() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 6, marginTop: 7 }}>
           {showPlantAction && (
             <button
+              data-testid="hud-action-plant"
               onClick={plantBomb}
               disabled={Boolean(plantDisabledReason)}
               title={plantDisabledReason ?? `Plant bomb on ${plantSite} site`}
@@ -1096,6 +1122,7 @@ function SelectedUnitPanel() {
           )}
           {showDefuseAction && (
             <button
+              data-testid="hud-action-defuse"
               onClick={defuseBomb}
               disabled={Boolean(defuseDisabledReason)}
               title={defuseDisabledReason ?? 'Defuse the planted bomb'}
@@ -1117,6 +1144,7 @@ function SelectedUnitPanel() {
           )}
           {showPickupAction && (
             <button
+              data-testid="hud-action-pickup"
               onClick={pickupBomb}
               disabled={Boolean(pickupDisabledReason)}
               title={pickupDisabledReason ?? 'Recover the dropped bomb'}
@@ -1218,6 +1246,7 @@ function SelectedUnitPanel() {
           </div>
           {shotOptions.slice(0, 3).map(({ target, preview }) => (
             <button
+              data-testid={`hud-visible-target-${target.id}`}
               key={target.id}
               onClick={() => shootUnit(target.id)}
               style={{
@@ -1271,6 +1300,7 @@ function SelectedUnitPanel() {
       )}
 
       <button
+        data-testid="hud-action-done"
         onClick={finishUnit}
         disabled={unit.ap <= 0}
         style={{
@@ -1333,7 +1363,7 @@ function CommandBar() {
     : {};
 
   return (
-    <div style={{
+    <div data-testid="hud-command-bar" style={{
       position: 'absolute',
       bottom: compact ? 14 : 18,
       left: compact ? 10 : '50%',
@@ -1376,6 +1406,7 @@ function CommandBar() {
       </div>
 
       <button
+        data-testid="hud-command-plan"
         onClick={() => !isExecuting && !isRoundOver && setPlanningMode(!planningMode)}
         disabled={isExecuting || isRoundOver}
         title={planningMode ? 'Click destination tiles to queue synchronized moves.' : 'Queue movement orders before resolving them together.'}
@@ -1399,6 +1430,7 @@ function CommandBar() {
       </button>
 
       <button
+        data-testid="hud-command-contact-drill"
         onClick={() => !isExecuting && startContactDrill()}
         disabled={isExecuting}
         title="Load a prepared first-contact scenario for testing movement, danger, and held angles."
@@ -1423,6 +1455,7 @@ function CommandBar() {
 
       {plannedActions.length > 0 ? (
         <button
+          data-testid="hud-command-run-execute"
           onClick={() => !isExecuting && !isRoundOver && commitPlannedActions()}
           disabled={isExecuting || isRoundOver}
           title="Resolve all queued movement orders together until contact or completion."
@@ -1448,6 +1481,7 @@ function CommandBar() {
         </button>
       ) : (
         <button
+          data-testid="hud-command-end-side"
           onClick={() => !isExecuting && !isRoundOver && endTurn()}
           disabled={isExecuting || isRoundOver}
           title={`Pass control from ${activeTeam} side to the other team.`}
@@ -1475,6 +1509,7 @@ function CommandBar() {
 
       {plannedActions.length > 0 && (
         <button
+          data-testid="hud-command-end-side-secondary"
           onClick={() => !isExecuting && !isRoundOver && endTurn()}
           disabled={isExecuting || isRoundOver}
           title={`Discard remaining tempo and pass control from ${activeTeam} side.`}

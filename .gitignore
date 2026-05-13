@@ -6,3 +6,5 @@ tmp-scaffold/
 dev-server.*.log
 vite-*.log
 public/debug/
+test-results/
+playwright-report/

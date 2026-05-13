@@ -93,6 +93,12 @@ verbs that make those nouns matter.
 - Camera input now separates trackpad-style pan/pinch from discrete mouse-wheel
   zoom and has a repeatable usability test in
   `docs/usability-camera-input-test.md`.
+- HUD panels and primary actions now expose stable `data-testid` hooks for
+  human-click browser usability checks.
+- Automated browser usability regression runs through `npm run test:browser`
+  across desktop, narrow laptop, and compact HUD viewports.
+- Post-feature human usability regression protocol is documented in
+  `docs/human-usability-regression.md`.
 - Planned movement resolves in short visible ticks and interrupts on held-angle
   contact. Unit interpolation now advances through smaller, overlapping ticks
   for smoother motion.

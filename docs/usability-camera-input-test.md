@@ -30,7 +30,32 @@ changes.
   gestures.
 - Hover/click tile targeting remains correct after panning and zooming.
 - HUD panels do not block the central map interaction path.
+- Command bar, view controls, team roster, and selected-unit action panel remain
+  visible and human-clickable after zooming, panning, and reset.
+- The player can find and click `Plan Moves`, `Contact Drill`, `End Side`,
+  camera reset, and selected-unit actions without hunting around the screen.
 - No fresh browser console errors appear during the test.
+
+## Human-Click HUD Probe
+
+Automated pass:
+
+```bash
+npm run test:browser
+```
+
+Run this after camera, HUD, input, or major gameplay changes:
+
+- Click `Contact Drill`.
+- Use zoom controls and wheel zoom to reach high zoom.
+- Perform a quick mouse drag across the map and back.
+- Perform a trackpad-like vertical and horizontal pan.
+- Click camera reset.
+- Click `Plan Moves`, then return to `Planning`/move controls.
+- Select `Shoot`/`Hold`/`Move` from the selected-unit panel where enabled.
+- Confirm no required HUD control leaves the viewport or becomes covered.
+
+The full post-feature checklist is in `docs/human-usability-regression.md`.
 
 ## Current Implementation Notes
 
@@ -47,5 +72,5 @@ changes.
 - URL: `http://127.0.0.1:5174/`
 - Scenario: Contact Drill, default tactical camera.
 - Checks: build, lint, trackpad-style pan/zoom smoke, mouse-style wheel/drag
-  smoke, high-zoom vertical trackpad pan.
+  smoke, high-zoom vertical trackpad pan, and HUD reachability smoke.
 - Result: passed with no fresh browser console errors.

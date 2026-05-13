@@ -124,7 +124,6 @@ export function IsometricScene() {
   }, []);
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
     event.stopPropagation();
 
     const unitScale = event.deltaMode === 1

@@ -314,6 +314,11 @@ Acceptance:
 - Treat Banana/B cover, blocked tiles, and LOS as one shared contract before
   tuning utility or combat in that lane.
 - Every feature needs a visible debug path while the game is in prototype.
+- After every major feature, spawn a read-only tester agent to run the
+  post-feature human usability regression in
+  `docs/human-usability-regression.md`.
+- Browser human-click regression should run with `npm run test:browser` before
+  a feature is called done.
 - Keep game logic rendering-independent.
 - Prefer small, testable systems over large opaque rewrites.
 - Optimize for a professional vertical slice before expanding content.
