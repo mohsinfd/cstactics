@@ -85,7 +85,7 @@ const COVER: CoverObject[] = [
   // Banana and mid.
   { x: 38, y: 51, width: 4, height: 2, coverType: 'full', label: 'Banana Car' },
   { x: 37, y: 61, width: 3, height: 1, coverType: 'half', label: 'Logs' },
-  { x: 43, y: 68, width: 2, height: 1, coverType: 'half', label: 'Sandbags' },
+  { x: 43, y: 67, width: 3, height: 2, coverType: 'half', label: 'Sandbags' },
   { x: 42, y: 71, width: 2, height: 1, coverType: 'half', label: 'Half Wall' },
   { x: 61, y: 45, width: 2, height: 1, coverType: 'half', label: 'Top Mid Cart' },
   { x: 68, y: 51, width: 1, height: 2, coverType: 'half', label: 'Porch' },

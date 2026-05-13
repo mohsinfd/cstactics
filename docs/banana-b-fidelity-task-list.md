@@ -42,12 +42,12 @@ Acceptance criteria:
 
 ### P0 - Sandbags Pocket
 
-Status: not implemented.
+Status: started.
 
-Recommended next data change:
-- Rework `Sandbags` from the current `(43,68) 2x1` strip into a visible
-  half-cover pocket near top Banana, likely around `(42,67)` to `(45,69)`.
-- Keep at least one continuous walkable lane between upper Banana and B entry.
+Change:
+- Rework `Sandbags` from the old `(43,68) 2x1` strip into a visible `(43,67)
+  3x2` half-cover pocket near top Banana.
+- Keep the lane open at `x46..48` so upper Banana can still route into B entry.
 
 Acceptance criteria:
 - Sandbags are visible as a distinct top-Banana prop from the default camera.
