@@ -232,6 +232,6 @@ That's it. No game engine. No SDK. No Visual Studio. Just Node.js and a browser.
 | X2GameRuleset_CS2.uc phase logic | `game/systems/phase.ts` | Rewritten in TS, same behavior |
 | X2MapBuilder_Inferno.uc bomb zones | `game/systems/bomb.ts` | Same tile math |
 | Ability effects (.uc files) | `game/systems/abilities.ts` | Same formulas |
-| CLAUDE.md design doc | Still the source of truth | Unchanged |
+| Public design notes | Kept in `README.md`, `ROADMAP.md`, and `docs/` | Handoff prompts removed |
 
 Nothing is thrown away. The design is the product. The renderer is replaceable.

@@ -2,6 +2,7 @@
   "name": "cs2-tactics",
   "private": true,
   "version": "0.1.0",
+  "description": "Turn-based tactical prototype inspired by Counter-Strike positioning, utility, economy, and contact trades.",
   "type": "module",
   "scripts": {
     "dev": "vite",
