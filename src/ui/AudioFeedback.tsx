@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import type { CombatEvent, FeedbackEvent } from '../game/types';
+import { getShotPresentation } from '../game/shotPresentation';
 
 type AudioWindow = Window & typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
@@ -82,13 +83,26 @@ function playCombatCue(event: CombatEvent): void {
 
   const now = ctx.currentTime + 0.015;
   const isReaction = event.type === 'reaction_fire';
+  const shot = getShotPresentation(event.weaponCategory);
   const baseGain = isReaction ? 0.12 : 0.095;
 
-  playNoiseBurst(ctx, now, isReaction ? 0.115 : 0.085, event.hit ? baseGain : baseGain * 0.7);
-  playTone(ctx, now, isReaction ? 130 : 170, isReaction ? 0.12 : 0.09, event.hit ? 0.035 : 0.02, 'square');
+  playNoiseBurst(
+    ctx,
+    now,
+    shot.noiseDurationSeconds + (isReaction ? 0.025 : 0),
+    (event.hit ? baseGain : baseGain * 0.7) * shot.audioGainScale
+  );
+  playTone(
+    ctx,
+    now,
+    isReaction ? shot.shotToneHz * 0.82 : shot.shotToneHz,
+    isReaction ? 0.12 : 0.09,
+    (event.hit ? 0.035 : 0.02) * shot.audioGainScale,
+    event.weaponCategory === 'sniper' ? 'sawtooth' : 'square'
+  );
 
   if (event.hit) {
-    playTone(ctx, now + 0.045, event.damage >= 45 ? 70 : 92, 0.16, 0.055, 'sine');
+    playTone(ctx, now + 0.045, event.damage >= 45 ? shot.impactToneHz : Math.max(70, shot.impactToneHz * 1.18), 0.16, 0.055 * shot.audioGainScale, 'sine');
     if (event.critical) {
       playTone(ctx, now + 0.025, 720, 0.09, 0.035, 'triangle');
       playTone(ctx, now + 0.07, 420, 0.12, 0.026, 'square');

@@ -79,6 +79,9 @@ verbs that make those nouns matter.
 - Combat events now track target HP before/after a hit and flag eliminations.
 - First-pass kill feed clarity: combat log, contact break copy, shot marker, and
   tracer labels distinguish eliminations from normal hits.
+- Combat events now carry weapon identity, and first-pass shot presentation uses
+  weapon-class tracer width/count, board damage numbers, recoil scale, audio
+  weight, contact-break styling, and combat-log weapon chips.
 - Dead units now leave a small team/role casualty marker on the tactical board.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
@@ -86,7 +89,7 @@ verbs that make those nouns matter.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
 - First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit
-  shock, and casualty death pulse.
+  shock, weapon-flavored tracer/impact feedback, and casualty death pulse.
 - Procedural shot/contact audio cues play for direct fire, reaction fire, hits,
   misses, and eliminations.
 - Contact breaks automatically switch the selected survivor into Shoot mode for
@@ -170,7 +173,8 @@ verbs that make those nouns matter.
 
 - Directional/production-grade line-of-sight solver.
 - Full shot preview breakdown before commit.
-- Richer kill feed beyond first-pass headshot and elimination markers.
+- Richer kill feed beyond first-pass weapon, headshot, damage, and elimination
+  markers.
 - Production-grade Hold Angle / overwatch lifecycle.
 - Production-grade cinematic interrupt timeline and multi-event contact queue.
 - Production-grade cover fidelity for complex geometry, peeking, and multi-tile

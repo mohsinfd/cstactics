@@ -104,6 +104,11 @@ identity from `src/renderer/unitVisualIdentity.ts`. Remaining safe follow-ups:
   Support utility canisters, and Lurker offset stealth slashes. This keeps
   team color/headgear as the first read while making role identity less
   dependent on floating text at tactical zoom.
+- Weapon-class shot readability: combat events now carry weapon identity, and a
+  shared shot-presentation profile drives tracer count/width, damage-number
+  scale, muzzle/recoil strength, combat log weapon chips, contact-break styling,
+  and procedural audio weight. This makes AWP shots, rifles, SMG bursts, and
+  pistols feel different without changing tactical math.
 
 ## Acceptance Checks
 

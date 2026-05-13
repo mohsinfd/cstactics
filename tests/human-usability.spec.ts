@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 const BASE_HUD_IDS = [
   'hud-root',
@@ -19,6 +19,14 @@ const SELECTED_UNIT_IDS = [
   'hud-action-move',
   'hud-action-hold-angle',
   'hud-action-done',
+] as const;
+
+const COMPACT_CONTACT_CLEARANCE_IDS = [
+  'hud-selected-unit-panel',
+  'hud-view-controls',
+  'hud-team-roster',
+  'hud-command-bar',
+  'hud-combat-log',
 ] as const;
 
 const CLICK_TARGET_IDS = new Set([
@@ -83,11 +91,93 @@ async function expectHudReachable(page: Page, ids: readonly string[]) {
   }
 }
 
-async function trialClickIfEnabled(locator: Locator) {
-  if (await locator.count() === 0) return;
-  if (await locator.isEnabled()) {
-    await locator.click({ trial: true, timeout: 5_000 });
-  }
+async function expectHudTargetReachableIfEnabled(page: Page, id: string) {
+  const result = await page.evaluate((id) => {
+    const elements = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+    const element = elements[0] as HTMLElement | undefined;
+    if (!element) return { id, count: 0, checked: false };
+
+    const enabled = !element.matches(':disabled') &&
+      element.getAttribute('aria-disabled') !== 'true';
+    if (!enabled) return { id, count: elements.length, checked: false };
+
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const visible = rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      Number(style.opacity || 1) > 0;
+    const inViewport = rect.left >= 0 &&
+      rect.top >= 0 &&
+      rect.right <= window.innerWidth + 1 &&
+      rect.bottom <= window.innerHeight + 1;
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const topElement = document.elementFromPoint(x, y);
+    const receivesClick = topElement === element || Boolean(topElement && element.contains(topElement));
+
+    return { id, count: elements.length, checked: true, visible, inViewport, receivesClick };
+  }, id);
+
+  if (!result.checked) return;
+
+  expect(result.count, `${result.id} should exist once`).toBe(1);
+  expect(result.visible, `${result.id} should be visible when enabled`).toBe(true);
+  expect(result.inViewport, `${result.id} should stay inside viewport when enabled`).toBe(true);
+  expect(result.receivesClick, `${result.id} center point should not be covered when enabled`).toBe(true);
+}
+
+async function expectHudDoesNotOverlap(page: Page, subjectId: string, targetIds: readonly string[]) {
+  const result = await page.evaluate(({ subjectId, targetIds }) => {
+    const getRect = (id: string) => {
+      const elements = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+      const element = elements[0] as HTMLElement | undefined;
+      if (!element) return { id, count: elements.length, missing: true };
+
+      const rect = element.getBoundingClientRect();
+      return {
+        id,
+        count: elements.length,
+        missing: false,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        },
+      };
+    };
+
+    const subject = getRect(subjectId);
+    if (subject.missing || !subject.rect) {
+      return { subject, missingTargets: [], overlaps: [] };
+    }
+
+    const missingTargets: string[] = [];
+    const overlaps: Array<{ id: string; width: number; height: number }> = [];
+    for (const id of targetIds) {
+      const target = getRect(id);
+      if (target.missing || !target.rect) {
+        missingTargets.push(id);
+        continue;
+      }
+
+      const width = Math.min(subject.rect.right, target.rect.right) - Math.max(subject.rect.left, target.rect.left);
+      const height = Math.min(subject.rect.bottom, target.rect.bottom) - Math.max(subject.rect.top, target.rect.top);
+      if (width > 1 && height > 1) {
+        overlaps.push({ id, width, height });
+      }
+    }
+
+    return { subject, missingTargets, overlaps };
+  }, { subjectId, targetIds });
+
+  expect(result.subject.count, `${subjectId} should exist once`).toBe(1);
+  expect(result.missingTargets, 'clearance targets should exist').toEqual([]);
+  expect(result.overlaps, `${subjectId} should not overlap required compact HUD containers`).toEqual([]);
 }
 
 async function queueBananaDrillContact(page: Page) {
@@ -116,6 +206,9 @@ async function queueBananaDrillContact(page: Page) {
 
     await store.getState().commitPlannedActions();
     const interrupt = store.getState().executeInterrupt;
+    if (interrupt && (!interrupt.event.weaponName || !interrupt.event.weaponCategory)) {
+      return { ok: false, reason: 'combat event missing weapon identity' };
+    }
     return {
       ok: Boolean(interrupt),
       reason: interrupt ? '' : 'execute completed without contact interrupt',
@@ -158,10 +251,10 @@ test.describe('human usability regression', () => {
     await expectHudReachable(page, [...BASE_HUD_IDS, ...SELECTED_UNIT_IDS]);
 
     await page.getByTestId('hud-command-plan').click();
-    await page.getByTestId('hud-action-move').click();
-    await trialClickIfEnabled(page.getByTestId('hud-action-shoot'));
-    await trialClickIfEnabled(page.getByTestId('hud-action-hold-angle'));
-    await trialClickIfEnabled(page.getByTestId('hud-action-done'));
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-move');
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-shoot');
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-hold-angle');
+    await expectHudTargetReachableIfEnabled(page, 'hud-action-done');
 
     await expectHudReachable(page, BASE_HUD_IDS);
     expect(consoleErrors).toEqual([]);
@@ -180,10 +273,16 @@ test.describe('human usability regression', () => {
     await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
     await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
 
-    const tradeShot = page.getByTestId('hud-contact-trade-shot');
-    if (await tradeShot.count() > 0) {
-      await tradeShot.click({ trial: true });
+    const viewport = page.viewportSize();
+    if (viewport && viewport.width <= 560) {
+      await expectHudDoesNotOverlap(page, 'hud-contact-break-panel', COMPACT_CONTACT_CLEARANCE_IDS);
     }
+
+    const tradeChoiceCount = await page.getByTestId('hud-contact-trade-shot').count();
+    const noTradeChoiceCount = await page.getByTestId('hud-contact-no-trade').count();
+    const contactChoiceCount = tradeChoiceCount + noTradeChoiceCount;
+    expect(contactChoiceCount, 'contact break should show either trade or no-trade state').toBe(1);
+    await expectHudTargetReachableIfEnabled(page, 'hud-contact-trade-shot');
 
     await expectHudReachable(page, BASE_HUD_IDS);
     expect(consoleErrors).toEqual([]);

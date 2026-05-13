@@ -17,6 +17,7 @@ import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
+import { getShotPresentation } from '../game/shotPresentation';
 import {
   EXECUTE_TIMING_STEP_MS,
   formatExecuteTime,
@@ -185,6 +186,14 @@ function ContactBreakPanel() {
   const tileLabel = tile?.label ?? 'contact tile';
   const trade = interrupt.tradeShot;
   const bomb = interrupt.bombPressure;
+  const shot = getShotPresentation(event.weaponCategory);
+  const resultText = event.killed
+    ? event.critical ? `HS KILL -${event.damage}` : `KILL -${event.damage}`
+    : event.critical
+      ? `HEADSHOT -${event.damage}`
+      : event.hit
+        ? `-${event.damage} HP`
+        : 'MISS';
   const bombText = bomb.bombPlanted
     ? `Bomb planted: ${bomb.bombTimer} turns`
     : bomb.bombDropped
@@ -199,54 +208,95 @@ function ContactBreakPanel() {
   return (
     <div data-testid="hud-contact-break-panel" style={{
       position: 'absolute',
-      top: compact ? 118 : 184,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      width: 'min(390px, calc(100vw - 32px))',
+      top: compact ? 132 : 184,
+      left: compact ? 10 : '50%',
+      transform: compact ? 'none' : 'translateX(-50%)',
+      width: compact ? 'min(236px, calc(50vw - 34px))' : 'min(390px, calc(100vw - 32px))',
+      boxSizing: 'border-box',
+      maxHeight: compact ? 'calc(100vh - 330px)' : undefined,
+      overflowY: compact ? 'auto' : undefined,
       background: 'rgba(10, 7, 10, 0.94)',
-      border: '1px solid rgba(255,78,106,0.45)',
-      borderLeft: '3px solid #ff4e6a',
+      border: `1px solid ${shot.color}70`,
+      borderLeft: `3px solid ${shot.color}`,
       borderRadius: 6,
-      padding: '10px 12px',
+      padding: compact ? '8px 9px' : '10px 12px',
       pointerEvents: 'auto',
-      boxShadow: '0 10px 28px rgba(0,0,0,0.38)',
+      boxShadow: `0 10px 28px rgba(0,0,0,0.38), 0 0 18px ${shot.color}24`,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: compact ? 5 : 8,
+        marginBottom: compact ? 4 : 5,
+        flexWrap: compact ? 'wrap' : 'nowrap',
+      }}>
         <div style={{
           color: '#ff6b82',
-          fontSize: 10,
+          fontSize: compact ? 9 : 10,
           fontWeight: 950,
-          letterSpacing: 1.8,
+          letterSpacing: compact ? 1.1 : 1.8,
           textTransform: 'uppercase',
         }}>
           Contact Break
         </div>
         <div style={{
-          marginLeft: 'auto',
-          color: '#d8c170',
-          fontSize: 9,
+          color: shot.color,
+          border: `1px solid ${shot.color}66`,
+          background: `${shot.color}18`,
+          borderRadius: 3,
+          padding: compact ? '2px 4px' : '2px 5px',
+          fontSize: compact ? 7 : 8,
           fontWeight: 950,
-          letterSpacing: 0.7,
+          letterSpacing: compact ? 0.4 : 0.8,
+          textTransform: 'uppercase',
+        }}>
+          {shot.label}
+        </div>
+        <div style={{
+          marginLeft: compact ? 0 : 'auto',
+          flexBasis: compact ? '100%' : undefined,
+          color: '#d8c170',
+          fontSize: compact ? 8 : 9,
+          fontWeight: 950,
+          letterSpacing: compact ? 0.5 : 0.7,
           textTransform: 'uppercase',
         }}>
           {interrupt.beatLabel} {interrupt.phaseLabel}
         </div>
       </div>
-      <div style={{ color: '#ddd', fontSize: 11, lineHeight: 1.35, fontWeight: 750 }}>
+      <div style={{ color: '#ddd', fontSize: compact ? 10 : 11, lineHeight: 1.35, fontWeight: 750 }}>
         {target?.name ?? event.targetName} stopped at {tileLabel}
       </div>
-      <div style={{ color: '#8e7d82', fontSize: 10, lineHeight: 1.35, marginTop: 3 }}>
-        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired from a held angle - {event.hitChance}% - {event.killed ? 'elimination' : event.critical ? 'headshot' : event.hit ? `${event.damage} damage` : 'miss'}
+      <div style={{ color: '#8e7d82', fontSize: compact ? 9 : 10, lineHeight: 1.35, marginTop: 3 }}>
+        {attacker?.role.displayName ?? 'Enemy'} {event.attackerName} fired {event.weaponName} from a held angle - {event.hitChance}% - {resultText}
       </div>
-      <div style={{ color: '#70646a', fontSize: 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: compact ? '1fr' : '1fr auto',
+        alignItems: 'center',
+        gap: compact ? 3 : 8,
+        marginTop: compact ? 6 : 7,
+        padding: compact ? '5px 6px' : '6px 7px',
+        border: `1px solid ${shot.color}32`,
+        background: `${shot.color}12`,
+        borderRadius: 4,
+      }}>
+        <span style={{ color: '#d8dce4', fontSize: compact ? 8 : 9, fontWeight: 850, textTransform: 'uppercase', letterSpacing: compact ? 0.3 : 0.5 }}>
+          {event.weaponName} {event.type === 'reaction_fire' ? 'reaction' : 'shot'}
+        </span>
+        <span style={{ color: event.hit ? '#ffffff' : '#d8c170', fontSize: compact ? 11 : 12, fontWeight: 950, fontFamily: "'Courier New', monospace" }}>
+          {resultText}
+        </span>
+      </div>
+      <div style={{ color: '#70646a', fontSize: compact ? 8 : 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: compact ? 0.3 : 0.5 }}>
         {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
       </div>
       <div style={{
-        marginTop: 8,
-        paddingTop: 7,
+        marginTop: compact ? 6 : 8,
+        paddingTop: compact ? 6 : 7,
         borderTop: '1px solid rgba(255,255,255,0.06)',
         display: 'grid',
-        gap: 6,
+        gap: compact ? 5 : 6,
       }}>
         {trade ? (
           <button
@@ -258,14 +308,14 @@ function ContactBreakPanel() {
               background: 'rgba(216,193,112,0.16)',
               color: '#f4e7b4',
               borderRadius: 4,
-              padding: '7px 8px',
+              padding: compact ? '6px 7px' : '7px 8px',
               textAlign: 'left',
               cursor: 'pointer',
               display: 'grid',
-              gridTemplateColumns: '1fr auto',
-              gap: 8,
+              gridTemplateColumns: compact ? '1fr' : '1fr auto',
+              gap: compact ? 3 : 8,
               alignItems: 'center',
-              fontSize: 10,
+              fontSize: compact ? 9 : 10,
               fontWeight: 850,
             }}
           >
@@ -276,23 +326,23 @@ function ContactBreakPanel() {
               {trade.hitChance}% / {trade.damage}
             </span>
             <span style={{
-              gridColumn: '1 / 3',
+              gridColumn: compact ? '1' : '1 / 3',
               color: getCoverStateColor(trade),
-              fontSize: 8,
+              fontSize: compact ? 7 : 8,
               fontWeight: 800,
-              letterSpacing: 0.5,
+              letterSpacing: compact ? 0.3 : 0.5,
               textTransform: 'uppercase',
             }}>
               {getCoverStateLabel(trade)} | HS {trade.critChance}%/{trade.critDamage}
             </span>
           </button>
         ) : (
-          <div data-testid="hud-contact-no-trade" style={{ color: '#756870', fontSize: 9, lineHeight: 1.35 }}>
+          <div data-testid="hud-contact-no-trade" style={{ color: '#756870', fontSize: compact ? 8 : 9, lineHeight: 1.35 }}>
             No clean trade is available from current AP, ammo, and line of sight.
           </div>
         )}
         {bombText && (
-          <div style={{ color: '#ffd166', fontSize: 9, fontWeight: 850, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+          <div style={{ color: '#ffd166', fontSize: compact ? 8 : 9, fontWeight: 850, letterSpacing: compact ? 0.3 : 0.5, textTransform: 'uppercase' }}>
             {bombText}
           </div>
         )}
@@ -430,7 +480,7 @@ function CombatLogPanel() {
   const hasObjectivePanel = round.bombPlanted || round.phase === 'roundend' || (!round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition));
 
   return (
-    <div style={{
+    <div data-testid="hud-combat-log" style={{
       position: 'absolute',
       top: hasObjectivePanel ? 172 : 132,
       right: 20,
@@ -454,8 +504,9 @@ function CombatLogPanel() {
         Contact
       </div>
       {combatLog.slice(0, 3).map((event) => {
+        const shot = getShotPresentation(event.weaponCategory);
         const resultLabel = event.killed ? (event.critical ? 'HS KILL' : 'KILL') : event.critical ? 'HEADSHOT' : event.hit ? 'HIT' : 'MISS';
-        const resultColor = event.killed || event.critical ? '#ffffff' : event.hit ? '#ffdadf' : '#aaa';
+        const resultColor = event.killed || event.critical ? '#ffffff' : event.hit ? shot.secondaryColor : '#aaa';
         const targetHp = event.hit ? ` | hp ${event.targetHpBefore}->${event.targetHpAfter}` : '';
 
         return (
@@ -467,6 +518,25 @@ function CombatLogPanel() {
               <span style={{ color: '#666', marginLeft: 6 }}>
                 {event.hitChance}%
               </span>
+              <span style={{
+                color: shot.color,
+                border: `1px solid ${shot.color}45`,
+                background: `${shot.color}12`,
+                borderRadius: 3,
+                padding: '1px 4px',
+                marginLeft: 6,
+                fontSize: 8,
+                fontWeight: 900,
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+              }}>
+                {event.weaponName}
+              </span>
+              {event.hit && (
+                <span style={{ color: '#fff', marginLeft: 6, fontWeight: 950, fontFamily: "'Courier New', monospace" }}>
+                  -{event.damage}
+                </span>
+              )}
               <span style={{ marginLeft: 6 }}>
                 {event.summary}
               </span>
@@ -950,8 +1020,10 @@ function SelectedUnitPanel() {
   const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
   const round = useGameStore((s) => s.round);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
   const compact = useIsCompactViewport();
   const narrow = useIsNarrowViewport();
+  const splitForContact = compact && Boolean(interrupt);
   const phase = round.phase;
 
   if (selectedId === null) return null;
@@ -1048,16 +1120,17 @@ function SelectedUnitPanel() {
     <div data-testid="hud-selected-unit-panel" style={{
       position: 'absolute',
       bottom: narrow ? 156 : 20,
-      left: compact ? 10 : 20,
+      left: splitForContact ? 'calc(50% + 7px)' : compact ? 10 : 20,
       right: compact ? 10 : undefined,
+      boxSizing: 'border-box',
       background: 'rgba(8, 8, 12, 0.94)',
       border: `1px solid ${teamColor}33`,
       borderLeft: `3px solid ${teamColor}`,
       borderRadius: 6,
-      padding: compact ? '10px 12px' : '12px 16px',
+      padding: splitForContact ? '9px 9px' : compact ? '10px 12px' : '12px 16px',
       minWidth: compact ? 0 : 260,
       maxWidth: compact ? undefined : 380,
-      maxHeight: narrow ? 'calc(100vh - 250px)' : 'calc(100vh - 96px)',
+      maxHeight: splitForContact ? 'calc(100vh - 380px)' : narrow ? 'calc(100vh - 250px)' : 'calc(100vh - 96px)',
       overflowY: 'auto',
       pointerEvents: 'auto',
     }}>

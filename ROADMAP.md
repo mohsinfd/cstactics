@@ -133,8 +133,12 @@ move, trigger contact, and freeze into a trade decision. See
   shock, and casualty death pulse. Implemented.
 - Bounded editable execute offsets in the queue, with the resolver honoring
   utility beat delays and staggered movement starts. Implemented as a first pass.
-- Next: deepen damage numbers/per-weapon shot feel, and make the interrupt
-  presentation more cinematic without losing tactical readability.
+- First-pass weapon-flavored shot presentation: combat events carry weapon
+  identity, board damage numbers show HP loss, tracer/recoil/audio/HUD styling
+  differs by weapon class, and contact breaks get a stronger pulse/readout.
+  Implemented.
+- Next: expand interrupt presentation into a true multi-event contact timeline
+  without losing tactical readability.
 
 ### Milestone C: Utility Timing
 
@@ -231,11 +235,11 @@ Work:
 - Line of sight through walls and cover.
 - Shoot action with aim preview before commit.
 - Damage, headshot/crit, death, and kill feed.
-  First-pass death markers, headshot/crit, and kill feed clarity are
-  implemented.
+  First-pass death markers, headshot/crit, weapon-labeled damage numbers, and
+  kill feed clarity are implemented.
 - Cover penalties and range penalties.
 - Basic VFX: tracer, hit marker, muzzle flash, shooter recoil, target hit shock,
-  and death pulse. Implemented as first pass. Damage numbers are still pending.
+  death pulse, and weapon-class damage numbers. Implemented as first pass.
 - Combat action panel for selected units.
 
 Acceptance:

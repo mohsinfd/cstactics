@@ -17,16 +17,18 @@
 //   Hovered units get a readable base ring
 //   Active team units glow subtly, inactive team dimmed
 //   Units bob/step while moving between tiles
+//   Firing recoil and muzzle scale vary by weapon class
 //
-// Missing: firing animation and final authored sprite/model assets.
+// Missing: final authored sprite/model assets.
 // ============================================================
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
-import type { Unit, RoleId } from '../game/types';
+import type { Unit, RoleId, WeaponCategory } from '../game/types';
 import { getShotPreview } from '../game/combat';
+import { getShotPresentation } from '../game/shotPresentation';
 import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds, getSegmentProgress } from './movementEasing';
 import {
   ROLE_VISUAL_IDENTITIES,
@@ -861,6 +863,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     isTarget: false,
     wasHit: false,
     wasCritical: false,
+    weaponCategory: unit.weapon.category as WeaponCategory,
   });
   const movementRef = useRef({
     from: new THREE.Vector3(),
@@ -925,16 +928,18 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         isTarget: latestCombatEvent.targetId === unit.id,
         wasHit: latestCombatEvent.hit,
         wasCritical: latestCombatEvent.critical,
+        weaponCategory: latestCombatEvent.weaponCategory,
       };
     }
 
+    const shotPresentation = getShotPresentation(combatFxRef.current.weaponCategory);
     if (combatFxRef.current.id) {
       const elapsed = state.clock.elapsedTime - combatFxRef.current.startedAt;
       if (combatFxRef.current.isAttacker) {
-        shotPulse = Math.max(0, 1 - elapsed / 0.26);
+        shotPulse = Math.max(0, 1 - elapsed / (0.22 + shotPresentation.noiseDurationSeconds));
       }
       if (combatFxRef.current.isTarget && combatFxRef.current.wasHit) {
-        hitPulse = Math.max(0, 1 - elapsed / 0.58);
+        hitPulse = Math.max(0, 1 - elapsed / (0.52 + shotPresentation.impactScale * 0.08));
       }
     }
 
@@ -1022,7 +1027,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (weaponRef.current) {
       weaponRef.current.rotation.x = THREE.MathUtils.damp(
         weaponRef.current.rotation.x,
-        movementIntensity * Math.sin(walkPhase + 0.8) * 0.055 - shotPulse * 0.22,
+        movementIntensity * Math.sin(walkPhase + 0.8) * 0.055 - shotPulse * 0.22 * shotPresentation.recoilScale,
         14,
         delta
       );
@@ -1034,7 +1039,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
       weaponRef.current.position.z = THREE.MathUtils.damp(
         weaponRef.current.position.z,
-        0.22 - shotPulse * 0.14,
+        0.22 - shotPulse * 0.14 * shotPresentation.recoilScale,
         22,
         delta
       );
@@ -1048,14 +1053,14 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
     if (muzzleFlashRef.current) {
       muzzleFlashRef.current.visible = shotPulse > 0.02;
-      muzzleFlashRef.current.scale.setScalar(0.35 + shotPulse * (combatFxRef.current.wasCritical ? 1.35 : 1));
+      muzzleFlashRef.current.scale.setScalar(0.35 + shotPulse * shotPresentation.muzzleScale * (combatFxRef.current.wasCritical ? 1.28 : 1));
     }
     if (muzzleMaterialRef.current) {
       muzzleMaterialRef.current.opacity = Math.min(0.92, shotPulse);
-      muzzleMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : '#ffd166');
+      muzzleMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : shotPresentation.secondaryColor);
     }
     if (muzzleLightRef.current) {
-      muzzleLightRef.current.intensity = shotPulse * (combatFxRef.current.wasCritical ? 2.2 : 1.35);
+      muzzleLightRef.current.intensity = shotPulse * shotPresentation.muzzleScale * (combatFxRef.current.wasCritical ? 2.15 : 1.25);
     }
 
     if (hitFlashRef.current) {

@@ -235,17 +235,18 @@ export function resolveShot(
       : `${preview.coverLabel} cover`
     : preview.coverState;
   const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
+  const weaponText = attacker.weapon.name;
   let summary: string;
   if (killed && critical) {
-    summary = `${attacker.name} headshots and eliminates ${target.name} through ${coverText}${flashText}`;
+    summary = `${attacker.name} headshots and eliminates ${target.name} with ${weaponText} through ${coverText}${flashText}`;
   } else if (killed) {
-    summary = `${attacker.name} eliminates ${target.name} through ${coverText}${flashText}`;
+    summary = `${attacker.name} eliminates ${target.name} with ${weaponText} through ${coverText}${flashText}`;
   } else if (critical) {
-    summary = `${attacker.name} headshots ${target.name} for ${damage} through ${coverText}${flashText}`;
+    summary = `${attacker.name} headshots ${target.name} for ${damage} with ${weaponText} through ${coverText}${flashText}`;
   } else if (hit) {
-    summary = `${attacker.name} hits ${target.name} for ${damage} through ${coverText}${flashText}`;
+    summary = `${attacker.name} hits ${target.name} for ${damage} with ${weaponText} through ${coverText}${flashText}`;
   } else {
-    summary = `${attacker.name} misses ${target.name} through ${coverText}${flashText}`;
+    summary = `${attacker.name} misses ${target.name} with ${weaponText} through ${coverText}${flashText}`;
   }
 
   return {
@@ -256,6 +257,9 @@ export function resolveShot(
     targetId: target.id,
     attackerName: attacker.name,
     targetName: target.name,
+    weaponId: attacker.weapon.id,
+    weaponName: attacker.weapon.name,
+    weaponCategory: attacker.weapon.category,
     hitChance: preview.hitChance,
     hit,
     critical,

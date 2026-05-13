@@ -61,6 +61,9 @@ export interface CombatEvent {
   targetId: number;
   attackerName: string;
   targetName: string;
+  weaponId: string;
+  weaponName: string;
+  weaponCategory: WeaponCategory;
   hitChance: number;
   hit: boolean;
   critical: boolean;

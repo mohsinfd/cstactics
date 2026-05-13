@@ -22,11 +22,12 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
-import type { CoverObject, FlashBurst, MapData, TileCoord } from '../game/types';
+import type { CombatEvent, CoverObject, FlashBurst, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
 import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
 import { getWatchedLane, hasLineOfSight } from '../game/los';
+import { getShotPresentation } from '../game/shotPresentation';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
@@ -97,6 +98,21 @@ function gridDistance(a: TileCoord, b: TileCoord): number {
 
 type LinePoint = [number, number, number];
 type BoundarySegment = [LinePoint, LinePoint];
+
+function getCombatEventColor(event: CombatEvent): string {
+  const shot = getShotPresentation(event.weaponCategory);
+  if (event.critical || event.killed) return shot.color;
+  if (event.hit) return shot.secondaryColor;
+  return shot.missColor;
+}
+
+function getCombatEventLabel(event: CombatEvent): string {
+  if (!event.hit) return 'MISS';
+  if (event.killed && event.critical) return `HS KILL\n-${event.damage}`;
+  if (event.killed) return `KILL\n-${event.damage}`;
+  if (event.critical) return `HEADSHOT\n-${event.damage}`;
+  return `-${event.damage}`;
+}
 
 function areaCenterWorldX(mapWidth: number, x: number, width: number, ts: number): number {
   return (mapWidth - x - width / 2) * ts;
@@ -1471,10 +1487,11 @@ function CombatEventMarker() {
       startedAtRef.current = { id: event.id, time: state.clock.elapsedTime };
     }
 
+    const shot = getShotPresentation(event.weaponCategory);
     const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
-    const progress = THREE.MathUtils.clamp(elapsed / 1.6, 0, 1);
-    const lift = event.killed ? progress * 0.82 : event.hit ? progress * 0.62 : progress * 0.32;
-    const pulse = 1 + Math.sin(progress * Math.PI) * (event.killed ? 0.46 : event.hit ? 0.34 : 0.18);
+    const progress = THREE.MathUtils.clamp(elapsed / shot.markerDurationSeconds, 0, 1);
+    const lift = event.killed ? progress * 0.92 : event.hit ? progress * 0.68 : progress * 0.32;
+    const pulse = 1 + Math.sin(progress * Math.PI) * shot.impactScale * (event.killed ? 0.46 : event.hit ? 0.32 : 0.15);
     const opacity = Math.max(0, 0.92 * (1 - progress));
 
     groupRef.current.position.y = FLOOR_H + 0.5 + lift;
@@ -1487,20 +1504,22 @@ function CombatEventMarker() {
   if (!event) return null;
 
   const [wx, , wz] = tileWorld(event.tile.x, event.tile.y, ts);
-  const color = event.critical || event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#d8c170';
-  const label = event.critical ? 'HS' : event.killed ? 'KILL' : event.hit ? `-${event.damage}` : 'MISS';
+  const shot = getShotPresentation(event.weaponCategory);
+  const color = getCombatEventColor(event);
+  const label = getCombatEventLabel(event);
+  const fontSize = event.killed ? 0.31 : event.critical ? 0.28 : event.hit ? 0.36 : 0.34;
 
   return (
     <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[ts * 0.32, ts * 0.55, 36]} />
+        <ringGeometry args={[ts * 0.32, ts * (0.5 + shot.impactScale * 0.08), 36]} />
         <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
       </mesh>
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={event.critical ? 0.44 : event.killed ? 0.38 : 0.36}
-        color={event.critical || event.killed ? '#ffffff' : event.hit ? '#ffd7dd' : '#fff1b5'}
+        fontSize={fontSize}
+        color={event.critical || event.killed ? '#ffffff' : event.hit ? shot.secondaryColor : '#fff1b5'}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
@@ -1528,32 +1547,76 @@ function CombatTracerOverlay() {
   const [sx, , sz] = tileWorld(attacker.position.x, attacker.position.y, ts);
   const targetTile = target?.position ?? event.tile;
   const [tx, , tz] = tileWorld(targetTile.x, targetTile.y, ts);
-  const color = event.critical || event.killed ? '#ffffff' : event.hit ? '#ff4e6a' : '#fff1b5';
-  const label = event.critical ? 'HEADSHOT' : event.killed ? 'ELIM' : event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
+  const shot = getShotPresentation(event.weaponCategory);
+  const color = getCombatEventColor(event);
+  const label = event.critical
+    ? `${shot.label} HEADSHOT`
+    : event.killed
+      ? `${shot.label} ELIM`
+      : event.type === 'reaction_fire'
+        ? `${shot.label} REACTION`
+        : shot.label;
   const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
   const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
   const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];
+  const dx = tx - sx;
+  const dz = tz - sz;
+  const length = Math.sqrt(dx * dx + dz * dz) || 1;
+  const offsetX = -dz / length;
+  const offsetZ = dx / length;
+  const tracerCount = event.hit ? shot.tracerCount : 1;
 
   return (
     <group raycast={() => null}>
-      <Line points={[start, end]} color={color} lineWidth={event.hit ? 4 : 2} />
-      <Line
-        points={[[sx, FLOOR_H + 1.12, sz], [tx, FLOOR_H + 0.72, tz]]}
-        color={event.hit ? '#ffd7dd' : '#d8c170'}
-        lineWidth={1}
-      />
+      {Array.from({ length: tracerCount }).map((_, index) => {
+        const offset = (index - (tracerCount - 1) / 2) * shot.tracerSpread;
+        const tracerStart: LinePoint = [
+          start[0] + offsetX * offset,
+          start[1] + index * 0.018,
+          start[2] + offsetZ * offset,
+        ];
+        const tracerEnd: LinePoint = [
+          end[0] + offsetX * offset * 0.55,
+          end[1] + index * 0.012,
+          end[2] + offsetZ * offset * 0.55,
+        ];
+
+        return (
+          <Line
+            key={`tracer-${event.id}-${index}`}
+            points={[tracerStart, tracerEnd]}
+            color={index === 0 ? color : shot.secondaryColor}
+            lineWidth={event.hit ? Math.max(2, shot.tracerWidth - index * 0.6) : 2}
+          />
+        );
+      })}
       <mesh position={start}>
-        <sphereGeometry args={[0.1, 12, 8]} />
+        <sphereGeometry args={[0.07 + shot.muzzleScale * 0.06, 12, 8]} />
         <meshBasicMaterial color={color} transparent opacity={0.82} />
       </mesh>
       <mesh position={end} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.18, event.hit ? 0.42 : 0.3, 28]} />
+        <ringGeometry args={[0.18, event.hit ? 0.28 + shot.impactScale * 0.16 : 0.3, 28]} />
         <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} />
       </mesh>
+      {event.hit && (
+        <SafeText
+          position={[end[0], FLOOR_H + 0.9, end[2]]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.21}
+          color={event.killed || event.critical ? '#ffffff' : shot.secondaryColor}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.025}
+          outlineColor="#09090f"
+          font={undefined}
+        >
+          {`-${event.damage} HP`}
+        </SafeText>
+      )}
       <SafeText
         position={midpoint}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.22}
+        fontSize={0.2}
         color={color}
         anchorX="center"
         anchorY="middle"
@@ -1562,6 +1625,67 @@ function CombatTracerOverlay() {
         font={undefined}
       >
         {label}
+      </SafeText>
+    </group>
+  );
+}
+
+function ContactBreakPulse() {
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const outerRef = useRef<THREE.MeshBasicMaterial>(null);
+  const innerRef = useRef<THREE.MeshBasicMaterial>(null);
+  const startedAtRef = useRef({ id: '', time: 0 });
+
+  useFrame((state) => {
+    if (!interrupt || !groupRef.current) return;
+    if (startedAtRef.current.id !== interrupt.id) {
+      startedAtRef.current = { id: interrupt.id, time: state.clock.elapsedTime };
+    }
+
+    const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
+    const progress = THREE.MathUtils.clamp(elapsed / 2.2, 0, 1);
+    const pulse = 1 + Math.sin(progress * Math.PI * 2.2) * 0.1;
+    groupRef.current.scale.setScalar(pulse);
+
+    if (outerRef.current) {
+      outerRef.current.opacity = Math.max(0.08, 0.42 * (1 - progress * 0.55));
+    }
+    if (innerRef.current) {
+      innerRef.current.opacity = Math.max(0.16, 0.58 * (1 - progress * 0.35));
+    }
+  });
+
+  if (!interrupt) return null;
+
+  const [wx, , wz] = tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
+  const shot = getShotPresentation(interrupt.event.weaponCategory);
+  const color = getCombatEventColor(interrupt.event);
+
+  return (
+    <group ref={groupRef} position={[wx, FLOOR_H + 0.34, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+        <ringGeometry args={[ts * 0.55, ts * 0.72, 4]} />
+        <meshBasicMaterial ref={outerRef} color={color} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ts * 0.28, ts * 0.44, 36]} />
+        <meshBasicMaterial ref={innerRef} color={shot.secondaryColor} transparent opacity={0.56} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0.1, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.2}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.035}
+        outlineColor="#09090f"
+        font={undefined}
+      >
+        {`CONTACT\n${interrupt.beatLabel}`}
       </SafeText>
     </group>
   );
@@ -1744,6 +1868,7 @@ export function MapRenderer() {
       <PlannedActionPreview />
       <HeldAngleOverlay />
       <HoldAngleHoverPreview />
+      <ContactBreakPulse />
       <CombatTracerOverlay />
       <CombatEventMarker />
       <ShotPreviewOverlay />
