@@ -560,7 +560,7 @@ function CoverProp({
     return <FountainProp x={x} z={z} width={width} depth={depth} />;
   }
   if (label.includes('banana car') || label === 'truck') {
-    return <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} />;
+    return <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} isLandmarkCar={label.includes('banana car')} />;
   }
   if (label.includes('coffin')) {
     return <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />;
@@ -599,26 +599,30 @@ function VehicleProp({
   width,
   depth,
   isTruck,
+  isLandmarkCar = false,
 }: {
   x: number;
   z: number;
   width: number;
   depth: number;
   isTruck: boolean;
+  isLandmarkCar?: boolean;
 }) {
   const bodyColor = isTruck ? '#6f776f' : '#56473b';
   const trimColor = isTruck ? '#b9c2b5' : '#2d2b28';
-  const bodyH = isTruck ? 0.68 : 0.46;
-  const cabinH = isTruck ? 0.55 : 0.34;
+  const bodyH = isTruck ? 0.68 : (isLandmarkCar ? 0.74 : 0.46);
+  const cabinH = isTruck ? 0.55 : (isLandmarkCar ? 0.5 : 0.34);
+  const bodyDepth = depth * (isLandmarkCar ? 0.92 : 0.8);
+  const cabinDepth = depth * (isLandmarkCar ? 0.66 : 0.62);
 
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, bodyH, depth * 0.8]} />
+        <boxGeometry args={[width, bodyH, bodyDepth]} />
         <meshStandardMaterial color={bodyColor} roughness={0.58} metalness={0.22} />
       </mesh>
       <mesh position={[width * 0.18, bodyH + cabinH / 2 - 0.04, -depth * 0.02]} castShadow>
-        <boxGeometry args={[width * 0.42, cabinH, depth * 0.62]} />
+        <boxGeometry args={[width * (isLandmarkCar ? 0.48 : 0.42), cabinH, cabinDepth]} />
         <meshStandardMaterial color={trimColor} roughness={0.5} metalness={0.25} />
       </mesh>
       {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (

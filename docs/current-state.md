@@ -17,6 +17,8 @@ verbs that make those nouns matter.
 - Inferno-inspired data model with zones, callouts, spawns, plant zones, cover
   objects, and validation tooling.
 - Radar-derived walkable mask and route validation.
+- Cover-placement validation now catches visible cover objects that do not
+  resolve to gameplay cover tiles.
 - Unit selection and active-team roster.
 - A* pathfinding and movement range calculation.
 - AP-banded movement preview.
@@ -99,6 +101,8 @@ verbs that make those nouns matter.
 - Landmark cover silhouettes for Inferno readability: Banana Car, Logs,
   Sandbags, B Fountain, Coffins, Oranges, Truck, Library Shelf, rails, walls,
   and pillars.
+- First-pass Banana cover correction: car, logs, and sandbags now sit on real
+  gameplay cover tiles instead of off-lane wall mask cells.
 - Basic CT auto-response: CT can run a short automated turn after T passes,
   repositioning toward holds, taking obvious shots, and setting held angles.
 - First-pass smoke utility that blocks line of sight with target preview,

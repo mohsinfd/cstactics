@@ -192,6 +192,10 @@ Work:
   copyrighted source imagery to the repo.
 - Generate or trace a tile grid from a radar/reference image.
 - Replace rectangle-only zones with a higher-fidelity silhouette.
+- Prioritize Banana/B fidelity before further utility depth. See
+  `docs/banana-b-fidelity-task-list.md`.
+- Add validation so authored cover cannot render without matching gameplay
+  cover. Implemented as a first pass.
 - Add callout anchors for Banana, B, Mid, Second Mid, Apps, A, Arch, Library,
   Construction, CT, and T spawn.
 - Validate route timings from T and CT spawns to both sites.
@@ -307,6 +311,8 @@ Acceptance:
 ## Operating Rules
 
 - Do not add major gameplay systems until Inferno recognition is fixed.
+- Treat Banana/B cover, blocked tiles, and LOS as one shared contract before
+  tuning utility or combat in that lane.
 - Every feature needs a visible debug path while the game is in prototype.
 - Keep game logic rendering-independent.
 - Prefer small, testable systems over large opaque rewrites.

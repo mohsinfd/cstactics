@@ -304,6 +304,32 @@ function renderPng(map, routes) {
   return PNG.sync.write(png);
 }
 
+function getCoverPlacementWarnings(map) {
+  const warnings = [];
+
+  for (const cover of map.coverObjects) {
+    const expectedType = cover.coverType === 'half' ? 'cover_half' : 'cover_full';
+
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        const tile = map.grid[y]?.[x];
+        if (!tile) {
+          warnings.push(`${cover.label} includes out-of-bounds tile ${x},${y}.`);
+          continue;
+        }
+
+        if (tile.type !== expectedType) {
+          warnings.push(
+            `${cover.label} tile ${x},${y} resolves to ${tile.type}; expected ${expectedType}.`
+          );
+        }
+      }
+    }
+  }
+
+  return warnings;
+}
+
 function summarize() {
   const map = loadInfernoMap();
   const counts = {};
@@ -337,6 +363,7 @@ function summarize() {
   );
 
   const components = getConnectedComponents(map);
+  const coverWarnings = getCoverPlacementWarnings(map);
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(outputPath, renderSvg(map, routes));
   fs.writeFileSync(outputPngPath, renderPng(map, routes));
@@ -355,6 +382,7 @@ function summarize() {
     routes: Object.fromEntries(
       Object.entries(routes).map(([name, route]) => [name, route.distance])
     ),
+    coverPlacementWarnings: coverWarnings.length,
     output: {
       svg: path.relative(root, outputPath),
       png: path.relative(root, outputPngPath),
@@ -373,6 +401,11 @@ function summarize() {
       console.warn(`Map warning: ${name} has no route.`);
       process.exitCode = 1;
     }
+  }
+
+  for (const warning of coverWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
   }
 }
 
