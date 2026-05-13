@@ -98,6 +98,12 @@ identity from `src/renderer/unitVisualIdentity.ts`. Remaining safe follow-ups:
   guards in both the 3D miniature and sprite canvas. T headwraps now get a
   darker crown wrap plus a second trailing cloth tab, making the red cloth
   silhouette clearer from tactical zoom without adding imported assets.
+- Role glyph readability: the existing `baseGlyph` contract now drives small
+  non-text role marks on both generated unit sprites and 3D vest plates. AWPer
+  gets a long-gun/scope glyph, Entry a chevron, IGL a command tablet block,
+  Support utility canisters, and Lurker offset stealth slashes. This keeps
+  team color/headgear as the first read while making role identity less
+  dependent on floating text at tactical zoom.
 
 ## Acceptance Checks
 

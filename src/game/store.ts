@@ -12,8 +12,8 @@
 //     first contact vertical slice
 //   - "End Turn" advances to next team / next turn
 //
-// Missing: generic action pipeline, queued utility timing, ammo/reload,
-// production AI, and economy.
+// Missing: generic action pipeline, editable execute offsets, production AI,
+// and economy.
 // ============================================================
 import { create } from 'zustand';
 import type {
@@ -41,6 +41,7 @@ import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
+import { getDefaultExecuteAtMs, getPlannedActionExecuteAtMs } from './executeTimeline';
 
 const EXECUTION_STEP_MS = 95;
 const AI_EXECUTION_STEP_MS = 55;
@@ -358,6 +359,7 @@ function createUtilityPlan(
     unitId: unit.id,
     team: unit.team,
     kind,
+    executeAtMs: getDefaultExecuteAtMs(kind),
     from: { ...unit.position },
     target: { ...targetTile },
     path: [],
@@ -1543,6 +1545,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         unitId: unit.id,
         team: unit.team,
         kind: 'move',
+        executeAtMs: getDefaultExecuteAtMs('move'),
         from: { ...unit.position },
         target: { ...targetTile },
         path,
@@ -1723,6 +1726,14 @@ export const useGameStore = create<GameStore>((set, get) => {
           hoveredTile: null,
           pathPreview: [],
         });
+      }
+
+      const firstMoveAtMs = movePlans.length > 0
+        ? Math.min(...movePlans.map(getPlannedActionExecuteAtMs))
+        : 0;
+      if (movePlans.length > 0) {
+        await wait(Math.max(utilityExecuted ? EXECUTION_STEP_MS * 2 : 0, firstMoveAtMs));
+      } else if (utilityExecuted) {
         await wait(EXECUTION_STEP_MS * 2);
       }
 

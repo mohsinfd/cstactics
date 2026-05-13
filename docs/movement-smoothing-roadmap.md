@@ -46,13 +46,13 @@ does not change existing renderer behavior.
 - The final snap is tactically correct, but the visual velocity curve can look
   non-human.
 
-### Execute timing labels and resolver timing diverge
+### Execute timing labels and resolver timing are now partially aligned
 
-- `src/game/executeTimeline.ts` labels move/swing actions at `0.6s`.
-- `commitPlannedActions` resolves utility, waits `EXECUTION_STEP_MS * 2`
-  (`190ms`), then begins movement.
-- This is mechanically fine for a prototype, but the player reads `0.6s` while
-  the board starts moving much sooner, which makes cadence harder to parse.
+- `src/game/executeTimeline.ts` owns default execute offsets.
+- Planned actions now carry `executeAtMs`.
+- `commitPlannedActions` waits for the first movement/swing beat before moving,
+  so the player-facing `0.6s` label is no longer purely decorative.
+- This is still a first pass: offsets are not editable by the player yet.
 
 ### Path dragging is tile-gated but visually hard-swapped
 
@@ -110,9 +110,8 @@ The helper is intentionally pure and small so it can be imported into
 3. Add a short settle window (`DEFAULT_MOVEMENT_TIMING.settleSeconds`) before
    body bob/leg swing reset to zero, so the figure does not visibly pop upright
    between closely spaced tile updates.
-4. In planned execute, either make the resolver wait match the `0.6s` label or
-   revise the timeline label to the real cadence. The board and queue should
-   agree.
+4. In planned execute, build editable timeline offsets on top of the current
+   `executeAtMs` contract.
 5. In `MapRenderer.tsx`, keep hover path calculation tile-gated, but add a
    pointer-leave clear and a light path-preview visual transition:
    - the committed tactical path remains tile-crisp;

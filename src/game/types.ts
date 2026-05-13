@@ -30,6 +30,7 @@ export interface PlannedAction {
   unitId: number;
   team: Team;
   kind: PlannedActionKind;
+  executeAtMs: number;
   from: TileCoord;
   target: TileCoord;
   path: TileCoord[];

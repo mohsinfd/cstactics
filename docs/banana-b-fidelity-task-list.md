@@ -39,6 +39,14 @@ construction, and site cover from the board without needing debug labels.
 - B site has the expected first-pass objects (`Coffins`, `First Oranges`,
   `Second Oranges`, `Fountain`, `New Box`), but route timing and LOS from
   Banana, CT, coffins, construction, and oranges are not validated yet.
+- 2026-05-13 B-entry inspection: `Dark Boxes` currently sits at `(49,79) 1x2`.
+  Its adjacent walkable tiles are mostly labeled `Oranges`, so it reads more
+  like a site/oranges blocker than a construction-side anchor.
+- In-memory test only, not applied: shifting `Dark Boxes` one tile east to
+  `(50,79) 1x2` creates the desired construction adjacency at `(51,79)`,
+  `(51,80)`, and `(50,81)`, but it also changes validation route timing
+  (`T_to_B` `80 -> 77`, `CT_to_B` `48 -> 41`). Treat that as too much gameplay
+  movement for an unreviewed tiny fix.
 
 ## Ranked Implementation Slices
 
@@ -116,12 +124,21 @@ Recommended next data change:
 - Validate B-site object footprints around `Coffins` `(39,79) 2x2`, `First
   Oranges` `(45,74) 1x2`, `Second Oranges` `(47,76) 1x2`, and construction
   entry lanes from `x49..63, y70..84`.
+- Coordinate task: decide whether `Dark Boxes` should move from `(49,79) 1x2`
+  to `(50,79) 1x2`, or whether the construction-side cover needs a separate
+  authored object instead. The simple one-tile east shift improves adjacency to
+  construction but currently shortens `T_to_B` and `CT_to_B`, so it should be
+  paired with a route review rather than merged as an isolated micro-edit.
 
 Acceptance criteria:
 - Banana-to-site entry has playable lanes into coffins/oranges/default.
 - Coffins and oranges create expected cover without sealing site circulation.
 - Construction to site and CT to site routes remain navigable.
 - Plant zone B remains reachable and not dominated by accidental blockers.
+- If `Dark Boxes` is moved east, `npm run map:validate` must still report
+  `coverPlacementWarnings: 0`, `coverAdjacencyWarnings: 0`, and
+  `routeSanityWarnings: 0`, and the orchestrator must explicitly accept any
+  `T_to_B` or `CT_to_B` route-timing delta.
 
 ### P2 - Verification Checklist
 

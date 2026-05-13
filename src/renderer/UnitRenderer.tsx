@@ -86,6 +86,66 @@ const ROLE_RENDER_CONFIG = {
   },
 } satisfies Record<RoleId, RoleRenderConfig>;
 
+function drawCanvasRoleGlyph(
+  ctx: CanvasRenderingContext2D,
+  glyph: RoleRenderConfig['baseShape'],
+  accent: string,
+  cx: number,
+  cy: number,
+  scale = 1,
+) {
+  ctx.save();
+  ctx.strokeStyle = '#f7f8fb';
+  ctx.fillStyle = accent;
+  ctx.lineWidth = 4 * scale;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 3 * scale;
+
+  if (glyph === 'long') {
+    ctx.beginPath();
+    ctx.moveTo(cx - 20 * scale, cy + 10 * scale);
+    ctx.lineTo(cx + 20 * scale, cy - 10 * scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + 6 * scale, cy - 3 * scale, 6 * scale, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (glyph === 'wedge') {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 14 * scale);
+    ctx.lineTo(cx + 18 * scale, cy + 12 * scale);
+    ctx.lineTo(cx, cy + 5 * scale);
+    ctx.lineTo(cx - 18 * scale, cy + 12 * scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (glyph === 'command') {
+    ctx.strokeRect(cx - 18 * scale, cy - 12 * scale, 36 * scale, 24 * scale);
+    ctx.beginPath();
+    ctx.moveTo(cx - 10 * scale, cy - 2 * scale);
+    ctx.lineTo(cx - 2 * scale, cy + 6 * scale);
+    ctx.lineTo(cx + 12 * scale, cy - 7 * scale);
+    ctx.stroke();
+  } else if (glyph === 'utility') {
+    [-14, 0, 14].forEach((offset) => {
+      ctx.fillRect(cx + offset * scale - 5 * scale, cy - 12 * scale, 10 * scale, 24 * scale);
+      ctx.strokeRect(cx + offset * scale - 5 * scale, cy - 12 * scale, 10 * scale, 24 * scale);
+    });
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(cx - 18 * scale, cy + 10 * scale);
+    ctx.quadraticCurveTo(cx, cy - 18 * scale, cx + 18 * scale, cy + 10 * scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - 8 * scale, cy + 8 * scale);
+    ctx.lineTo(cx + 16 * scale, cy - 12 * scale);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function SafeText(props: ComponentProps<typeof Text>) {
   return (
     <Suspense fallback={null}>
@@ -221,6 +281,8 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
     ctx.closePath();
     ctx.fill();
   }
+
+  drawCanvasRoleGlyph(ctx, ROLE_RENDER_CONFIG[roleId].baseShape, accent, 96, 131, 0.72);
 
   // Arms and team marker.
   ctx.strokeStyle = vestDark;
@@ -463,6 +525,85 @@ function TeamChestBadge({
       >
         {team}
       </SafeText>
+    </group>
+  );
+}
+
+function RoleVestGlyph({ roleId, accent, scale }: { roleId: RoleId; accent: string; scale: number }) {
+  const cfg = ROLE_RENDER_CONFIG[roleId];
+  const materialProps = {
+    color: '#f7f8fb',
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false,
+  };
+
+  return (
+    <group position={[0, 0.86 * scale, 0.194 * scale]} scale={[scale, scale, scale]} raycast={() => null}>
+      {cfg.baseShape === 'long' && (
+        <>
+          <mesh rotation={[0, 0, -0.58]}>
+            <boxGeometry args={[0.034, 0.26, 0.012]} />
+            <meshBasicMaterial {...materialProps} />
+          </mesh>
+          <mesh position={[0.045, 0.02, 0.006]}>
+            <torusGeometry args={[0.038, 0.007, 6, 14]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.9} depthWrite={false} />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'wedge' && (
+        <>
+          <mesh position={[-0.055, 0, 0]} rotation={[0, 0, -0.56]}>
+            <boxGeometry args={[0.034, 0.22, 0.012]} />
+            <meshBasicMaterial {...materialProps} />
+          </mesh>
+          <mesh position={[0.055, 0, 0]} rotation={[0, 0, 0.56]}>
+            <boxGeometry args={[0.034, 0.22, 0.012]} />
+            <meshBasicMaterial {...materialProps} />
+          </mesh>
+          <mesh position={[0, -0.058, 0.004]}>
+            <boxGeometry args={[0.11, 0.024, 0.012]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.88} depthWrite={false} />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'command' && (
+        <>
+          <mesh>
+            <boxGeometry args={[0.21, 0.13, 0.012]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.82} depthWrite={false} />
+          </mesh>
+          <mesh position={[0, 0, 0.006]}>
+            <boxGeometry args={[0.15, 0.076, 0.012]} />
+            <meshBasicMaterial color="#151922" transparent opacity={0.9} depthWrite={false} />
+          </mesh>
+        </>
+      )}
+
+      {cfg.baseShape === 'utility' && (
+        [-0.07, 0, 0.07].map((x) => (
+          <mesh key={x} position={[x, 0, 0]}>
+            <boxGeometry args={[0.042, 0.13, 0.012]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.9} depthWrite={false} />
+          </mesh>
+        ))
+      )}
+
+      {cfg.baseShape === 'stealth' && (
+        <>
+          <mesh position={[-0.035, 0, 0]} rotation={[0, 0, -0.72]}>
+            <boxGeometry args={[0.032, 0.22, 0.012]} />
+            <meshBasicMaterial {...materialProps} />
+          </mesh>
+          <mesh position={[0.045, 0, 0.004]} rotation={[0, 0, -0.72]}>
+            <boxGeometry args={[0.025, 0.14, 0.012]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.82} depthWrite={false} />
+          </mesh>
+        </>
+      )}
     </group>
   );
 }
@@ -1140,6 +1281,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         <mesh position={[0, 0.85 * s, 0.15 * s]} castShadow material={mats.roleAccent}>
           <boxGeometry args={[0.32 * s, 0.08 * s, 0.075]} />
         </mesh>
+        <RoleVestGlyph roleId={unit.role.id} accent={rc.accent} scale={s} />
 
         <RoleGear roleId={unit.role.id} accent={rc.accent} scale={s} />
 

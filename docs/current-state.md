@@ -38,6 +38,8 @@ verbs that make those nouns matter.
   before movement during `Run Execute`.
 - Execute queue now shows first-pass CS timing beats: utility at `0.0s` and
   movement/swing orders at `0.6s`.
+- Planned actions now carry authored execute timing (`executeAtMs`), and the
+  resolver waits for the swing beat instead of treating `0.6s` as display-only.
 - Planned path/destination previews for queued move orders.
 - Planned map markers include timing labels so board state matches the execute
   queue.

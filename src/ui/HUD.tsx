@@ -17,7 +17,13 @@ import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
-import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
+import {
+  EXECUTE_SWING_MS,
+  EXECUTE_UTILITY_MS,
+  formatExecuteTime,
+  getPlannedActionBeat,
+  sortPlannedActionsByBeat,
+} from '../game/executeTimeline';
 import { getWeaponShotApCost } from '../game/config/weapons';
 
 const PHASE_LABELS: Record<string, string> = {
@@ -554,9 +560,9 @@ function ExecutePlanner() {
             letterSpacing: 0.6,
             textTransform: 'uppercase',
           }}>
-            <span style={{ color: '#d8c170' }}>0.0s Utility</span>
+            <span style={{ color: '#d8c170' }}>{formatExecuteTime(EXECUTE_UTILITY_MS)} Utility</span>
             <span style={{ color: '#4b5362' }}>-&gt;</span>
-            <span style={{ color: '#58ff9a' }}>0.6s Swing</span>
+            <span style={{ color: '#58ff9a' }}>{formatExecuteTime(EXECUTE_SWING_MS)} Swing</span>
           </div>
           <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
             {timelineActions.map((action) => {

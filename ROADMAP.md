@@ -108,6 +108,8 @@ move, trigger contact, and freeze into a trade decision. See
 - First-pass ticked movement/contact resolution. Implemented.
 - First-pass execute beat UI: utility at `0.0s`, movement/swing at `0.6s`, with
   matching queue rows and map markers. Implemented.
+- Planned actions now carry an `executeAtMs` timing contract, and the resolver
+  waits for the swing beat before movement starts. Implemented as a first pass.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -124,8 +126,9 @@ move, trigger contact, and freeze into a trade decision. See
   testing the one-player loop.
 - First-pass hit/death presentation VFX: shooter recoil, muzzle flash, target hit
   shock, and casualty death pulse. Implemented.
-- Next: replace fixed execute beats with editable timeline offsets, then deepen
-  damage numbers and per-weapon shot feel.
+- Next: replace fixed execute beats with editable timeline offsets, then add a
+  durable execute-interrupt decision state and deepen damage numbers/per-weapon
+  shot feel.
 
 ### Milestone C: Utility Timing
 
