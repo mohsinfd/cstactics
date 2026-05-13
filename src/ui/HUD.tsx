@@ -12,7 +12,7 @@
 // ============================================================
 import { useGameStore } from '../game/store';
 import { useEffect, useState } from 'react';
-import type { ExecuteInterruptTimelineItem, MapData, TileCoord } from '../game/types';
+import type { ExecuteInterruptTimelineItem, ExecuteTimelineEvent, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
@@ -23,6 +23,7 @@ import {
   formatExecuteTime,
   getExecuteTimingBounds,
   getPlannedActionBeat,
+  sortExecuteTimelineEvents,
   sortPlannedActionsByBeat,
 } from '../game/executeTimeline';
 import { getWeaponShotApCost } from '../game/config/weapons';
@@ -164,6 +165,7 @@ export function HUD() {
       <TeamRoster />
       <CombatLogPanel />
       <ContactBreakPanel />
+      <ExecuteTimelinePanel />
       <BombObjectivePanel />
       <ExecutePlanner />
       <CommandBar />
@@ -423,6 +425,179 @@ function ContactBreakPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function getExecuteTimelineItemColor(kind: ExecuteTimelineEvent['kind']): string {
+  if (kind === 'utility_planned' || kind === 'utility_resolved' || kind === 'bomb_pressure') return '#d8c170';
+  if (kind === 'move_start' || kind === 'swing_start' || kind === 'movement_beat') return '#58ff9a';
+  if (kind === 'contact' || kind === 'reaction_shot') return '#75b9ff';
+  if (kind === 'shot_result') return '#ff6b82';
+  return '#cfd3dc';
+}
+
+function getCompactExecuteTimelineEvents(events: ExecuteTimelineEvent[]): ExecuteTimelineEvent[] {
+  const resolvedActionIds = new Set(
+    events
+      .filter((event) => event.kind === 'utility_resolved' && event.actionId)
+      .map((event) => event.actionId)
+  );
+
+  return sortExecuteTimelineEvents(events)
+    .filter((event) => !(event.kind === 'utility_planned' && event.actionId && resolvedActionIds.has(event.actionId)));
+}
+
+function ExecuteTimelinePanel() {
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const isExecuting = useGameStore((s) => s.isExecuting);
+  const currentTimeline = useGameStore((s) => s.currentExecuteTimeline);
+  const lastTimeline = useGameStore((s) => s.lastExecuteTimeline);
+  const compact = useIsCompactViewport();
+
+  if (interrupt) return null;
+
+  const timeline = isExecuting
+    ? currentTimeline
+    : lastTimeline?.status === 'completed'
+      ? lastTimeline
+      : null;
+  if (!timeline || timeline.events.length === 0) return null;
+
+  const itemLimit = compact ? 3 : 4;
+  const displayableItems = getCompactExecuteTimelineEvents(timeline.events);
+  const items = displayableItems.slice(0, itemLimit);
+  if (displayableItems.length === 0) return null;
+
+  const hiddenCount = Math.max(0, displayableItems.length - items.length);
+  const title = timeline.status === 'running' ? 'Execute Live' : 'Execute Debrief';
+  const sourceLabel = timeline.source === 'planned_execute' ? 'Plan' : 'Move';
+
+  return (
+    <div data-testid="hud-execute-timeline-panel" style={{
+      position: 'absolute',
+      top: compact ? (timeline.status === 'running' ? 214 : 132) : 132,
+      left: compact ? 10 : '50%',
+      transform: compact ? undefined : 'translateX(-50%)',
+      width: compact ? 'min(246px, calc(100vw - 304px))' : 'min(360px, calc(100vw - 560px))',
+      minWidth: compact ? 214 : 300,
+      boxSizing: 'border-box',
+      background: 'rgba(7, 9, 13, 0.9)',
+      border: `1px solid ${timeline.status === 'running' ? '#58ff9a66' : '#d8c17055'}`,
+      borderLeft: `3px solid ${timeline.status === 'running' ? '#58ff9a' : '#d8c170'}`,
+      borderRadius: 6,
+      padding: compact ? '8px 9px' : '9px 11px',
+      pointerEvents: 'none',
+      boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        minWidth: 0,
+        marginBottom: 5,
+      }}>
+        <span style={{
+          color: timeline.status === 'running' ? '#58ff9a' : '#d8c170',
+          fontSize: compact ? 9 : 10,
+          fontWeight: 950,
+          letterSpacing: compact ? 1 : 1.3,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        }}>
+          {title}
+        </span>
+        <span style={{
+          color: '#77818f',
+          border: '1px solid rgba(119,129,143,0.35)',
+          borderRadius: 3,
+          padding: '1px 4px',
+          fontSize: 8,
+          fontWeight: 900,
+          letterSpacing: 0.5,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        }}>
+          {timeline.activeTeam} {sourceLabel}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gap: compact ? 3 : 4 }}>
+        {items.map((item) => {
+          const itemColor = getExecuteTimelineItemColor(item.kind);
+          return (
+            <div
+              key={item.id}
+              data-testid="hud-execute-timeline-item"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: compact ? '34px 36px minmax(0, 1fr)' : '42px 44px minmax(0, 1fr)',
+                gap: compact ? 5 : 7,
+                alignItems: 'baseline',
+                borderTop: '1px solid rgba(255,255,255,0.055)',
+                paddingTop: compact ? 3 : 4,
+                minWidth: 0,
+              }}
+            >
+              <span style={{
+                color: itemColor,
+                fontSize: compact ? 7 : 8,
+                fontWeight: 950,
+                fontFamily: "'Courier New', monospace",
+                whiteSpace: 'nowrap',
+              }}>
+                {item.timeLabel}
+              </span>
+              <span style={{
+                color: itemColor,
+                fontSize: compact ? 7 : 8,
+                fontWeight: 950,
+                letterSpacing: 0.5,
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {item.phaseLabel}
+              </span>
+              <span style={{ display: 'grid', gap: 1, minWidth: 0 }}>
+                <span style={{
+                  color: '#e5e8ee',
+                  fontSize: compact ? 8 : 9,
+                  fontWeight: 850,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {item.title}
+                </span>
+                <span style={{
+                  color: '#7d8798',
+                  fontSize: compact ? 8 : 9,
+                  lineHeight: 1.2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {item.detail}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {hiddenCount > 0 && (
+        <div style={{
+          marginTop: 4,
+          color: '#596272',
+          fontSize: 8,
+          fontWeight: 850,
+          letterSpacing: 0.5,
+          textTransform: 'uppercase',
+          textAlign: 'right',
+        }}>
+          +{hiddenCount} beats
+        </div>
+      )}
     </div>
   );
 }

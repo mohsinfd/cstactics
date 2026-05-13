@@ -92,6 +92,9 @@ verbs that make those nouns matter.
 - Direct moves and planned executes persist `currentExecuteTimeline` /
   `lastExecuteTimeline` state with ordered utility, movement/swing, contact,
   shot-result, and decision events for inspection and regression coverage.
+- A compact player-facing execute rail now uses `currentExecuteTimeline` during
+  resolution and `lastExecuteTimeline` after clean completed executes, giving a
+  first-pass live/debrief beat read without duplicating the Contact Break panel.
 - Board-level hit/miss marker at the combat event tile with a short fade/lift
   animation, including a stronger elimination state.
 - First-pass combat presentation VFX: shooter recoil, muzzle flash, target hit
@@ -172,9 +175,9 @@ verbs that make those nouns matter.
   save/hunt logic is still missing.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, editable timing
-  beats, and a reusable execute/contact event stream, but not yet a full
-  cinematic queue/replay system with simultaneous combat beats and production
-  interrupt sequencing.
+  beats, a reusable execute/contact event stream, and compact live/debrief rail,
+  but not yet a full cinematic queue/replay system with simultaneous combat
+  beats and production interrupt sequencing.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 
@@ -196,7 +199,8 @@ verbs that make those nouns matter.
 - Production-grade enemy AI.
 - Production-grade authored audio mix.
 - Production-grade synchronized execute timeline beyond the current bounded
-  per-order utility/swing timing contract and inspectable event stream.
+  per-order utility/swing timing contract, inspectable event stream, and compact
+  player-facing live/debrief rail.
 
 ## Immediate Focus
 

@@ -141,6 +141,9 @@ move, trigger contact, and freeze into a trade decision. See
   executes now record ordered utility, movement/swing, contact, shot result, and
   trade/bomb decision events, while Contact Break still renders a compact
   timeline from the same data. Implemented.
+- First-pass player-facing execute rail: clean executes show a compact
+  live/debrief beat list from the reusable timeline, while Contact Break
+  continues to own interrupted executes. Implemented.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
 
@@ -165,7 +168,8 @@ move, trigger contact, and freeze into a trade decision. See
 - Per-order execute offsets with bounded queue controls and staggered movement
   starts. Implemented as a first pass.
 - Show a compact execute timeline: `0.0 smoke`, `0.5 flash`, `0.7 entry swing`.
-  First-pass timeline UI is implemented.
+  First-pass live/debrief rail is implemented for clean executes, and Contact
+  Break owns interrupted execute timelines.
 - Persist reusable execute/contact timeline data for inspection and regression
   tests. Implemented as a first pass; this is not yet a full cinematic
   queue/replay system.

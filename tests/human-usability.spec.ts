@@ -30,6 +30,14 @@ const COMPACT_CONTACT_CLEARANCE_IDS = [
   'hud-combat-log',
 ] as const;
 
+const EXECUTE_TIMELINE_CLEARANCE_IDS = [
+  'hud-top-bar',
+  'hud-team-roster',
+  'hud-selected-unit-panel',
+  'hud-view-controls',
+  'hud-command-bar',
+] as const;
+
 const CLICK_TARGET_IDS = new Set([
   'hud-camera-zoom-in',
   'hud-camera-zoom-out',
@@ -273,6 +281,7 @@ test.describe('human usability regression', () => {
     await queueBananaDrillContact(page);
 
     await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
+    await expect(page.getByTestId('hud-execute-timeline-panel')).toHaveCount(0);
     await expect(page.getByTestId('hud-contact-timeline')).toBeVisible();
     const timelineItemCount = await page.getByTestId('hud-contact-timeline-item').count();
     expect(timelineItemCount, 'contact break should show the short execute sequence').toBeGreaterThanOrEqual(4);
@@ -550,6 +559,40 @@ test.describe('human usability regression', () => {
     });
 
     expect(completedTimelineResult.ok, completedTimelineResult.reason).toBe(true);
+    await expect(page.getByTestId('hud-contact-break-panel')).toHaveCount(0);
+    await expect(page.getByTestId('hud-execute-timeline-panel')).toBeVisible();
+
+    const debriefItems = page.getByTestId('hud-execute-timeline-item');
+    const debriefItemCount = await debriefItems.count();
+    expect(debriefItemCount, 'completed execute should render a compact debrief rail').toBeGreaterThanOrEqual(2);
+    const debriefText = await page.getByTestId('hud-execute-timeline-panel').innerText();
+    expect(debriefText, 'debrief should identify the execute result').toMatch(/execute debrief/i);
+    expect(debriefText, 'debrief should show ordered CS execute phases').toMatch(/SWING|MOVE|BLOOM|POP/);
+
+    const debriefState = await page.evaluate(() => {
+      const events = window.__CS_TACTICS_STORE__?.getState().lastExecuteTimeline?.events ?? [];
+      const visibleTimes = Array.from(document.querySelectorAll('[data-testid="hud-execute-timeline-item"]'))
+        .map((element) => element.textContent?.match(/(\d+\.\d)s/)?.[1])
+        .filter((value): value is string => Boolean(value))
+        .map((value) => Number(value) * 1000);
+      return {
+        visibleOrdered: visibleTimes.every((time, index) => index === 0 || time >= visibleTimes[index - 1]),
+        eventCount: events.length,
+        eventOrdered: events.every((event, index) => index === 0 || event.timeMs >= events[index - 1].timeMs),
+        hasResolvedUtility: events.some((event) => event.kind === 'utility_resolved'),
+        hasSwingStart: events.some((event) => event.kind === 'swing_start'),
+        hasInterrupt: Boolean(window.__CS_TACTICS_STORE__?.getState().executeInterrupt),
+      };
+    });
+    expect(debriefState.hasInterrupt, 'completed execute debrief should not duplicate Contact Break').toBe(false);
+    expect(debriefState.eventCount, 'completed execute should persist timeline events').toBeGreaterThanOrEqual(2);
+    expect(debriefState.eventOrdered, 'completed execute events should stay ordered').toBe(true);
+    expect(debriefState.visibleOrdered, 'visible debrief items should stay ordered').toBe(true);
+    expect(debriefState.hasResolvedUtility, 'debrief path should include the resolved utility beat').toBe(true);
+    expect(debriefState.hasSwingStart, 'debrief path should include the swing beat').toBe(true);
+    await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-execute-timeline-panel']);
+    await expectHudDoesNotOverlap(page, 'hud-execute-timeline-panel', EXECUTE_TIMELINE_CLEARANCE_IDS);
+
     expect(consoleErrors).toEqual([]);
   });
 });
