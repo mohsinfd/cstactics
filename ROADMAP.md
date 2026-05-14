@@ -118,6 +118,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
+- First-pass Banana/B renderer fidelity: contact shadows, material variation,
+  quieter cover labels, and richer landmark prop details for car, logs,
+  sandbags, coffins, oranges, fountain, and boxes without changing gameplay
+  footprints. Implemented.
 - Protected/flanked/exposed shot and movement warnings. Implemented as a
   first-pass directional cover readout.
 - Corner-weighted cover penalties and corner labels. Implemented as a first-pass
@@ -150,6 +154,9 @@ move, trigger contact, and freeze into a trade decision. See
   continues to own interrupted executes. Implemented.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
+- Next visual/audio slice: build a combat contact presentation foundation where
+  actual weapon category drives unit weapon mesh/recoil/audio identity and
+  short combat event queues can present multiple beats cleanly.
 
 ### Milestone C: Utility Timing
 

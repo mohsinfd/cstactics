@@ -140,6 +140,10 @@ verbs that make those nouns matter.
 - Landmark cover silhouettes for Inferno readability: Banana Car, Logs,
   Sandbags, B Fountain, Coffins, Oranges, Truck, Library Shelf, rails, walls,
   and pillars.
+- Renderer-only Banana/B prop fidelity pass: cover props now have contact
+  shadows, quieter cover labels, subtle floor material variation, richer Banana
+  Car/logs/sandbags/coffins/oranges/fountain/crate details, and unchanged
+  gameplay footprints.
 - First-pass Banana cover correction: car, logs, and sandbags now sit on real
   gameplay cover tiles instead of off-lane wall mask cells.
 - Basic CT auto-response: CT can run a short automated turn after T passes,
@@ -165,6 +169,8 @@ verbs that make those nouns matter.
   AI response, utility, and combat.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
   for crisper camera/browser zoom.
+- First-pass authored tactical-map material polish for Banana/B landmarks, while
+  keeping map masks, LOS, route timing, and cover data unchanged.
 
 ## Partially Implemented
 

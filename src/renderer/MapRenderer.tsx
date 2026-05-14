@@ -170,15 +170,25 @@ function InstancedFloor({ positions, elevations, color, tileSize }: {
   const mesh = useMemo(() => {
     const size = tileSize - GRID_GAP;
     const geo = new THREE.BoxGeometry(size, FLOOR_H, size);
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.02 });
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.015, vertexColors: true });
     const inst = new THREE.InstancedMesh(geo, mat, positions.length);
     const d = new THREE.Object3D();
+    const colorAttr = new Float32Array(positions.length * 3);
+    const baseColor = new THREE.Color(color);
     positions.forEach(([x, , z], i) => {
       d.position.set(x, elevations[i] * tileSize * 0.4, z);
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
+
+      const hash = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+      const laneWear = (Math.sin(x * 0.31) + Math.cos(z * 0.27)) * 0.018;
+      const variation = THREE.MathUtils.clamp(0.94 + hash * 0.1 + laneWear, 0.9, 1.06);
+      colorAttr[i * 3] = baseColor.r * variation;
+      colorAttr[i * 3 + 1] = baseColor.g * variation;
+      colorAttr[i * 3 + 2] = baseColor.b * variation;
     });
     inst.instanceMatrix.needsUpdate = true;
+    inst.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
     inst.receiveShadow = true;
     return inst;
   }, [positions, elevations, color, tileSize]);
@@ -268,9 +278,9 @@ function CoverLayer() {
             <SafeText
               position={[cx, h + 0.08, cz]}
               rotation={[-Math.PI / 2, 0, Math.PI]}
-              fontSize={0.18}
+              fontSize={0.16}
               color="#dcc77e"
-              fillOpacity={0.45}
+              fillOpacity={0.34}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.015}
@@ -588,38 +598,117 @@ function CoverProp({
   const label = cover.label.toLowerCase();
 
   if (label.includes('fountain')) {
-    return <FountainProp x={x} z={z} width={width} depth={depth} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.04} depth={depth * 1.04} opacity={0.16} />
+        <FountainProp x={x} z={z} width={width} depth={depth} />
+      </group>
+    );
   }
   if (label.includes('banana car') || label === 'truck') {
-    return <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} isLandmarkCar={label.includes('banana car')} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.1} depth={depth * 1.12} opacity={label.includes('banana car') ? 0.22 : 0.18} />
+        <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} isLandmarkCar={label.includes('banana car')} />
+      </group>
+    );
   }
   if (label.includes('coffin')) {
-    return <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.03} depth={depth * 0.98} opacity={0.2} />
+        <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />
+      </group>
+    );
   }
   if (label.includes('orange')) {
-    return <OrangesProp x={x} z={z} width={width} depth={depth} height={h} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.05} depth={depth * 1.02} opacity={0.17} />
+        <OrangesProp x={x} z={z} width={width} depth={depth} height={h} />
+      </group>
+    );
   }
   if (label.includes('logs')) {
-    return <LogsProp x={x} z={z} width={width} depth={depth} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.18} opacity={0.19} />
+        <LogsProp x={x} z={z} width={width} depth={depth} />
+      </group>
+    );
   }
   if (label.includes('sandbags')) {
-    return <SandbagsProp x={x} z={z} width={width} depth={depth} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.06} depth={depth * 1.08} opacity={0.18} />
+        <SandbagsProp x={x} z={z} width={width} depth={depth} />
+      </group>
+    );
   }
   if (label.includes('library shelf')) {
-    return <LibraryShelfProp x={x} z={z} width={width} depth={depth} height={h} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.02} opacity={0.17} />
+        <LibraryShelfProp x={x} z={z} width={width} depth={depth} height={h} />
+      </group>
+    );
   }
   if (label.includes('pillar')) {
-    return <PillarProp x={x} z={z} height={h} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={tileSize * 0.78} depth={tileSize * 0.78} opacity={0.18} />
+        <PillarProp x={x} z={z} height={h} />
+      </group>
+    );
   }
   if (label.includes('rail') || label.includes('wall')) {
-    return <WallStripProp x={x} z={z} width={width} depth={depth} height={h} />;
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.01} depth={depth * 1.02} opacity={0.14} shape="plane" />
+        <WallStripProp x={x} z={z} width={width} depth={depth} height={h} />
+      </group>
+    );
+  }
+  if (label.includes('box')) {
+    return (
+      <group>
+        <ContactShadow x={x} z={z} width={width * 1.04} depth={depth * 1.04} opacity={0.17} />
+        <CrateStackProp x={x} z={z} width={width} depth={depth} height={h} label={label} />
+      </group>
+    );
   }
 
   const color = cover.coverType === 'half' ? '#8a7d5a' : '#6a6050';
   return (
-    <mesh position={[x, h / 2, z]} castShadow receiveShadow>
-      <boxGeometry args={[width, h, depth]} />
-      <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
+    <group>
+      <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.02} opacity={0.15} shape="plane" />
+      <mesh position={[x, h / 2, z]} castShadow receiveShadow>
+        <boxGeometry args={[width, h, depth]} />
+        <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
+      </mesh>
+    </group>
+  );
+}
+
+function ContactShadow({
+  x,
+  z,
+  width,
+  depth,
+  opacity,
+  shape = 'circle',
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  opacity: number;
+  shape?: 'circle' | 'plane';
+}) {
+  return (
+    <mesh position={[x, FLOOR_H + 0.018, z]} rotation={[-Math.PI / 2, 0, 0]} scale={[width / 2, depth / 2, 1]} raycast={() => null}>
+      {shape === 'plane' ? <planeGeometry args={[2, 2]} /> : <circleGeometry args={[1, 32]} />}
+      <meshBasicMaterial color="#05070a" transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} />
     </mesh>
   );
 }
@@ -640,7 +729,8 @@ function VehicleProp({
   isLandmarkCar?: boolean;
 }) {
   const bodyColor = isTruck ? '#6f776f' : '#56473b';
-  const trimColor = isTruck ? '#b9c2b5' : '#2d2b28';
+  const trimColor = isTruck ? '#b9c2b5' : (isLandmarkCar ? '#292f33' : '#2d2b28');
+  const glassColor = isTruck ? '#d8e6df' : '#9ab0b3';
   const bodyH = isTruck ? 0.68 : (isLandmarkCar ? 0.74 : 0.46);
   const cabinH = isTruck ? 0.55 : (isLandmarkCar ? 0.5 : 0.34);
   const bodyDepth = depth * (isLandmarkCar ? 0.92 : 0.8);
@@ -656,15 +746,43 @@ function VehicleProp({
         <boxGeometry args={[width * (isLandmarkCar ? 0.48 : 0.42), cabinH, cabinDepth]} />
         <meshStandardMaterial color={trimColor} roughness={0.5} metalness={0.25} />
       </mesh>
+      <mesh position={[width * 0.18, bodyH + cabinH * 0.58, -cabinDepth * 0.51]} castShadow>
+        <boxGeometry args={[width * 0.3, cabinH * 0.32, 0.035]} />
+        <meshStandardMaterial color={glassColor} roughness={0.24} metalness={0.08} transparent opacity={0.7} />
+      </mesh>
+      <mesh position={[width * 0.18, bodyH + cabinH * 0.58, cabinDepth * 0.51]} castShadow>
+        <boxGeometry args={[width * 0.3, cabinH * 0.32, 0.035]} />
+        <meshStandardMaterial color={glassColor} roughness={0.24} metalness={0.08} transparent opacity={0.58} />
+      </mesh>
+      <mesh position={[-width * 0.16, bodyH + 0.035, 0]} castShadow>
+        <boxGeometry args={[width * 0.33, 0.05, bodyDepth * 0.82]} />
+        <meshStandardMaterial color={isLandmarkCar ? '#6a4f3d' : bodyColor} roughness={0.7} metalness={0.12} />
+      </mesh>
+      {isLandmarkCar && [-0.28, 0.28].map((sz) => (
+        <mesh key={`rust-${sz}`} position={[-width * 0.06, bodyH + 0.068, sz * depth]} castShadow>
+          <boxGeometry args={[width * 0.16, 0.018, depth * 0.07]} />
+          <meshStandardMaterial color="#8c4b24" roughness={0.94} metalness={0.02} />
+        </mesh>
+      ))}
       {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
         <mesh key={`${sx}-${sz}`} position={[sx * width, 0.14, sz * depth]} rotation={[Math.PI / 2, 0, 0]} castShadow>
           <cylinderGeometry args={[0.14, 0.14, 0.12, 12]} />
           <meshStandardMaterial color="#111216" roughness={0.72} metalness={0.08} />
         </mesh>
       )))}
+      {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
+        <mesh key={`hub-${sx}-${sz}`} position={[sx * width, 0.14, sz * depth + Math.sign(sz) * 0.062]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.07, 0.07, 0.014, 10]} />
+          <meshStandardMaterial color="#6f7479" roughness={0.48} metalness={0.28} />
+        </mesh>
+      )))}
       <mesh position={[-width * 0.46, bodyH * 0.58, 0]} castShadow>
         <boxGeometry args={[0.08, 0.18, depth * 0.5]} />
         <meshStandardMaterial color="#f6d76a" roughness={0.35} emissive="#9b6b18" emissiveIntensity={0.12} />
+      </mesh>
+      <mesh position={[width * 0.5, bodyH * 0.5, 0]} castShadow>
+        <boxGeometry args={[0.06, 0.14, depth * 0.42]} />
+        <meshStandardMaterial color="#9c211d" roughness={0.38} emissive="#5e100d" emissiveIntensity={0.08} />
       </mesh>
     </group>
   );
@@ -689,9 +807,17 @@ function FountainProp({
         <cylinderGeometry args={[radius, radius * 1.12, 0.34, 36]} />
         <meshStandardMaterial color="#8f8775" roughness={0.78} metalness={0.02} />
       </mesh>
+      <mesh position={[0, 0.37, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.68, radius * 1.02, 36]} />
+        <meshStandardMaterial color="#b7ad96" roughness={0.82} metalness={0.01} side={THREE.DoubleSide} />
+      </mesh>
       <mesh position={[0, 0.37, 0]} castShadow>
         <cylinderGeometry args={[radius * 0.58, radius * 0.66, 0.12, 32]} />
         <meshStandardMaterial color="#2f6e82" roughness={0.36} metalness={0.05} emissive="#1d5060" emissiveIntensity={0.18} />
+      </mesh>
+      <mesh position={[0, 0.445, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius * 0.5, 32]} />
+        <meshBasicMaterial color="#75c2d6" transparent opacity={0.34} depthWrite={false} />
       </mesh>
       <mesh position={[0, 0.56, 0]} castShadow>
         <cylinderGeometry args={[radius * 0.12, radius * 0.18, 0.36, 18]} />
@@ -722,9 +848,23 @@ function CoffinsProp({
           <meshStandardMaterial color="#403b37" roughness={0.7} metalness={0.04} />
         </mesh>
       ))}
+      {[-0.22, 0.22].map((offset) => (
+        <mesh key={`face-${offset}`} position={[offset * width, height * 0.72, -depth * 0.46]} castShadow>
+          <boxGeometry args={[width * 0.26, height * 0.08, 0.035]} />
+          <meshStandardMaterial color="#6f6255" roughness={0.62} metalness={0.08} />
+        </mesh>
+      ))}
       <mesh position={[0, height + 0.04, 0]} castShadow>
         <boxGeometry args={[width * 0.86, 0.08, depth * 0.78]} />
         <meshStandardMaterial color="#1c1a18" roughness={0.82} />
+      </mesh>
+      <mesh position={[0, height + 0.09, 0]} castShadow>
+        <boxGeometry args={[width * 0.72, 0.035, depth * 0.08]} />
+        <meshStandardMaterial color="#897457" roughness={0.7} metalness={0.1} />
+      </mesh>
+      <mesh position={[0, height * 0.42, depth * 0.46]} castShadow>
+        <boxGeometry args={[width * 0.62, height * 0.05, 0.035]} />
+        <meshStandardMaterial color="#201c19" roughness={0.84} />
       </mesh>
     </group>
   );
@@ -749,12 +889,22 @@ function OrangesProp({
         <boxGeometry args={[width, height, depth]} />
         <meshStandardMaterial color="#8c6540" roughness={0.76} metalness={0.02} />
       </mesh>
-      {[-0.25, 0.05, 0.35].map((sx, index) => (
-        <mesh key={sx} position={[sx * width, height + 0.13, (index - 1) * depth * 0.2]} castShadow>
-          <sphereGeometry args={[0.13, 12, 8]} />
-          <meshStandardMaterial color="#d9822b" roughness={0.7} emissive="#6d2e0d" emissiveIntensity={0.07} />
+      {[-0.36, -0.12, 0.13, 0.36].map((sx) => (
+        <mesh key={`slat-${sx}`} position={[sx * width, height * 0.56, -depth * 0.51]} castShadow>
+          <boxGeometry args={[width * 0.045, height * 0.86, 0.04]} />
+          <meshStandardMaterial color="#5b3b27" roughness={0.86} />
         </mesh>
       ))}
+      {[-0.25, 0.05, 0.35, -0.02].map((sx, index) => (
+        <mesh key={sx} position={[sx * width, height + 0.13, (index - 1) * depth * 0.2]} castShadow>
+          <sphereGeometry args={[index === 3 ? 0.1 : 0.13, 12, 8]} />
+          <meshStandardMaterial color={index % 2 ? '#e09236' : '#d9822b'} roughness={0.7} emissive="#6d2e0d" emissiveIntensity={0.07} />
+        </mesh>
+      ))}
+      <mesh position={[0, height + 0.045, 0]} castShadow>
+        <boxGeometry args={[width * 0.86, 0.05, depth * 0.08]} />
+        <meshStandardMaterial color="#61412a" roughness={0.82} />
+      </mesh>
     </group>
   );
 }
@@ -773,10 +923,30 @@ function LogsProp({
   return (
     <group position={[x, 0, z]}>
       {[-0.22, 0, 0.22].map((offset, index) => (
-        <mesh key={offset} position={[0, 0.2 + index * 0.06, offset * depth]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.16, 0.16, width * 0.92, 14]} />
-          <meshStandardMaterial color={index % 2 === 0 ? '#6f4a2d' : '#7a5636'} roughness={0.8} />
-        </mesh>
+        <group key={offset} position={[0, 0.2 + index * 0.06, offset * depth]} rotation={[0, 0, Math.PI / 2]}>
+          <mesh castShadow receiveShadow>
+            <cylinderGeometry args={[0.16, 0.16, width * 0.92, 14]} />
+            <meshStandardMaterial color={index % 2 === 0 ? '#6f4a2d' : '#7a5636'} roughness={0.82} />
+          </mesh>
+          {[-1, 1].map((side) => (
+            <mesh key={side} position={[0, side * width * 0.46, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[0.158, 14]} />
+              <meshStandardMaterial color="#9a7047" roughness={0.88} side={THREE.DoubleSide} />
+            </mesh>
+          ))}
+          {[-0.21, 0.18].map((stripe) => (
+            <mesh key={`stripe-${stripe}`} position={[0.01, stripe * width, 0.118]} rotation={[Math.PI / 2, 0, 0]}>
+              <boxGeometry args={[0.035, 0.018, width * 0.17]} />
+              <meshStandardMaterial color="#3b2418" roughness={0.9} />
+            </mesh>
+          ))}
+          {[-0.3, 0.3].map((band) => (
+            <mesh key={`band-${band}`} position={[0, band * width, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.163, 0.012, 6, 14]} />
+              <meshStandardMaterial color="#2d2925" roughness={0.74} metalness={0.18} />
+            </mesh>
+          ))}
+        </group>
       ))}
     </group>
   );
@@ -799,15 +969,74 @@ function SandbagsProp({
     [0.34, -0.14, -0.02],
     [-0.12, 0.18, 0.08],
     [0.22, 0.18, 0.04],
+    [-0.36, 0.02, 0.02],
+    [0.42, 0.05, 0.03],
   ];
 
   return (
     <group position={[x, 0, z]}>
       {bags.map(([sx, sz, lift], index) => (
-        <mesh key={index} position={[sx * width, 0.18 + lift, sz * depth]} scale={[0.38, 0.12, 0.22]} castShadow receiveShadow>
-          <sphereGeometry args={[1, 16, 8]} />
-          <meshStandardMaterial color={index % 2 ? '#9b8a63' : '#ab9a70'} roughness={0.92} />
-        </mesh>
+        <group key={index} position={[sx * width, 0.18 + lift, sz * depth]}>
+          <mesh scale={[0.38, 0.12, 0.22]} castShadow receiveShadow>
+            <sphereGeometry args={[1, 16, 8]} />
+            <meshStandardMaterial color={index % 2 ? '#9b8a63' : '#ab9a70'} roughness={0.94} />
+          </mesh>
+          <mesh position={[0, 0.045, 0]} scale={[0.26, 0.025, 0.19]} castShadow>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#7c6e50" roughness={0.96} />
+          </mesh>
+          <mesh position={[0, 0.08, 0]} scale={[0.3, 0.012, 0.04]} castShadow>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#6b5f45" roughness={0.98} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function CrateStackProp({
+  x,
+  z,
+  width,
+  depth,
+  height,
+  label,
+}: {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+  label: string;
+}) {
+  const dark = label.includes('dark');
+  const baseColor = dark ? '#4f463d' : '#7b6244';
+  const slatColor = dark ? '#2f2a25' : '#4f3825';
+  const stack = [
+    [0, height * 0.26, 0, 0.94, 0.52, 0.9],
+    [-0.16, height * 0.78, -0.05, 0.62, 0.45, 0.74],
+  ];
+
+  return (
+    <group position={[x, 0, z]}>
+      {stack.map(([sx, sy, sz, sw, sh, sd], index) => (
+        <group key={index} position={[sx * width, sy, sz * depth]}>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[width * sw, height * sh, depth * sd]} />
+            <meshStandardMaterial color={baseColor} roughness={0.84} metalness={0.02} />
+          </mesh>
+          {[-0.26, 0.26].map((slat) => (
+            <mesh key={slat} position={[slat * width * sw, 0, -depth * sd * 0.51]} castShadow>
+              <boxGeometry args={[width * 0.055, height * sh * 0.88, 0.035]} />
+              <meshStandardMaterial color={slatColor} roughness={0.9} />
+            </mesh>
+          ))}
+          <mesh position={[0, height * sh * 0.2, -depth * sd * 0.515]} castShadow>
+            <boxGeometry args={[width * sw * 0.78, height * 0.055, 0.04]} />
+            <meshStandardMaterial color={slatColor} roughness={0.9} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
@@ -872,11 +1101,19 @@ function WallStripProp({
   depth: number;
   height: number;
 }) {
+  const stripHeight = Math.min(height, 1.05);
+
   return (
-    <mesh position={[x, Math.min(height, 1.05) / 2, z]} castShadow receiveShadow>
-      <boxGeometry args={[width, Math.min(height, 1.05), depth]} />
-      <meshStandardMaterial color="#8d7f68" roughness={0.84} metalness={0.02} />
-    </mesh>
+    <group position={[x, 0, z]}>
+      <mesh position={[0, stripHeight / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, stripHeight, depth]} />
+        <meshStandardMaterial color="#8d7f68" roughness={0.84} metalness={0.02} />
+      </mesh>
+      <mesh position={[0, stripHeight + 0.025, 0]} castShadow>
+        <boxGeometry args={[width * 0.94, 0.05, depth * 0.9]} />
+        <meshStandardMaterial color="#b0a287" roughness={0.86} metalness={0.01} />
+      </mesh>
+    </group>
   );
 }
 

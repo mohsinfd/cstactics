@@ -27,6 +27,11 @@ construction, and site cover from the board without needing debug labels.
 
 - `src/game/maps/inferno.ts` has Banana/B callout zones and cover objects, but
   the props are still too thin to carry gameplay readability on their own.
+- 2026-05-14 renderer-only pass: `src/renderer/MapRenderer.tsx` now grounds
+  Banana/B landmarks with contact shadows, subtle floor variation, quieter cover
+  labels, and richer Banana Car/logs/sandbags/coffins/oranges/fountain/crate
+  detailing. This improves screenshot readability without changing map data,
+  cover footprints, LOS, route timing, or walkable masks.
 - `Banana Car` was present at `(38,51)` with a `3x2` footprint. That reads
   smaller than the landmark should and only blocks six full-cover tiles.
 - `Sandbags` are present in data at `(43,68)` with a `2x1` half-cover footprint,
@@ -142,7 +147,8 @@ Acceptance criteria:
 
 ### P2 - Verification Checklist
 
-Status: started.
+Status: started. Renderer-only visual polish now has a checked browser
+regression baseline.
 
 Checks:
 - `npm run map:validate` now reports Banana/B landmark routes: T Spawn to car,
@@ -159,6 +165,9 @@ Checks:
   preview, and contact break.
 - Debug screenshot: capture Banana/B after each mask or cover edit and compare
   car, sandbags, logs, top Banana choke, coffins, oranges, and construction.
+- Renderer-only prop polish should still run `npm run build`, `npm run lint`,
+  and `npm run test:browser`; `npm run map:validate` is required only when
+  cover data, walkable masks, LOS, or route-affecting map files change.
 
 Acceptance criteria:
 - A screenshot/checklist artifact exists for Banana/B map edits.
