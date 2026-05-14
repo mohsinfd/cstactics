@@ -122,6 +122,9 @@ move, trigger contact, and freeze into a trade decision. See
   stronger score/roster hierarchy, higher-contrast command/action controls,
   quieter lab shortcuts, and a compact Contact Break card that stays inside the
   viewport budget under simulated zoom.
+- XCOM-inspired HUD proportions are implemented as a first pass: selected-unit
+  status/actions live in a compact lower-edge deck, and Contact Break reads from
+  the side instead of occupying the board's center.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -347,6 +350,9 @@ Work:
 - Quieter always-on cover labels and a first-pass tactical cockpit HUD reskin
   are implemented so screenshots read less like debug scaffolding and more like
   a deliberate tactics game surface.
+- XCOM-style edge placement is started: the lower command band should stay
+  compact, top HUD should remain sparse, and the center of the tactical board
+  should be reserved for units, paths, contact, and shot feedback.
 - Camera presets and smoother pan/zoom limits.
 - Sound design for shots, plants, defuses, UI, and phase changes. First-pass
   procedural interaction cues are implemented; authored sample assets and a

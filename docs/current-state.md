@@ -148,6 +148,9 @@ verbs that make those nouns matter.
   stronger scoreboard/roster chrome, more intentional command/action buttons,
   demoted lab shortcuts, and compact Contact Break sizing that preserves the
   viewport-footprint budget under simulated zoom.
+- XCOM-inspired HUD proportion pass: the selected-unit detail now defaults to a
+  lower-edge unit flag/action deck, and Contact Break sits as a side decision
+  panel instead of blocking the tactical center.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
 - Main-thread orchestration, specialist-agent ownership, and done-definition

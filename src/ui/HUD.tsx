@@ -104,6 +104,10 @@ function useIsNarrowViewport(): boolean {
   return useViewportBelow(1000);
 }
 
+function shouldUseEdgeCommandDeck(): boolean {
+  return true;
+}
+
 function useViewportBelow(width: number): boolean {
   const [isCompact, setIsCompact] = useState(() => (
     typeof window !== 'undefined' ? window.innerWidth < width : false
@@ -282,16 +286,16 @@ function ContactBreakPanel() {
   return (
     <div data-testid="hud-contact-break-panel" style={{
       position: 'absolute',
-      top: dense ? (compact ? 102 : 112) : compact ? 132 : 184,
-      left: dense ? 8 : compact ? 10 : '50%',
-      transform: dense || compact ? 'none' : 'translateX(-50%)',
+      top: dense ? (compact ? 102 : 112) : compact ? 132 : 132,
+      left: dense ? 8 : compact ? 10 : 20,
+      transform: 'none',
       width: dense
         ? compact
           ? 'min(216px, calc(50vw - 12px))'
           : 'min(360px, calc(100vw - 32px))'
         : compact
           ? 'min(236px, calc(50vw - 34px))'
-          : 'min(390px, calc(100vw - 32px))',
+          : 'min(340px, calc(100vw - 40px))',
       boxSizing: 'border-box',
       maxHeight: dense
         ? compact
@@ -299,8 +303,8 @@ function ContactBreakPanel() {
           : 'min(38vh, 260px)'
         : compact
           ? 'calc(100vh - 330px)'
-          : 'min(44vh, 330px)',
-      overflowY: dense || compact ? 'auto' : undefined,
+          : 'min(34vh, 250px)',
+      overflowY: 'auto',
       background: 'rgba(10, 7, 10, 0.94)',
       border: `1px solid ${shot.color}70`,
       borderLeft: `3px solid ${shot.color}`,
@@ -1465,6 +1469,7 @@ function SelectedUnitPanel() {
   const compact = useIsCompactViewport();
   const narrow = useIsNarrowViewport();
   const dense = useIsDenseHudViewport();
+  const edgeDeck = shouldUseEdgeCommandDeck();
   const splitForContact = compact && Boolean(interrupt);
   const phase = round.phase;
 
@@ -1557,9 +1562,9 @@ function SelectedUnitPanel() {
   const showPlantAction = unit.hasBomb;
   const showDefuseAction = round.bombPlanted && unit.team === 'CT';
   const showPickupAction = bombDropped && unit.team === 'T' && !unit.hasBomb;
-  const showDetailedReadouts = !dense;
-  const targetOptionsToShow = dense ? shotOptions.slice(0, 1) : shotOptions.slice(0, 3);
-  const denseActionButtonStyle = dense
+  const showDetailedReadouts = !dense && !edgeDeck;
+  const targetOptionsToShow = (dense || edgeDeck) ? shotOptions.slice(0, 1) : shotOptions.slice(0, 3);
+  const denseActionButtonStyle = (dense || edgeDeck)
     ? {
       padding: '5px 4px',
       fontSize: 8,
@@ -1567,7 +1572,7 @@ function SelectedUnitPanel() {
     }
     : {};
 
-  if (dense) {
+  if (dense || edgeDeck) {
     const densePanelButtonStyle = ({
       active = false,
       disabled = false,

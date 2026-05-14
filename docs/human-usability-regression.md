@@ -125,6 +125,11 @@ Contact Break must lead with the decision call even when scrollable, and passive
 map labels should stay quiet enough that units, paths, danger, and contact state
 own the board.
 
+XCOM-style proportion is the current target: selected-unit status, weapon/ammo,
+and actions should sit in a compact lower-edge command deck; objectives,
+score/phase, and camera controls should stay small at the edges; the board
+center should remain open except for brief targeting/combat feedback.
+
 ## Immediate Failure Examples
 
 - Zooming or panning makes `End Turn`, `Run Execute`, or action buttons disappear.
