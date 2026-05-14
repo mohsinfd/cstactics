@@ -93,6 +93,10 @@ For each sequence, assert:
 - Duel Lab must open as a readable 1v1, hovered tile/risk information must not
   overlap the selected-unit action deck or command bar, and ordinary direct
   movement must not leave a completed execute debrief panel over the duel.
+- The playable cinematic proof at `/cinematic-1v1` must preserve its minimal
+  contract: click `Shoot 70%`, click empty floor and receive invalid feedback,
+  click the T target and receive shot/kill feedback, then `Reset` returns to a
+  standing target. It intentionally has no main HUD root.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 

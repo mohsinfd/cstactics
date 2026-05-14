@@ -148,6 +148,11 @@ threat, or utility overlays.
 - Selected-spent visual guard: the browser visual smoke now forces a Duel Lab
   selected unit to 0 AP and asserts slate/DONE-state pixels plus selected
   ownership pixels so selected-but-unavailable readability does not regress.
+- Playable cinematic proof: `/cinematic-1v1` now uses larger 2.5D silhouettes,
+  team-colored selection/target frames, world-space action chips, invalid-click
+  feedback, shot lane, impact bloom, and collapse state. This is not the final
+  tactical renderer, but it establishes the near-term visual contract: actions
+  should read in the world first, with HUD kept minimal and secondary.
 
 ## Next Presentation Targets
 

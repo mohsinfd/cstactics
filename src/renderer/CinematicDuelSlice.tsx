@@ -1,8 +1,117 @@
-const LOOP_SECONDS = 5.2;
+import { useEffect, useMemo, useState } from 'react';
+
+type DuelPhase = 'ready' | 'aiming' | 'invalid' | 'firing' | 'impact' | 'down';
+type DuelMode = 'idle' | 'move' | 'shoot';
+
+const phaseCopy: Record<DuelPhase, string> = {
+  ready: 'Select a contact action.',
+  aiming: 'Target lock: 70%. Click the T to fire.',
+  invalid: 'No clean shot there.',
+  firing: 'AWP fired.',
+  impact: 'Hit confirmed.',
+  down: 'Entry down. Lane held.',
+};
 
 export function CinematicDuelSlice() {
+  const [phase, setPhase] = useState<DuelPhase>('ready');
+  const [mode, setMode] = useState<DuelMode>('idle');
+  const [moved, setMoved] = useState(false);
+  const [selected, setSelected] = useState<'ct' | null>('ct');
+
+  const isAlive = phase !== 'down';
+  const isBusy = phase === 'firing' || phase === 'impact';
+
+  useEffect(() => {
+    if (phase === 'firing') {
+      const impactTimer = window.setTimeout(() => setPhase('impact'), 420);
+      return () => window.clearTimeout(impactTimer);
+    }
+
+    if (phase === 'impact') {
+      const downTimer = window.setTimeout(() => {
+        setPhase('down');
+        setMode('idle');
+      }, 900);
+
+      return () => window.clearTimeout(downTimer);
+    }
+
+    return undefined;
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'invalid') {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setPhase(mode === 'shoot' ? 'aiming' : 'ready'), 820);
+    return () => window.clearTimeout(timer);
+  }, [mode, phase]);
+
+  const sliceClassName = useMemo(() => [
+    'cinematic-duel',
+    `phase-${phase}`,
+    `mode-${mode}`,
+    selected ? 'ct-selected' : '',
+    moved ? 'ct-advanced' : '',
+  ].filter(Boolean).join(' '), [mode, moved, phase, selected]);
+
+  const selectShoot = () => {
+    if (!isAlive || isBusy) {
+      return;
+    }
+
+    setSelected('ct');
+    setMode('shoot');
+    setPhase('aiming');
+  };
+
+  const moveToCover = () => {
+    if (!isAlive || isBusy) {
+      return;
+    }
+
+    setSelected('ct');
+    setMoved(true);
+    setMode('move');
+    setPhase('ready');
+  };
+
+  const fireShot = () => {
+    if (!isAlive || isBusy) {
+      return;
+    }
+
+    if (mode !== 'shoot') {
+      setPhase('invalid');
+      return;
+    }
+
+    setSelected('ct');
+    setPhase('firing');
+  };
+
+  const rejectSurfaceClick = () => {
+    if (!isAlive || isBusy || mode !== 'shoot') {
+      return;
+    }
+
+    setPhase('invalid');
+  };
+
+  const resetDuel = () => {
+    setPhase('ready');
+    setMode('idle');
+    setMoved(false);
+    setSelected('ct');
+  };
+
   return (
-    <main className="cinematic-duel" aria-label="Cinematic one versus one duel slice">
+    <main
+      className={sliceClassName}
+      aria-label="Playable cinematic one versus one duel slice"
+      onClick={rejectSurfaceClick}
+    >
       <style>{`
         :root {
           color-scheme: dark;
@@ -85,7 +194,16 @@ export function CinematicDuelSlice() {
         .stage {
           position: absolute;
           inset: 0;
-          animation: camera-hit ${LOOP_SECONDS}s cubic-bezier(.2,.8,.2,1) infinite;
+          transition: filter 180ms ease;
+        }
+
+        .phase-firing .stage,
+        .phase-impact .stage {
+          animation: camera-hit 980ms cubic-bezier(.2,.8,.2,1) both;
+        }
+
+        .phase-invalid .stage {
+          animation: invalid-shake 240ms cubic-bezier(.3,.7,.3,1) 2;
         }
 
         .back-wall {
@@ -171,6 +289,12 @@ export function CinematicDuelSlice() {
           height: 430px;
           transform-origin: 50% 88%;
           z-index: 8;
+          border: 0;
+          background: transparent;
+          padding: 0;
+          color: inherit;
+          cursor: default;
+          transition: left 360ms cubic-bezier(.2,.8,.2,1), top 360ms cubic-bezier(.2,.8,.2,1), filter 180ms ease;
         }
 
         .agent.ct {
@@ -179,10 +303,94 @@ export function CinematicDuelSlice() {
           transform: rotate(-2deg) scale(1.16);
         }
 
+        .ct-advanced .agent.ct {
+          left: 18%;
+          top: 17.5%;
+        }
+
+        .ct-selected .agent.ct::before {
+          content: "CT ACTIVE";
+          position: absolute;
+          left: 42px;
+          top: -55px;
+          min-width: 112px;
+          padding: 9px 13px;
+          border-radius: 999px;
+          border: 1px solid rgba(106, 200, 255, 0.7);
+          background: rgba(4, 18, 34, 0.78);
+          color: #dff6ff;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 1.2px;
+          text-align: center;
+          box-shadow: 0 0 28px rgba(76, 183, 255, 0.28), inset 0 1px rgba(255,255,255,0.16);
+          z-index: 16;
+        }
+
+        .ct-selected .agent.ct::after {
+          content: "";
+          position: absolute;
+          left: -3px;
+          top: 21px;
+          width: 236px;
+          height: 348px;
+          border: 2px solid rgba(116, 205, 255, 0.62);
+          border-radius: 42px;
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.09), 0 0 34px rgba(76, 183, 255, 0.3);
+          pointer-events: none;
+        }
+
         .agent.t {
           right: 10.2%;
           top: 20.8%;
-          animation: target-collapse ${LOOP_SECONDS}s cubic-bezier(.2,.7,.15,1) infinite;
+          transform: rotate(2deg) translateY(0) scale(1.16);
+        }
+
+        .mode-shoot .agent.t {
+          cursor: crosshair;
+          filter: brightness(1.16) saturate(1.08);
+        }
+
+        .mode-shoot .agent.t::before {
+          content: "TGT 70%";
+          position: absolute;
+          left: 26px;
+          top: -58px;
+          min-width: 104px;
+          padding: 9px 13px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 94, 86, 0.72);
+          background: rgba(23, 7, 9, 0.76);
+          color: #ffe9d1;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 1.2px;
+          text-align: center;
+          box-shadow: 0 0 28px rgba(255, 84, 69, 0.28), inset 0 1px rgba(255,255,255,0.16);
+          z-index: 16;
+        }
+
+        .mode-shoot .agent.t::after {
+          content: "";
+          position: absolute;
+          left: 8px;
+          top: 18px;
+          width: 216px;
+          height: 348px;
+          border: 2px solid rgba(255, 88, 80, 0.78);
+          border-radius: 42px;
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 0 34px rgba(255, 82, 68, 0.38);
+          pointer-events: none;
+        }
+
+        .phase-impact .agent.t {
+          animation: target-flinch 880ms cubic-bezier(.2,.7,.15,1) both;
+        }
+
+        .phase-down .agent.t {
+          transform: rotate(75deg) translate(80px, 158px) scale(1.16);
+          filter: brightness(0.72) saturate(0.82);
+          pointer-events: none;
         }
 
         .agent-shadow {
@@ -361,7 +569,12 @@ export function CinematicDuelSlice() {
         }
 
         .ct .rifle {
-          animation: rifle-recoil ${LOOP_SECONDS}s cubic-bezier(.17,.84,.44,1) infinite;
+          transition: transform 180ms ease;
+        }
+
+        .phase-firing .ct .rifle,
+        .phase-impact .ct .rifle {
+          animation: rifle-recoil 760ms cubic-bezier(.17,.84,.44,1) both;
         }
 
         .muzzle-flash {
@@ -377,8 +590,11 @@ export function CinematicDuelSlice() {
             conic-gradient(from 20deg, rgba(255,255,255,0), rgba(255,220,130,0.9), rgba(255,101,36,0.2), rgba(255,255,255,0));
           filter: drop-shadow(0 0 28px rgba(255, 185, 82, 0.98));
           opacity: 0;
-          animation: muzzle-pop ${LOOP_SECONDS}s steps(1, end) infinite;
           z-index: 12;
+        }
+
+        .phase-firing .muzzle-flash {
+          animation: muzzle-pop 620ms steps(1, end) both;
         }
 
         .tracer {
@@ -394,7 +610,11 @@ export function CinematicDuelSlice() {
           transform-origin: left center;
           opacity: 0;
           z-index: 11;
-          animation: tracer-fire ${LOOP_SECONDS}s cubic-bezier(.1,.8,.1,1) infinite;
+        }
+
+        .phase-firing .tracer,
+        .phase-impact .tracer {
+          animation: tracer-fire 980ms cubic-bezier(.1,.8,.1,1) both;
         }
 
         .impact {
@@ -411,7 +631,10 @@ export function CinematicDuelSlice() {
             conic-gradient(from 20deg, transparent, rgba(255,219,135,0.9), transparent, rgba(255,79,102,0.88), transparent);
           filter: drop-shadow(0 0 26px rgba(255,72,92,0.85));
           z-index: 13;
-          animation: impact-burst ${LOOP_SECONDS}s cubic-bezier(.16,.78,.18,1) infinite;
+        }
+
+        .phase-impact .impact {
+          animation: impact-burst 980ms cubic-bezier(.16,.78,.18,1) both;
         }
 
         .ct-glow,
@@ -435,7 +658,11 @@ export function CinematicDuelSlice() {
           right: 7%;
           top: 34%;
           background: #ff8e45;
-          animation: t-light-drop ${LOOP_SECONDS}s ease infinite;
+          transition: opacity 240ms ease;
+        }
+
+        .phase-down .t-glow {
+          opacity: 0.12;
         }
 
         .kill-card {
@@ -451,8 +678,11 @@ export function CinematicDuelSlice() {
           text-shadow: 0 3px 22px rgba(0,0,0,0.9);
           opacity: 0;
           z-index: 21;
-          animation: kill-card ${LOOP_SECONDS}s ease infinite;
           white-space: nowrap;
+        }
+
+        .phase-down .kill-card {
+          animation: kill-card 2.4s ease both;
         }
 
         .kill-card strong {
@@ -470,7 +700,141 @@ export function CinematicDuelSlice() {
           transform: scale(0.2);
           opacity: 0;
           z-index: 10;
-          animation: sound-ring ${LOOP_SECONDS}s ease-out infinite;
+        }
+
+        .phase-firing .sound-ring {
+          animation: sound-ring 900ms ease-out both;
+        }
+
+        .world-actions {
+          position: absolute;
+          left: 9.5%;
+          bottom: 10.5vh;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          z-index: 24;
+          pointer-events: auto;
+        }
+
+        .action-chip,
+        .reset-chip {
+          border: 1px solid rgba(184, 219, 255, 0.26);
+          border-radius: 999px;
+          background: linear-gradient(180deg, rgba(11, 24, 38, 0.84), rgba(4, 9, 16, 0.92));
+          color: #f5fbff;
+          min-height: 40px;
+          padding: 0 16px;
+          font: 900 12px/1 Inter, Segoe UI, system-ui, sans-serif;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          box-shadow: 0 16px 34px rgba(0,0,0,0.34), inset 0 1px rgba(255,255,255,0.12);
+          cursor: pointer;
+          transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+        }
+
+        .action-chip:hover,
+        .reset-chip:hover {
+          transform: translateY(-1px);
+          border-color: rgba(255, 220, 140, 0.68);
+        }
+
+        .action-chip:disabled {
+          cursor: default;
+          color: rgba(245,251,255,0.38);
+          border-color: rgba(184,219,255,0.1);
+          transform: none;
+        }
+
+        .mode-shoot .shoot-chip {
+          border-color: rgba(255, 205, 111, 0.82);
+          background: linear-gradient(180deg, rgba(77, 45, 13, 0.88), rgba(22, 12, 3, 0.95));
+        }
+
+        .reset-chip {
+          min-width: 72px;
+          padding: 0 13px;
+          color: rgba(245,251,255,0.76);
+          background: rgba(2, 5, 9, 0.66);
+        }
+
+        .feedback-strip {
+          position: absolute;
+          left: 50%;
+          top: 9.3vh;
+          transform: translateX(-50%);
+          z-index: 24;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 38px;
+          padding: 0 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(3, 7, 13, 0.64);
+          color: #edf7ff;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 1.6px;
+          text-transform: uppercase;
+          box-shadow: 0 18px 42px rgba(0,0,0,0.36), inset 0 1px rgba(255,255,255,0.08);
+          pointer-events: none;
+        }
+
+        .feedback-strip::before {
+          content: "";
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #63c8ff;
+          box-shadow: 0 0 16px rgba(99, 200, 255, 0.84);
+        }
+
+        .phase-invalid .feedback-strip {
+          color: #ffe4de;
+          border-color: rgba(255, 92, 76, 0.54);
+          animation: feedback-pop 240ms ease 2;
+        }
+
+        .phase-invalid .feedback-strip::before {
+          background: #ff5d4d;
+          box-shadow: 0 0 16px rgba(255, 93, 77, 0.9);
+        }
+
+        .phase-down .feedback-strip::before {
+          background: #ffcf6f;
+          box-shadow: 0 0 16px rgba(255, 207, 111, 0.86);
+        }
+
+        .target-hint {
+          position: absolute;
+          right: 12.2%;
+          top: 25.4%;
+          z-index: 25;
+          padding: 8px 11px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 94, 86, 0.7);
+          background: rgba(38, 7, 8, 0.78);
+          color: #ffe4d4;
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          box-shadow: 0 0 28px rgba(255, 78, 65, 0.28);
+          opacity: 0;
+          transform: translateY(10px);
+          transition: opacity 160ms ease, transform 160ms ease;
+          pointer-events: none;
+        }
+
+        .mode-shoot .target-hint {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        @keyframes feedback-pop {
+          0%, 100% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.04); }
         }
 
         @keyframes camera-hit {
@@ -478,6 +842,12 @@ export function CinematicDuelSlice() {
           30% { transform: translate3d(-11px, 5px, 0) scale(1.018); filter: saturate(1.45) contrast(1.12); }
           34% { transform: translate3d(9px, -4px, 0) scale(1.022); }
           40%, 100% { transform: translate3d(0, 0, 0) scale(1); filter: saturate(1); }
+        }
+
+        @keyframes invalid-shake {
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          35% { transform: translate3d(-8px, 0, 0); }
+          70% { transform: translate3d(7px, 0, 0); }
         }
 
         @keyframes rifle-recoil {
@@ -504,10 +874,10 @@ export function CinematicDuelSlice() {
           52%, 100% { opacity: 0; transform: scale(1.85) rotate(42deg); }
         }
 
-        @keyframes target-collapse {
-          0%, 36% { transform: rotate(2deg) translateY(0) scale(1.16); filter: brightness(1); }
-          43% { transform: rotate(15deg) translateY(24px) scale(1.16); filter: brightness(1.18); }
-          58%, 100% { transform: rotate(75deg) translate(80px, 158px) scale(1.16); filter: brightness(0.72) saturate(0.82); }
+        @keyframes target-flinch {
+          0% { transform: rotate(2deg) translateY(0) scale(1.16); filter: brightness(1); }
+          22% { transform: rotate(-4deg) translate(-18px, 4px) scale(1.18); filter: brightness(1.24); }
+          100% { transform: rotate(75deg) translate(80px, 158px) scale(1.16); filter: brightness(0.72) saturate(0.82); }
         }
 
         @keyframes t-light-drop {
@@ -545,6 +915,9 @@ export function CinematicDuelSlice() {
       `}</style>
 
       <div className="cinema-bars" />
+      <div className="feedback-strip" data-testid="cinematic-feedback">
+        {phaseCopy[phase]}
+      </div>
       <div className="stage">
         <div className="back-wall" />
         <div className="floor" />
@@ -557,7 +930,20 @@ export function CinematicDuelSlice() {
         <div className="ct-glow" />
         <div className="t-glow" />
 
-        <div className="agent ct" aria-label="Counter-terrorist anchor firing">
+        <button
+          type="button"
+          className="agent ct"
+          aria-label="Select Counter-terrorist anchor"
+          data-testid="cinematic-ct"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSelected('ct');
+            if (phase !== 'down' && !isBusy) {
+              setMode('idle');
+              setPhase('ready');
+            }
+          }}
+        >
           <div className="agent-shadow" />
           <div className="leg left" />
           <div className="leg right" />
@@ -569,9 +955,19 @@ export function CinematicDuelSlice() {
           <div className="arm front" />
           <div className="rifle" />
           <div className="muzzle-flash" />
-        </div>
+        </button>
 
-        <div className="agent t" aria-label="T side entry being hit">
+        <button
+          type="button"
+          className="agent t"
+          aria-label={mode === 'shoot' ? 'Fire at T side entry, 70 percent' : 'T side entry'}
+          data-testid="cinematic-target"
+          disabled={phase === 'down'}
+          onClick={(event) => {
+            event.stopPropagation();
+            fireShot();
+          }}
+        >
           <div className="agent-shadow" />
           <div className="leg left" />
           <div className="leg right" />
@@ -582,11 +978,44 @@ export function CinematicDuelSlice() {
           <div className="arm back" />
           <div className="arm front" />
           <div className="rifle" />
-        </div>
+        </button>
 
         <div className="tracer" />
         <div className="impact" />
         <div className="sound-ring" />
+      </div>
+      <div className="target-hint">Click target to commit</div>
+      <div
+        className="world-actions"
+        aria-label="Cinematic duel actions"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="action-chip move-chip"
+          data-testid="cinematic-move"
+          disabled={!selected || !isAlive || isBusy || moved}
+          onClick={moveToCover}
+        >
+          Move cover
+        </button>
+        <button
+          type="button"
+          className="action-chip shoot-chip"
+          data-testid="cinematic-shoot"
+          disabled={!selected || !isAlive || isBusy}
+          onClick={selectShoot}
+        >
+          Shoot 70%
+        </button>
+        <button
+          type="button"
+          className="reset-chip"
+          data-testid="cinematic-reset"
+          onClick={resetDuel}
+        >
+          Reset
+        </button>
       </div>
       <div className="kill-card">
         <strong>AWP contact</strong> / one shot / entry down

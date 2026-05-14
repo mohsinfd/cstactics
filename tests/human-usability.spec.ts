@@ -632,7 +632,7 @@ test.describe('human usability regression', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('execute queue timing controls update planned beats', async ({ page }) => {
+test('execute queue timing controls update planned beats', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -781,4 +781,27 @@ test.describe('human usability regression', () => {
 
     expect(consoleErrors).toEqual([]);
   });
+});
+
+test('cinematic 1v1 proof gives clear target, invalid, kill, and reset feedback', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-human', 'Cinematic proof is a desktop presentation slice for now.');
+
+  await page.goto('/cinematic-1v1');
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('Select a contact action.');
+  await expect(page.getByTestId('hud-root')).toHaveCount(0);
+
+  await page.getByTestId('cinematic-shoot').click();
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('Target lock: 70%');
+
+  await page.mouse.click(640, 560);
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('No clean shot there.');
+
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('Target lock: 70%');
+  await page.getByTestId('cinematic-target').click();
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('Entry down. Lane held.');
+  await expect(page.getByTestId('cinematic-target')).toBeDisabled();
+
+  await page.getByTestId('cinematic-reset').click();
+  await expect(page.getByTestId('cinematic-feedback')).toContainText('Select a contact action.');
+  await expect(page.getByTestId('cinematic-target')).toBeEnabled();
 });

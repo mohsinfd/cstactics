@@ -119,6 +119,26 @@ Use XCOM-style proportions:
   - bomb pressure pulse
 - Tactical readability always beats cinematic flourish.
 
+## Cinematic Proof To Tactical 2.5D Adaptation
+
+The `/cinematic-1v1` proof is not the final camera. It is a close-contact
+presentation target. The production game should adapt it through three camera
+states:
+
+1. **Tactical board view**: angled 2.5D/isometric camera, readable Inferno
+   lanes, compact lower command deck, no front-facing diorama framing.
+2. **Targeting emphasis**: same board camera, but larger projected unit
+   silhouettes, team-colored selection/target frames, hit chance, shot lane,
+   and invalid-click feedback live in world space.
+3. **Contact beat**: a short camera push and hit-stop on the existing board,
+   using the proof's muzzle/tracer/impact/collapse language without replacing
+   tactical readability.
+
+The proof tells us what must survive into the real view: target feedback must
+be obvious, wrong clicks must get immediate denial feedback, shots need a
+timed muzzle/tracer/impact beat, and death must leave a readable casualty
+state. It does not imply a permanent front-view game camera.
+
 ## Tooling And Pipeline
 
 - Add screenshot gates for desktop, narrow laptop, compact, contact, zoom stress,

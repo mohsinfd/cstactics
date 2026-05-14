@@ -230,10 +230,11 @@ verbs that make those nouns matter.
   tighter camera frame, direct-move debrief panels no longer linger over the
   duel, and hovered tile/risk information lives on the right rail instead of
   crossing the selected-unit action deck.
-- A throwaway cinematic proof route exists at `/cinematic-1v1`: it bypasses the
-  tactical HUD entirely and loops a stylized 1v1 contact, AWP shot, impact, and
-  collapse beat for judging the presentation target separately from current
-  tactical UI debt.
+- A throwaway playable cinematic proof route exists at `/cinematic-1v1`: it
+  bypasses the tactical HUD entirely and lets the player run a tiny CT-vs-T
+  loop with move, shoot, invalid target feedback, AWP shot, impact, collapse,
+  kill state, and reset. This is the current presentation target for judging
+  the future 2.5D Duel Lab feel separately from current tactical UI debt.
 
 ## Partially Implemented
 
