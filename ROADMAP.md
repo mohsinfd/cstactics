@@ -115,6 +115,9 @@ move, trigger contact, and freeze into a trade decision. See
   Break panel. Implemented as a first pass.
 - Browser regression now exercises Banana Drill -> queued crossing -> Run
   Execute -> Contact Break across desktop, narrow laptop, and compact HUD.
+- Compact/zoom HUD viewport-budget regression is implemented for Banana Drill
+  contact, and dense HUD mode now reduces secondary panels so the playfield
+  remains readable under browser zoom stress.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -342,6 +345,9 @@ Work:
   procedural interaction cues are implemented; authored sample assets and a
   production mix are still needed.
 - High-DPI render pass for crisper zoom/readability. First pass implemented.
+- Compact readability polish keeps the tactical mat from collapsing into
+  near-black behind the HUD, preserving canvas pixel readability on small
+  screens. Implemented.
 - Better unit silhouettes and animations. Higher-resolution generated sprite
   overlays are started; authored art pipeline still needed.
 - Player visualization and movement smoothing specialist handoffs are captured

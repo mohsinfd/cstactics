@@ -93,6 +93,24 @@ For each sequence, assert:
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 
+### HUD Footprint Budget
+
+Visibility and clickability are not enough. Compact and zoomed states must leave
+the tactical board readable instead of turning the HUD into the main surface.
+
+The browser regression should measure the major HUD containers after Banana
+Drill contact and, on compact viewports, again under simulated browser zoom.
+Use viewport-area budgets as guardrails:
+
+- Selected unit panel: no more than roughly 32% of the compact viewport.
+- Command bar: no more than roughly 16% of the compact viewport.
+- Active roster: no more than roughly 7% of the compact viewport.
+- Combined measured HUD footprint: no more than roughly 50% of the compact
+  viewport.
+- The center board safe area should stay mostly clear; Contact Break can occupy
+  the decision area, but duplicate combat/objective/legend panels should yield
+  in dense contact states.
+
 ## Immediate Failure Examples
 
 - Zooming or panning makes `End Turn`, `Run Execute`, or action buttons disappear.
@@ -100,4 +118,6 @@ For each sequence, assert:
   them.
 - A button can only be found through DOM automation, not by visible human scan.
 - A selected unit panel overlaps command buttons on laptop viewports.
+- Compact/browser zoom makes the HUD cover most of the screen even though the
+  controls technically remain inside the viewport.
 - Trackpad vertical pan stalls at high zoom.

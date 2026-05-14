@@ -2136,7 +2136,7 @@ function GroundPlane() {
     <mesh position={[(map.width * ts) / 2, -0.05, (map.height * ts) / 2]}
       rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[map.width * ts + 20, map.height * ts + 20]} />
-      <meshStandardMaterial color="#121722" roughness={1} />
+      <meshBasicMaterial color="#151a24" />
     </mesh>
   );
 }

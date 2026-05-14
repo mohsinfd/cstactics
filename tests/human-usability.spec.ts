@@ -27,7 +27,6 @@ const COMPACT_CONTACT_CLEARANCE_IDS = [
   'hud-view-controls',
   'hud-team-roster',
   'hud-command-bar',
-  'hud-combat-log',
 ] as const;
 
 const EXECUTE_TIMELINE_CLEARANCE_IDS = [
@@ -188,6 +187,104 @@ async function expectHudDoesNotOverlap(page: Page, subjectId: string, targetIds:
   expect(result.subject.count, `${subjectId} should exist once`).toBe(1);
   expect(result.missingTargets, 'clearance targets should exist').toEqual([]);
   expect(result.overlaps, `${subjectId} should not overlap required compact HUD containers`).toEqual([]);
+}
+
+async function expectHudViewportBudget(page: Page, label: string) {
+  const result = await page.evaluate(() => {
+    const viewportArea = window.innerWidth * window.innerHeight;
+    const trackedIds = [
+      'hud-top-bar',
+      'hud-team-roster',
+      'hud-command-bar',
+      'hud-view-controls',
+      'hud-selected-unit-panel',
+      'hud-contact-break-panel',
+      'hud-execute-timeline-panel',
+      'hud-combat-log',
+      'hud-bomb-objective-panel',
+      'hud-movement-legend',
+    ];
+    const safeRect = {
+      left: window.innerWidth * 0.2,
+      top: window.innerHeight * 0.22,
+      right: window.innerWidth * 0.8,
+      bottom: window.innerHeight * 0.7,
+    };
+    const safeArea = (safeRect.right - safeRect.left) * (safeRect.bottom - safeRect.top);
+    const panels = trackedIds.flatMap((id) => {
+      const element = document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+      if (!element) return [];
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      if (
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        style.visibility === 'hidden' ||
+        style.display === 'none' ||
+        Number(style.opacity || 1) <= 0
+      ) return [];
+
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(window.innerWidth, rect.right);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
+      const area = Math.max(0, right - left) * Math.max(0, bottom - top);
+      const safeOverlapWidth = Math.min(right, safeRect.right) - Math.max(left, safeRect.left);
+      const safeOverlapHeight = Math.min(bottom, safeRect.bottom) - Math.max(top, safeRect.top);
+      const safeOverlapArea = id === 'hud-contact-break-panel'
+        ? 0
+        : Math.max(0, safeOverlapWidth) * Math.max(0, safeOverlapHeight);
+
+      return [{
+        id,
+        areaRatio: area / viewportArea,
+        safeOverlapRatio: safeArea > 0 ? safeOverlapArea / safeArea : 0,
+        rect: {
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          right: Math.round(rect.right),
+          bottom: Math.round(rect.bottom),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      }];
+    });
+    const combinedAreaRatio = panels.reduce((sum, panel) => sum + panel.areaRatio, 0);
+    const safeOverlapRatio = panels.reduce((sum, panel) => sum + panel.safeOverlapRatio, 0);
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      combinedAreaRatio,
+      safeOverlapRatio,
+      panels,
+    };
+  });
+
+  const selected = result.panels.find((panel) => panel.id === 'hud-selected-unit-panel');
+  const command = result.panels.find((panel) => panel.id === 'hud-command-bar');
+  const roster = result.panels.find((panel) => panel.id === 'hud-team-roster');
+  const compact = result.width <= 560;
+
+  expect(
+    selected?.areaRatio ?? 0,
+    `${label}: selected unit panel should not become the playfield`
+  ).toBeLessThanOrEqual(compact ? 0.32 : 0.24);
+  expect(
+    command?.areaRatio ?? 0,
+    `${label}: command bar should not consume the lower screen`
+  ).toBeLessThanOrEqual(compact ? 0.16 : 0.11);
+  expect(
+    roster?.areaRatio ?? 0,
+    `${label}: roster should stay compact`
+  ).toBeLessThanOrEqual(compact ? 0.07 : 0.05);
+  expect(
+    result.combinedAreaRatio,
+    `${label}: total measured HUD footprint should leave the board readable`
+  ).toBeLessThanOrEqual(compact ? 0.5 : 0.42);
+  expect(
+    result.safeOverlapRatio,
+    `${label}: center board safe area should remain mostly clear`
+  ).toBeLessThanOrEqual(0.1);
 }
 
 async function queueBananaDrillContact(page: Page) {
@@ -467,6 +564,26 @@ test.describe('human usability regression', () => {
 
     await page.getByTestId('hud-action-move').click();
     await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().inputMode)).toBe('move');
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('HUD footprint stays usable after compact zoom stress', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+    await page.goto('/');
+    await queueBananaDrillContact(page);
+    await expectHudViewportBudget(page, 'Banana contact');
+
+    const viewport = page.viewportSize();
+    if (viewport && viewport.width <= 560) {
+      await page.addStyleTag({ content: 'html { zoom: 1.5 !important; }' });
+      await expectHudViewportBudget(page, 'Banana contact at simulated zoom');
+    }
 
     expect(consoleErrors).toEqual([]);
   });

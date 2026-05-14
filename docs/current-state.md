@@ -137,6 +137,13 @@ verbs that make those nouns matter.
   across desktop, narrow laptop, and compact HUD viewports.
 - Browser regression now includes a deterministic Banana Drill contact-freeze
   flow so the decision panel and trade action stay reachable after execute.
+- Compact/zoom HUD hardening now adds dense layout behavior for the top bar,
+  roster, view controls, command bar, selected-unit panel, and Contact Break
+  state. Under dense contact, lower-priority combat/objective/legend panels
+  yield so the board remains visible.
+- Browser regression now enforces a HUD viewport-footprint budget after Banana
+  Drill contact, including simulated compact browser zoom, so controls being
+  "visible" cannot mask a board-occluding layout failure.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
 - Main-thread orchestration, specialist-agent ownership, and done-definition
@@ -196,6 +203,8 @@ verbs that make those nouns matter.
   against selected-but-unavailable units reading as actionable.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while
   keeping map masks, LOS, route timing, and cover data unchanged.
+- Compact canvas readability now keeps the underlying tactical mat out of
+  near-black so the board holds readable pixels behind the HUD on small screens.
 
 ## Partially Implemented
 

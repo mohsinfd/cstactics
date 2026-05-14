@@ -12,7 +12,7 @@
 // ============================================================
 import { useGameStore } from '../game/store';
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { ExecuteInterruptTimelineItem, ExecuteTimelineEvent, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
@@ -90,6 +90,15 @@ function useIsCompactViewport(): boolean {
   return useViewportBelow(560);
 }
 
+function useIsDenseHudViewport(): boolean {
+  const compactWidth = useViewportBelow(760);
+  const laptopWidth = useViewportBelow(1000);
+  const laptopHeight = useViewportHeightBelow(721);
+  const shortHeight = useViewportHeightBelow(640);
+  const zoomed = useVisualViewportScaleAbove(1.1);
+  return compactWidth || (laptopWidth && laptopHeight) || shortHeight || zoomed;
+}
+
 function useIsNarrowViewport(): boolean {
   return useViewportBelow(1000);
 }
@@ -107,6 +116,43 @@ function useViewportBelow(width: number): boolean {
   }, [width]);
 
   return isCompact;
+}
+
+function useViewportHeightBelow(height: number): boolean {
+  const [isShort, setIsShort] = useState(() => (
+    typeof window !== 'undefined' ? window.innerHeight < height : false
+  ));
+
+  useEffect(() => {
+    const onResize = () => setIsShort(window.innerHeight < height);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [height]);
+
+  return isShort;
+}
+
+function useVisualViewportScaleAbove(scale: number): boolean {
+  const [isZoomed, setIsZoomed] = useState(() => (
+    typeof window !== 'undefined' && window.visualViewport
+      ? window.visualViewport.scale > scale
+      : false
+  ));
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const onResize = () => setIsZoomed(Boolean(window.visualViewport && window.visualViewport.scale > scale));
+    onResize();
+    window.addEventListener('resize', onResize);
+    viewport?.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      viewport?.removeEventListener('resize', onResize);
+    };
+  }, [scale]);
+
+  return isZoomed;
 }
 
 function getDestinationCover(map: MapData, tile: TileCoord): {
@@ -187,6 +233,7 @@ function ContactBreakPanel() {
   const selectedId = useGameStore((s) => s.selectedUnitId);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
   if (!interrupt) return null;
 
   const event = interrupt.event;
@@ -234,18 +281,18 @@ function ContactBreakPanel() {
   return (
     <div data-testid="hud-contact-break-panel" style={{
       position: 'absolute',
-      top: compact ? 132 : 184,
-      left: compact ? 10 : '50%',
-      transform: compact ? 'none' : 'translateX(-50%)',
-      width: compact ? 'min(236px, calc(50vw - 34px))' : 'min(390px, calc(100vw - 32px))',
+      top: dense ? 96 : compact ? 132 : 184,
+      left: dense ? 8 : compact ? 10 : '50%',
+      transform: dense || compact ? 'none' : 'translateX(-50%)',
+      width: dense ? 'min(180px, calc(50vw - 22px))' : compact ? 'min(236px, calc(50vw - 34px))' : 'min(390px, calc(100vw - 32px))',
       boxSizing: 'border-box',
-      maxHeight: compact ? 'calc(100vh - 330px)' : undefined,
-      overflowY: compact ? 'auto' : undefined,
+      maxHeight: dense ? 'min(22vh, 120px)' : compact ? 'calc(100vh - 330px)' : undefined,
+      overflowY: dense || compact ? 'auto' : undefined,
       background: 'rgba(10, 7, 10, 0.94)',
       border: `1px solid ${shot.color}70`,
       borderLeft: `3px solid ${shot.color}`,
       borderRadius: 6,
-      padding: compact ? '8px 9px' : '10px 12px',
+      padding: dense ? '7px 8px' : compact ? '8px 9px' : '10px 12px',
       pointerEvents: 'auto',
       boxShadow: `0 10px 28px rgba(0,0,0,0.38), 0 0 18px ${shot.color}24`,
     }}>
@@ -715,17 +762,20 @@ function dispatchCameraCommand(command: 'zoom-in' | 'zoom-out' | 'reset') {
 
 function ViewControlPanel() {
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
+  const buttonWidth = dense ? 32 : 38;
+  const buttonHeight = dense ? 30 : 34;
 
   return (
     <div data-testid="hud-view-controls" style={{
       position: 'absolute',
-      top: compact ? 154 : '50%',
+      top: dense ? 126 : compact ? 154 : '50%',
       right: compact ? 10 : 20,
-      transform: compact ? undefined : 'translateY(-50%)',
+      transform: dense || compact ? undefined : 'translateY(-50%)',
       display: 'grid',
-      gridTemplateColumns: compact ? 'repeat(3, 38px)' : '38px',
-      gap: 6,
-      padding: 7,
+      gridTemplateColumns: compact || dense ? `repeat(3, ${buttonWidth}px)` : `${buttonWidth}px`,
+      gap: dense ? 4 : 6,
+      padding: dense ? 5 : 7,
       background: 'rgba(8, 8, 12, 0.9)',
       border: '1px solid #2a2f3a',
       borderRadius: 7,
@@ -736,16 +786,22 @@ function ViewControlPanel() {
         label="+"
         title="Zoom in"
         onClick={() => dispatchCameraCommand('zoom-in')}
+        width={buttonWidth}
+        height={buttonHeight}
       />
       <CameraButton
         label="-"
         title="Zoom out"
         onClick={() => dispatchCameraCommand('zoom-out')}
+        width={buttonWidth}
+        height={buttonHeight}
       />
       <CameraButton
         label="RST"
         title="Reset camera"
         onClick={() => dispatchCameraCommand('reset')}
+        width={buttonWidth}
+        height={buttonHeight}
       />
     </div>
   );
@@ -755,10 +811,14 @@ function CameraButton({
   label,
   title,
   onClick,
+  width,
+  height,
 }: {
   label: string;
   title: string;
   onClick: () => void;
+  width: number;
+  height: number;
 }) {
   return (
     <button
@@ -768,14 +828,14 @@ function CameraButton({
       aria-label={title}
       onClick={onClick}
       style={{
-        width: 38,
-        height: 34,
+        width,
+        height,
         borderRadius: 5,
         border: '1px solid #343948',
         background: 'rgba(255,255,255,0.045)',
         color: '#d8dce4',
         cursor: 'pointer',
-        fontSize: label.length > 1 ? 9 : 17,
+        fontSize: label.length > 1 ? 8 : 15,
         fontWeight: 950,
         letterSpacing: label.length > 1 ? 0.4 : 0,
         lineHeight: 1,
@@ -833,7 +893,10 @@ function AiStatusPanel() {
 function CombatLogPanel() {
   const combatLog = useGameStore((s) => s.combatLog);
   const round = useGameStore((s) => s.round);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const dense = useIsDenseHudViewport();
   if (combatLog.length === 0) return null;
+  if (dense && interrupt) return null;
 
   const hasObjectivePanel = round.bombPlanted || round.phase === 'roundend' || (!round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition));
 
@@ -919,8 +982,11 @@ function CombatLogPanel() {
 function BombObjectivePanel() {
   const round = useGameStore((s) => s.round);
   const startNextRound = useGameStore((s) => s.startNextRound);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const dense = useIsDenseHudViewport();
   const bombDropped = !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition);
   if (!round.bombPlanted && round.phase !== 'roundend' && !bombDropped) return null;
+  if (dense && interrupt) return null;
 
   const isRoundOver = round.phase === 'roundend';
   const winner = round.roundWinner;
@@ -945,7 +1011,7 @@ function BombObjectivePanel() {
   const accent = bombDropped ? '#ffd166' : (winner === 'CT' ? '#65b7ff' : '#ff4e6a');
 
   return (
-    <div style={{
+    <div data-testid="hud-bomb-objective-panel" style={{
       position: 'absolute',
       top: 82,
       right: 20,
@@ -1194,7 +1260,9 @@ function MovementLegend() {
   const selectedId = useGameStore((s) => s.selectedUnitId);
   const units = useGameStore((s) => s.units);
   const movementTiles = useGameStore((s) => s.movementTiles);
+  const dense = useIsDenseHudViewport();
 
+  if (dense) return null;
   if (selectedId === null || movementTiles.length === 0) return null;
   const selectedUnit = units.find((unit) => unit.id === selectedId);
   const shotCost = selectedUnit ? getWeaponShotApCost(selectedUnit.weapon) : 1;
@@ -1203,7 +1271,7 @@ function MovementLegend() {
     : `${selectedUnit?.weapon.category ?? 'weapon'} needs 2 AP`;
 
   return (
-    <div style={{
+    <div data-testid="hud-movement-legend" style={{
       position: 'absolute', bottom: 116, right: 20,
       background: 'rgba(8, 8, 12, 0.9)',
       border: '1px solid #2a2f3a',
@@ -1244,13 +1312,14 @@ function TopBar() {
   const match = useGameStore((s) => s.match);
   const round = useGameStore((s) => s.round);
   const compact = useIsCompactViewport();
-  const sidePadding = compact ? '6px 8px' : '6px 24px';
-  const sideMinWidth = compact ? 78 : 60;
-  const centerPadding = compact ? '6px 10px' : '6px 24px';
-  const centerMinWidth = compact ? 116 : 140;
-  const labelSize = compact ? 9 : 10;
-  const labelSpacing = compact ? 1.1 : 1.5;
-  const scoreSize = compact ? 24 : 28;
+  const dense = useIsDenseHudViewport();
+  const sidePadding = dense ? '4px 7px' : compact ? '6px 8px' : '6px 24px';
+  const sideMinWidth = dense ? 64 : compact ? 78 : 60;
+  const centerPadding = dense ? '4px 8px' : compact ? '6px 10px' : '6px 24px';
+  const centerMinWidth = dense ? 98 : compact ? 116 : 140;
+  const labelSize = dense ? 8 : compact ? 9 : 10;
+  const labelSpacing = dense ? 0.7 : compact ? 1.1 : 1.5;
+  const scoreSize = dense ? 20 : compact ? 24 : 28;
 
   return (
     <div data-testid="hud-top-bar" style={{
@@ -1278,16 +1347,16 @@ function TopBar() {
         minWidth: centerMinWidth,
       }}>
         <div style={{
-          color: PHASE_COLORS[round.phase], fontSize: compact ? 8 : 9, fontWeight: 700,
-          letterSpacing: compact ? 1.8 : 2.5, textTransform: 'uppercase',
+          color: PHASE_COLORS[round.phase], fontSize: dense ? 7 : compact ? 8 : 9, fontWeight: 700,
+          letterSpacing: dense ? 1.1 : compact ? 1.8 : 2.5, textTransform: 'uppercase',
           whiteSpace: 'nowrap',
         }}>
           {PHASE_LABELS[round.phase]}
         </div>
-        <div style={{ color: '#fff', fontSize: compact ? 18 : 20, fontWeight: 800, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
+        <div style={{ color: '#fff', fontSize: dense ? 15 : compact ? 18 : 20, fontWeight: 800, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
           Round {match.currentRound}
         </div>
-        <div style={{ color: '#777', fontSize: compact ? 9 : 10, letterSpacing: 0.5, whiteSpace: 'nowrap' }}>
+        <div style={{ color: '#777', fontSize: dense ? 8 : compact ? 9 : 10, letterSpacing: 0.4, whiteSpace: 'nowrap' }}>
           Turn {round.turn} &middot; {round.activeTeam === 'T' ? 'T Side' : 'CT Side'}
         </div>
       </div>
@@ -1316,14 +1385,15 @@ function TeamRoster() {
   const selectedId = useGameStore((s) => s.selectedUnitId);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
 
   const teamUnits = units.filter((u) => u.team === activeTeam);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#4488cc';
 
   return (
     <div data-testid="hud-team-roster" style={{
-      position: 'absolute', top: compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
-      display: 'flex', gap: compact ? 4 : 6, pointerEvents: 'auto',
+      position: 'absolute', top: dense ? 56 : compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
+      display: 'flex', gap: dense ? 3 : compact ? 4 : 6, pointerEvents: 'auto',
       maxWidth: 'calc(100vw - 14px)',
     }}>
       {teamUnits.map((u) => {
@@ -1334,7 +1404,7 @@ function TeamRoster() {
               key={u.id}
               onClick={() => selectUnit(u.id)}
               style={{
-              width: compact ? 48 : 56, padding: '4px 0', textAlign: 'center', cursor: 'pointer',
+              width: dense ? 42 : compact ? 48 : 56, padding: dense ? '3px 0' : '4px 0', textAlign: 'center', cursor: 'pointer',
               background: isSel ? `${teamColor}44` : 'rgba(8,8,12,0.85)',
               border: `1px solid ${isSel ? teamColor : '#333'}`,
               borderRadius: 4,
@@ -1342,16 +1412,16 @@ function TeamRoster() {
               transition: 'all 150ms ease',
             }}
           >
-            <div style={{ color: teamColor, fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>
+            <div style={{ color: teamColor, fontSize: dense ? 8 : 9, fontWeight: 700, letterSpacing: 0.5 }}>
               {ROLE_ICONS[u.role.id]}
             </div>
-            <div style={{ color: '#aaa', fontSize: 8, marginTop: 1 }}>{u.name}</div>
+            {!dense && <div style={{ color: '#aaa', fontSize: 8, marginTop: 1 }}>{u.name}</div>}
             <div style={{
-              display: 'flex', gap: 2, justifyContent: 'center', marginTop: 3,
+              display: 'flex', gap: 2, justifyContent: 'center', marginTop: dense ? 2 : 3,
             }}>
               {Array.from({ length: u.maxAp }, (_, i) => (
                 <div key={i} style={{
-                  width: 6, height: 6, borderRadius: '50%',
+                  width: dense ? 5 : 6, height: dense ? 5 : 6, borderRadius: '50%',
                   background: i < u.ap ? '#44ee66' : '#333',
                 }} />
               ))}
@@ -1381,6 +1451,7 @@ function SelectedUnitPanel() {
   const interrupt = useGameStore((s) => s.executeInterrupt);
   const compact = useIsCompactViewport();
   const narrow = useIsNarrowViewport();
+  const dense = useIsDenseHudViewport();
   const splitForContact = compact && Boolean(interrupt);
   const phase = round.phase;
 
@@ -1473,37 +1544,289 @@ function SelectedUnitPanel() {
   const showPlantAction = unit.hasBomb;
   const showDefuseAction = round.bombPlanted && unit.team === 'CT';
   const showPickupAction = bombDropped && unit.team === 'T' && !unit.hasBomb;
+  const showDetailedReadouts = !dense;
+  const targetOptionsToShow = dense ? shotOptions.slice(0, 1) : shotOptions.slice(0, 3);
+  const denseActionButtonStyle = dense
+    ? {
+      padding: '5px 4px',
+      fontSize: 8,
+      letterSpacing: 0.3,
+    }
+    : {};
+
+  if (dense) {
+    const densePanelButtonStyle = ({
+      active = false,
+      disabled = false,
+      accent = teamColor,
+      color = '#f5f5f5',
+      background,
+    }: {
+      active?: boolean;
+      disabled?: boolean;
+      accent?: string;
+      color?: string;
+      background?: string;
+    }): CSSProperties => ({
+      minWidth: 0,
+      padding: '5px 4px',
+      borderRadius: 4,
+      border: `1px solid ${active ? `${accent}aa` : disabled ? '#30313a' : `${accent}66`}`,
+      background: background ?? (active ? `${accent}2e` : 'rgba(255,255,255,0.035)'),
+      color: disabled ? '#666' : color,
+      cursor: disabled ? 'default' : 'pointer',
+      fontSize: 8,
+      fontWeight: 850,
+      letterSpacing: 0.25,
+      lineHeight: 1,
+      textTransform: 'uppercase',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    });
+
+    return (
+      <div data-testid="hud-selected-unit-panel" style={{
+        position: 'absolute',
+        bottom: 72,
+        left: splitForContact ? 'calc(50% + 7px)' : compact ? 8 : 20,
+        right: compact ? 8 : undefined,
+        width: compact ? undefined : 'min(430px, calc(100vw - 40px))',
+        boxSizing: 'border-box',
+        background: 'rgba(8, 8, 12, 0.94)',
+        border: `1px solid ${teamColor}33`,
+        borderLeft: `3px solid ${teamColor}`,
+        borderRadius: 6,
+        padding: '6px 7px',
+        pointerEvents: 'auto',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          minWidth: 0,
+          marginBottom: 5,
+          fontSize: 9,
+          lineHeight: 1,
+        }}>
+          <span style={{
+            color: teamColor,
+            fontSize: 10,
+            fontWeight: 950,
+            letterSpacing: 0.5,
+            flex: '0 0 auto',
+          }}>
+            {ROLE_ICONS[unit.role.id] ?? unit.team}
+          </span>
+          <span style={{
+            minWidth: 0,
+            color: '#cfd3dc',
+            fontWeight: 800,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {unit.name}
+          </span>
+          <span style={{
+            marginLeft: 'auto',
+            color: '#8f96a5',
+            fontFamily: "'Courier New', monospace",
+            fontSize: 9,
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+          }}>
+            AP {unit.ap}/{unit.maxAp} HP {unit.hp}
+          </span>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: 4,
+        }}>
+          <button
+            data-testid="hud-action-move"
+            onClick={() => setInputMode('move')}
+            disabled={unit.ap <= 0}
+            style={densePanelButtonStyle({ active: inputMode === 'move', disabled: unit.ap <= 0 })}
+          >
+            Move
+          </button>
+          <button
+            data-testid="hud-action-shoot"
+            onClick={() => setInputMode(inputMode === 'shoot' ? 'move' : 'shoot')}
+            disabled={Boolean(shootingDisabledReason)}
+            style={densePanelButtonStyle({
+              active: inputMode === 'shoot',
+              disabled: Boolean(shootingDisabledReason),
+              accent: '#d8c170',
+              color: '#f4e7b4',
+            })}
+          >
+            Shoot {shotApCost}AP
+          </button>
+          {targetOptionsToShow.map(({ target, preview }) => (
+            <button
+              data-testid={`hud-visible-target-${target.id}`}
+              key={target.id}
+              onClick={() => shootUnit(target.id)}
+              style={densePanelButtonStyle({
+                accent: '#ff4e6a',
+                color: '#ffd7dd',
+                background: 'rgba(255,78,106,0.13)',
+              })}
+              title={`${target.role.displayName} ${target.name}: ${preview.hitChance}%`}
+            >
+              TGT {preview.hitChance}%
+            </button>
+          ))}
+          <button
+            data-testid="hud-action-hold-angle"
+            onClick={() => setInputMode(inputMode === 'hold_angle' ? 'move' : 'hold_angle')}
+            disabled={unit.ap <= 0 || unit.ammoInClip <= 0}
+            style={densePanelButtonStyle({
+              active: inputMode === 'hold_angle',
+              disabled: unit.ap <= 0 || unit.ammoInClip <= 0,
+              accent: '#ff4e6a',
+              color: '#ffd7dd',
+            })}
+          >
+            Hold
+          </button>
+          <button
+            data-testid="hud-action-smoke"
+            onClick={() => setInputMode(inputMode === 'smoke' ? 'move' : 'smoke')}
+            disabled={Boolean(smokeDisabledReason)}
+            style={densePanelButtonStyle({
+              active: inputMode === 'smoke',
+              disabled: Boolean(smokeDisabledReason),
+              accent: '#c5d1df',
+              color: '#dce7f2',
+            })}
+          >
+            Smoke
+          </button>
+          <button
+            data-testid="hud-action-flash"
+            onClick={() => setInputMode(inputMode === 'flash' ? 'move' : 'flash')}
+            disabled={Boolean(flashDisabledReason)}
+            style={densePanelButtonStyle({
+              active: inputMode === 'flash',
+              disabled: Boolean(flashDisabledReason),
+              accent: '#fff1a8',
+              color: '#fff7d0',
+            })}
+          >
+            Flash
+          </button>
+          <button
+            data-testid="hud-action-reload"
+            onClick={reloadWeapon}
+            disabled={Boolean(reloadDisabledReason)}
+            title={reloadDisabledReason ?? 'Reload weapon'}
+            style={densePanelButtonStyle({
+              disabled: Boolean(reloadDisabledReason),
+              accent: '#8bd3ff',
+              color: '#d8ecff',
+            })}
+          >
+            Reload
+          </button>
+          {showPlantAction && (
+            <button
+              data-testid="hud-action-plant"
+              onClick={plantBomb}
+              disabled={Boolean(plantDisabledReason)}
+              title={plantDisabledReason ?? `Plant bomb on ${plantSite} site`}
+              style={densePanelButtonStyle({
+                disabled: Boolean(plantDisabledReason),
+                accent: '#ff4e6a',
+                color: '#ffd7dd',
+              })}
+            >
+              Plant
+            </button>
+          )}
+          {showDefuseAction && (
+            <button
+              data-testid="hud-action-defuse"
+              onClick={defuseBomb}
+              disabled={Boolean(defuseDisabledReason)}
+              title={defuseDisabledReason ?? 'Defuse the planted bomb'}
+              style={densePanelButtonStyle({
+                disabled: Boolean(defuseDisabledReason),
+                accent: '#65b7ff',
+                color: '#d8ecff',
+              })}
+            >
+              Defuse
+            </button>
+          )}
+          {showPickupAction && (
+            <button
+              data-testid="hud-action-pickup"
+              onClick={pickupBomb}
+              disabled={Boolean(pickupDisabledReason)}
+              title={pickupDisabledReason ?? 'Recover the dropped bomb'}
+              style={densePanelButtonStyle({
+                disabled: Boolean(pickupDisabledReason),
+                accent: '#ffd166',
+                color: '#fff1b5',
+              })}
+            >
+              Pickup
+            </button>
+          )}
+          <button
+            data-testid="hud-action-done"
+            onClick={finishUnit}
+            disabled={unit.ap <= 0}
+            style={densePanelButtonStyle({
+              disabled: unit.ap <= 0,
+              accent: teamColor,
+              color: '#ffffff',
+              background: unit.ap > 0 ? `${teamColor}2e` : 'rgba(255,255,255,0.035)',
+            })}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div data-testid="hud-selected-unit-panel" style={{
       position: 'absolute',
-      bottom: narrow ? 156 : 20,
-      left: splitForContact ? 'calc(50% + 7px)' : compact ? 10 : 20,
-      right: compact ? 10 : undefined,
+      bottom: dense ? 74 : narrow ? 156 : 20,
+      left: splitForContact ? 'calc(50% + 7px)' : compact ? 8 : 20,
+      right: compact ? 8 : undefined,
       boxSizing: 'border-box',
       background: 'rgba(8, 8, 12, 0.94)',
       border: `1px solid ${teamColor}33`,
       borderLeft: `3px solid ${teamColor}`,
       borderRadius: 6,
-      padding: splitForContact ? '9px 9px' : compact ? '10px 12px' : '12px 16px',
+      padding: dense ? '8px 9px' : splitForContact ? '9px 9px' : compact ? '10px 12px' : '12px 16px',
       minWidth: compact ? 0 : 260,
       maxWidth: compact ? undefined : 380,
-      maxHeight: splitForContact ? 'calc(100vh - 380px)' : narrow ? 'calc(100vh - 250px)' : 'calc(100vh - 96px)',
+      maxHeight: dense ? 'min(16vh, 90px)' : splitForContact ? 'calc(100vh - 380px)' : narrow ? 'calc(100vh - 250px)' : 'calc(100vh - 96px)',
       overflowY: 'auto',
       pointerEvents: 'auto',
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <span style={{ color: teamColor, fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: dense ? 6 : 8, marginBottom: dense ? 4 : 6 }}>
+        <span style={{ color: teamColor, fontSize: dense ? 10 : 12, fontWeight: 800, letterSpacing: dense ? 0.6 : 1 }}>
           {unit.role.displayName.toUpperCase()}
         </span>
-        <span style={{ color: '#888', fontSize: 11 }}>{unit.name}</span>
+        <span style={{ color: '#888', fontSize: dense ? 10 : 11 }}>{unit.name}</span>
         <span style={{ color: '#555', fontSize: 9, marginLeft: 'auto' }}>
           {unit.team}
         </span>
       </div>
 
       {/* HP bar */}
-      <div style={{ marginBottom: 6 }}>
+      <div style={{ marginBottom: dense ? 4 : 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#666', marginBottom: 2 }}>
           <span>HP</span>
           <span style={{ fontFamily: "'Courier New', monospace", color: '#ccc' }}>
@@ -1521,18 +1844,18 @@ function SelectedUnitPanel() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'flex', gap: 14, fontSize: 10, marginBottom: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: dense ? '4px 10px' : 14, fontSize: dense ? 9 : 10, marginBottom: dense ? 4 : 6 }}>
         <StatBox label="AP" value={`${unit.ap}/${unit.maxAp}`} highlight={unit.ap > 0} />
-        <StatBox label="MOB" value={unit.role.mobility} />
-        <StatBox label="AIM" value={unit.role.baseAim} />
+        {!dense && <StatBox label="MOB" value={unit.role.mobility} />}
+        {!dense && <StatBox label="AIM" value={unit.role.baseAim} />}
         <StatBox label="AMO" value={`${unit.ammoInClip}/${unit.reserveAmmo}`} highlight={unit.ammoInClip > 0} />
         <StatBox label="SMK" value={unit.smokeGrenades} highlight={unit.smokeGrenades > 0} />
         <StatBox label={unit.flashTurns > 0 ? 'FLD' : 'FLS'} value={unit.flashTurns > 0 ? 'YES' : unit.flashbangs} highlight={unit.flashTurns > 0 || unit.flashbangs > 0} />
-        <StatBox label="$" value={unit.money} />
+        {!dense && <StatBox label="$" value={unit.money} />}
       </div>
 
       {/* Weapon */}
-      <div style={{
+      {showDetailedReadouts && <div style={{
         fontSize: 10, color: '#ccc', padding: '5px 8px',
         background: 'rgba(255,255,255,0.03)', borderRadius: 3, marginBottom: 4,
       }}>
@@ -1541,15 +1864,15 @@ function SelectedUnitPanel() {
         <span style={{ color: '#555', marginLeft: 8, fontFamily: "'Courier New', monospace" }}>
           DMG {unit.weapon.baseDamage}
         </span>
-      </div>
+      </div>}
 
       {/* Ability */}
-      <div style={{ fontSize: 9, color: '#666' }}>
+      {showDetailedReadouts && <div style={{ fontSize: 9, color: '#666' }}>
         <span style={{ color: teamColor, marginRight: 4, fontWeight: 700 }}>Q</span>
         {unit.role.abilityName}
-      </div>
+      </div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(72px, 1fr))', gap: 6, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: dense ? 'repeat(3, minmax(0, 1fr))' : 'repeat(3, minmax(72px, 1fr))', gap: dense ? 4 : 6, marginTop: dense ? 6 : 10 }}>
         <button
           data-testid="hud-action-move"
           onClick={() => setInputMode('move')}
@@ -1565,6 +1888,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Move
@@ -1584,6 +1908,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Shoot {shotApCost}AP
@@ -1603,6 +1928,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Hold 1AP
@@ -1622,6 +1948,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Smoke 1AP
@@ -1641,6 +1968,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Flash 1AP
@@ -1661,6 +1989,7 @@ function SelectedUnitPanel() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...denseActionButtonStyle,
           }}
         >
           Reload 1AP
@@ -1668,7 +1997,7 @@ function SelectedUnitPanel() {
       </div>
 
       {(showPlantAction || showDefuseAction || showPickupAction) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 6, marginTop: 7 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: dense ? 'repeat(auto-fit, minmax(64px, 1fr))' : 'repeat(auto-fit, minmax(82px, 1fr))', gap: dense ? 4 : 6, marginTop: dense ? 5 : 7 }}>
           {showPlantAction && (
             <button
               data-testid="hud-action-plant"
@@ -1686,6 +2015,7 @@ function SelectedUnitPanel() {
                 fontWeight: 900,
                 letterSpacing: 0.8,
                 textTransform: 'uppercase',
+                ...denseActionButtonStyle,
               }}
             >
               {plantSite ? `Plant ${plantSite}` : 'Plant'}
@@ -1708,6 +2038,7 @@ function SelectedUnitPanel() {
                 fontWeight: 900,
                 letterSpacing: 0.8,
                 textTransform: 'uppercase',
+                ...denseActionButtonStyle,
               }}
             >
               Defuse
@@ -1730,6 +2061,7 @@ function SelectedUnitPanel() {
                 fontWeight: 900,
                 letterSpacing: 0.8,
                 textTransform: 'uppercase',
+                ...denseActionButtonStyle,
               }}
             >
               Pickup
@@ -1738,67 +2070,67 @@ function SelectedUnitPanel() {
         </div>
       )}
 
-      {inputMode === 'hold_angle' && (
+      {!dense && inputMode === 'hold_angle' && (
         <div style={{ color: '#b36b77', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Click a lane or angle on the map.
         </div>
       )}
-      {inputMode === 'shoot' && (
+      {!dense && inputMode === 'shoot' && (
         <div style={{ color: '#b8a45b', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Click a visible enemy to fire.
         </div>
       )}
-      {inputMode === 'smoke' && (
+      {!dense && inputMode === 'smoke' && (
         <div style={{ color: '#bfc9d6', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Click a tile within 12 tiles to block line of sight.
         </div>
       )}
-      {inputMode === 'flash' && (
+      {!dense && inputMode === 'flash' && (
         <div style={{ color: '#d8c170', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Click a tile within 12 tiles. Enemies in the burst take a major aim penalty.
         </div>
       )}
-      {inputMode === 'shoot' && shootingDisabledReason && (
+      {!dense && inputMode === 'shoot' && shootingDisabledReason && (
         <div style={{ color: '#706f6a', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Shoot disabled: {shootingDisabledReason}
         </div>
       )}
-      {reloadDisabledReason && unit.ammoInClip <= 0 && (
+      {!dense && reloadDisabledReason && unit.ammoInClip <= 0 && (
         <div style={{ color: '#6f7e8e', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Reload: {reloadDisabledReason}
         </div>
       )}
-      {smokeDisabledReason && inputMode === 'smoke' && (
+      {!dense && smokeDisabledReason && inputMode === 'smoke' && (
         <div style={{ color: '#707985', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Smoke disabled: {smokeDisabledReason}
         </div>
       )}
-      {flashDisabledReason && inputMode === 'flash' && (
+      {!dense && flashDisabledReason && inputMode === 'flash' && (
         <div style={{ color: '#837849', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Flash disabled: {flashDisabledReason}
         </div>
       )}
-      {showPlantAction && plantDisabledReason && unit.hasBomb && (
+      {!dense && showPlantAction && plantDisabledReason && unit.hasBomb && (
         <div style={{ color: '#7b6c71', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Plant disabled: {plantDisabledReason}
         </div>
       )}
-      {showDefuseAction && defuseDisabledReason && round.bombPlanted && unit.team === 'CT' && (
+      {!dense && showDefuseAction && defuseDisabledReason && round.bombPlanted && unit.team === 'CT' && (
         <div style={{ color: '#6f7e8e', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Defuse disabled: {defuseDisabledReason}
         </div>
       )}
-      {showPickupAction && pickupDisabledReason && (
+      {!dense && showPickupAction && pickupDisabledReason && (
         <div style={{ color: '#837849', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Pickup disabled: {pickupDisabledReason}
         </div>
       )}
-      {topShotPreview && !shootingDisabledReason && (
+      {showDetailedReadouts && topShotPreview && !shootingDisabledReason && (
         <div style={{ color: '#b8a45b', fontSize: 9, marginTop: 6, lineHeight: 1.35 }}>
           Best shot: {topShotPreview.hitChance}% / {topShotPreview.damage} dmg / HS {topShotPreview.critChance}% for {topShotPreview.critDamage} / {getCoverStateLabel(topShotPreview)}
         </div>
       )}
-      {shotOptions.length > 0 && !shootingDisabledReason && (
+      {targetOptionsToShow.length > 0 && !shootingDisabledReason && (
         <div style={{
           marginTop: 8,
           borderTop: '1px solid rgba(255,255,255,0.06)',
@@ -1815,7 +2147,7 @@ function SelectedUnitPanel() {
           }}>
             Visible targets
           </div>
-          {shotOptions.slice(0, 3).map(({ target, preview }) => (
+          {targetOptionsToShow.map(({ target, preview }) => (
             <button
               data-testid={`hud-visible-target-${target.id}`}
               key={target.id}
@@ -1877,15 +2209,15 @@ function SelectedUnitPanel() {
         style={{
           width: '100%',
           marginTop: 10,
-          padding: '7px 10px',
+          padding: dense ? '5px 8px' : '7px 10px',
           borderRadius: 4,
           border: `1px solid ${unit.ap > 0 ? `${teamColor}77` : '#333'}`,
           background: unit.ap > 0 ? `${teamColor}22` : 'rgba(255,255,255,0.03)',
           color: unit.ap > 0 ? '#f5f5f5' : '#666',
           cursor: unit.ap > 0 ? 'pointer' : 'default',
-          fontSize: 10,
+          fontSize: dense ? 8 : 10,
           fontWeight: 800,
-          letterSpacing: 1,
+          letterSpacing: dense ? 0.5 : 1,
           textTransform: 'uppercase',
         }}
       >
@@ -1924,36 +2256,48 @@ function CommandBar() {
   const startDuelLab = useGameStore((s) => s.startDuelLab);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
   const isRoundOver = phase === 'roundend';
-  const commandButtonStyle = compact
+  const commandButtonStyle = compact || dense
     ? {
       width: '100%',
       minWidth: 0,
-      padding: '9px 8px',
-      fontSize: 10,
+      padding: dense ? '7px 6px' : '9px 8px',
+      fontSize: dense ? 9 : 10,
+      letterSpacing: dense ? 0.5 : 0.8,
     }
     : {};
+  const commandGridColumns = compact
+    ? 'repeat(2, minmax(0, 1fr))'
+    : dense
+      ? 'repeat(4, minmax(0, 1fr))'
+      : undefined;
 
   return (
     <div data-testid="hud-command-bar" style={{
       position: 'absolute',
-      bottom: compact ? 14 : 18,
-      left: compact ? 10 : '50%',
+      bottom: dense ? 6 : compact ? 14 : 18,
+      left: compact ? 8 : '50%',
       transform: compact ? 'none' : 'translateX(-50%)',
-      width: compact ? 'min(370px, calc(100vw - 20px))' : 'min(760px, calc(100vw - 40px))',
+      width: compact ? 'min(300px, calc(100vw - 16px))' : dense ? 'min(680px, calc(100vw - 24px))' : 'min(760px, calc(100vw - 40px))',
       background: 'rgba(8, 8, 12, 0.94)',
       border: '1px solid #2a2f3a',
-      borderRadius: 7,
-      padding: compact ? 8 : '9px 10px',
+      borderRadius: dense ? 6 : 7,
+      padding: dense ? 5 : compact ? 8 : '9px 10px',
       pointerEvents: 'auto',
-      display: compact ? 'grid' : 'flex',
-      gridTemplateColumns: compact ? 'repeat(3, minmax(0, 1fr))' : undefined,
-      flexWrap: compact ? undefined : 'wrap',
+      display: compact || dense ? 'grid' : 'flex',
+      gridTemplateColumns: commandGridColumns,
+      flexWrap: compact || dense ? undefined : 'wrap',
       alignItems: 'center',
-      gap: 8,
+      gap: dense ? 5 : 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
     }}>
-      <div style={{ minWidth: 0, flex: compact ? undefined : '1 1 170px', gridColumn: compact ? '1 / -1' : undefined }}>
+      <div style={{
+        minWidth: 0,
+        flex: compact || dense ? undefined : '1 1 170px',
+        gridColumn: compact && !dense ? '1 / -1' : undefined,
+        display: dense ? 'none' : undefined,
+      }}>
         <div style={{
           color: teamColor,
           fontSize: 10,
@@ -2069,7 +2413,7 @@ function CommandBar() {
             textTransform: 'uppercase',
             minWidth: 118,
             boxShadow: isExecuting ? 'none' : '0 0 14px rgba(47,191,113,0.35)',
-            gridColumn: compact ? '1 / -1' : undefined,
+            gridColumn: compact && !dense ? '1 / -1' : undefined,
             ...commandButtonStyle,
           }}
         >
@@ -2095,7 +2439,7 @@ function CommandBar() {
             textTransform: 'uppercase',
             minWidth: 118,
             boxShadow: `0 0 14px ${teamColor}55`,
-            gridColumn: compact ? '1 / -1' : undefined,
+            gridColumn: compact && !dense ? '1 / -1' : undefined,
             ...commandButtonStyle,
           }}
         >
@@ -2121,6 +2465,7 @@ function CommandBar() {
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
+            ...(dense ? commandButtonStyle : {}),
           }}
         >
           End Turn
@@ -2134,26 +2479,29 @@ function CommandBar() {
 function PhaseAnnouncement() {
   const phase = useGameStore((s) => s.round.phase);
   const turn = useGameStore((s) => s.round.turn);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
 
   const showSetup = phase === 'setup';
   const showCombat = phase === 'combat' && turn === 3; // show on first combat turn
 
   if (!showSetup && !showCombat) return null;
+  if (dense && interrupt) return null;
 
   return (
     <div style={{
-      position: 'absolute', top: compact ? 136 : '15%', left: '50%', transform: 'translateX(-50%)',
+      position: 'absolute', top: dense ? 108 : compact ? 136 : '15%', left: '50%', transform: 'translateX(-50%)',
       textAlign: 'center', opacity: 0.6,
       width: compact ? 'calc(100vw - 24px)' : 'auto',
     }}>
       <div style={{
-        color: PHASE_COLORS[phase], fontSize: compact ? 13 : 16, fontWeight: 800,
-        letterSpacing: compact ? 4 : 6, textTransform: 'uppercase',
+        color: PHASE_COLORS[phase], fontSize: dense ? 11 : compact ? 13 : 16, fontWeight: 800,
+        letterSpacing: dense ? 3 : compact ? 4 : 6, textTransform: 'uppercase',
       }}>
         {showCombat ? 'FIRST CONTACT!' : PHASE_LABELS[phase]}
       </div>
-      <div style={{ color: '#555', fontSize: 10, marginTop: 4 }}>
+      <div style={{ color: '#555', fontSize: dense ? 9 : 10, marginTop: dense ? 2 : 4 }}>
         {showSetup ? 'Sprint to positions. No firing.' : 'Weapons free. Overwatch active.'}
       </div>
     </div>
