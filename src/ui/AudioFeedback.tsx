@@ -47,6 +47,44 @@ function playNoiseBurst(ctx: AudioContext, when: number, duration: number, gainV
   source.stop(when + duration);
 }
 
+function playFilteredNoiseBurst(
+  ctx: AudioContext,
+  when: number,
+  duration: number,
+  gainValue: number,
+  filterType: BiquadFilterType,
+  frequency: number
+): void {
+  const samples = Math.max(1, Math.floor(ctx.sampleRate * duration));
+  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < samples; i++) {
+    const progress = i / samples;
+    const attack = Math.min(1, progress / 0.08);
+    const decay = 1 - progress;
+    data[i] = (Math.random() * 2 - 1) * attack * decay * decay;
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = filterType;
+  filter.frequency.setValueAtTime(frequency, when);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(gainValue, when + 0.018);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(when);
+  source.stop(when + duration);
+}
+
 function playTone(
   ctx: AudioContext,
   when: number,
@@ -74,6 +112,22 @@ function playTone(
 
 function playUiTick(ctx: AudioContext, when: number, frequency: number, gainValue: number): void {
   playTone(ctx, when, frequency, 0.045, gainValue, 'triangle');
+}
+
+function getFeedbackSequence(event: FeedbackEvent): number {
+  const sequence = Number(event.id.split(':')[1]);
+  return Number.isFinite(sequence) ? sequence : 0;
+}
+
+function playFootstepCue(ctx: AudioContext, when: number, event: FeedbackEvent, intensity: number): void {
+  const isLeftStep = getFeedbackSequence(event) % 2 === 0;
+  const baseFrequency = event.team === 'CT' ? 92 : 112;
+  const pitch = baseFrequency + (isLeftStep ? -7 : 9);
+  const busGain = (gainValue: number) => mixGain('movement', gainValue, intensity);
+
+  playFilteredNoiseBurst(ctx, when, 0.032, busGain(0.014), 'bandpass', isLeftStep ? 520 : 610);
+  playTone(ctx, when + 0.006, pitch, 0.048, busGain(0.009), 'sine');
+  playFilteredNoiseBurst(ctx, when + 0.036, 0.028, busGain(0.007), 'lowpass', 360);
 }
 
 function playReactionSting(
@@ -155,8 +209,7 @@ function playFeedbackCue(event: FeedbackEvent, scheduleOffsetSeconds = 0): void 
   const gain = (gainValue: number) => mixGain(FEEDBACK_CUE_BUS[event.type], gainValue, intensity);
 
   if (event.type === 'move_step') {
-    playNoiseBurst(ctx, now, 0.038, gain(0.018));
-    playTone(ctx, now, event.team === 'CT' ? 96 : 116, 0.055, gain(0.012), 'sine');
+    playFootstepCue(ctx, now, event, intensity);
     return;
   }
 
@@ -183,16 +236,66 @@ function playFeedbackCue(event: FeedbackEvent, scheduleOffsetSeconds = 0): void 
     return;
   }
 
+  if (event.type === 'reload_weapon') {
+    playFilteredNoiseBurst(ctx, now, 0.055, gain(0.02), 'highpass', 1400);
+    playTone(ctx, now + 0.045, 185, 0.065, gain(0.016), 'triangle');
+    playFilteredNoiseBurst(ctx, now + 0.105, 0.06, gain(0.018), 'bandpass', 920);
+    playUiTick(ctx, now + 0.17, 310, gain(0.012));
+    return;
+  }
+
   if (event.type === 'smoke_throw') {
-    playNoiseBurst(ctx, now, 0.12, gain(0.04));
+    playFilteredNoiseBurst(ctx, now, 0.09, gain(0.032), 'highpass', 1200);
     playTone(ctx, now + 0.02, 85, 0.11, gain(0.018), 'sine');
+    return;
+  }
+
+  if (event.type === 'smoke_bloom') {
+    playFilteredNoiseBurst(ctx, now + 0.055, 0.34, gain(0.05), 'lowpass', 520);
+    playTone(ctx, now + 0.08, 58, 0.26, gain(0.016), 'sine');
     return;
   }
 
   if (event.type === 'flash_throw') {
     playUiTick(ctx, now, 620, gain(0.018));
     playTone(ctx, now + 0.02, 1240, 0.09, gain(0.018), 'triangle');
-    playNoiseBurst(ctx, now + 0.035, 0.05, gain(0.025));
+    playFilteredNoiseBurst(ctx, now + 0.035, 0.05, gain(0.025), 'highpass', 2600);
+    return;
+  }
+
+  if (event.type === 'flash_pop') {
+    playTone(ctx, now, 1720, 0.055, gain(0.025), 'sine');
+    playFilteredNoiseBurst(ctx, now + 0.012, 0.075, gain(0.033), 'bandpass', 3200);
+    playTone(ctx, now + 0.07, 480, 0.09, gain(0.012), 'triangle');
+    return;
+  }
+
+  if (event.type === 'bomb_pickup') {
+    playTone(ctx, now, 130, 0.08, gain(0.02), 'triangle');
+    playUiTick(ctx, now + 0.06, 250, gain(0.016));
+    return;
+  }
+
+  if (event.type === 'bomb_plant') {
+    playTone(ctx, now, 110, 0.12, gain(0.024), 'sawtooth');
+    playUiTick(ctx, now + 0.08, 360, gain(0.018));
+    playUiTick(ctx, now + 0.18, 360, gain(0.014));
+    playTone(ctx, now + 0.24, 72, 0.22, gain(0.022), 'sine');
+    return;
+  }
+
+  if (event.type === 'bomb_tick') {
+    const urgency = intensity > 1 ? 1.08 : 0.88;
+    playUiTick(ctx, now, 300 * urgency, gain(0.018));
+    playTone(ctx, now + 0.055, 82, 0.13, gain(0.018), 'sine');
+    return;
+  }
+
+  if (event.type === 'bomb_defuse') {
+    playUiTick(ctx, now, 420, gain(0.018));
+    playUiTick(ctx, now + 0.07, 520, gain(0.016));
+    playTone(ctx, now + 0.15, 220, 0.16, gain(0.022), 'triangle');
+    playTone(ctx, now + 0.24, 620, 0.08, gain(0.014), 'sine');
     return;
   }
 

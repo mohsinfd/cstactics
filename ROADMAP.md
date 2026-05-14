@@ -165,10 +165,15 @@ move, trigger contact, and freeze into a trade decision. See
 - First-pass player-facing execute rail: clean executes show a compact
   live/debrief beat list from the reusable timeline, while Contact Break
   continues to own interrupted executes. Implemented.
+- Authored interaction audio cues: reload, smoke bloom, flash pop, bomb
+  pickup/plant/defuse/tick pressure, and alternating footstep cadence now use
+  explicit feedback event types on the existing mix buses. Implemented as a
+  first pass.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
-- Next visual/audio slice: richer authored-feeling cues for reload, footsteps,
-  utility bloom, bomb ticks, plant/defuse pressure, and multi-beat replay timing.
+- Next visual/audio slice: multi-beat replay timing, richer casualty/targetable
+  visual states, and a path toward authored sample assets instead of only
+  procedural cues.
 
 ### Milestone C: Utility Timing
 
@@ -333,7 +338,9 @@ Goal: move from prototype to polished indie.
 Work:
 - Better map materials and landmark props. Landmark prop silhouettes are started.
 - Camera presets and smoother pan/zoom limits.
-- Sound design for shots, plants, defuses, UI, and phase changes.
+- Sound design for shots, plants, defuses, UI, and phase changes. First-pass
+  procedural interaction cues are implemented; authored sample assets and a
+  production mix are still needed.
 - High-DPI render pass for crisper zoom/readability. First pass implemented.
 - Better unit silhouettes and animations. Higher-resolution generated sprite
   overlays are started; authored art pipeline still needed.

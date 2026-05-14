@@ -182,6 +182,9 @@ verbs that make those nouns matter.
 - First-pass combat contact presentation foundation: recent combat/feedback
   events can play as short ordered cue bursts, and unit weapon silhouettes are
   no longer tied only to role defaults.
+- Authored interaction feedback events now drive procedural reload, smoke
+  bloom, flash pop, bomb pickup/plant/defuse/tick pressure, and alternating
+  footstep cadence cues without changing gameplay math.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
   for crisper camera/browser zoom.
 - Browser regression now includes a lightweight canvas pixel-readability smoke
@@ -230,7 +233,7 @@ verbs that make those nouns matter.
   rules.
 - Save/hunt outcomes.
 - Production-grade enemy AI.
-- Production-grade authored audio mix.
+- Production-grade authored audio assets and final mix.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.

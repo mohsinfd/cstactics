@@ -130,6 +130,11 @@ threat, or utility overlays.
   buses. `AudioFeedback` scans recent event arrays, dedupes by id, and plays
   newly seen combat/feedback events chronologically, which is the first step
   toward multi-beat execute audio without committing authored samples yet.
+- Interaction audio vocabulary: non-gun actions now emit explicit feedback
+  types for `reload_weapon`, `smoke_bloom`, `flash_pop`, `bomb_pickup`,
+  `bomb_plant`, `bomb_tick`, and `bomb_defuse`. The audio layer keeps these on
+  the existing utility/movement buses, so they feel authored without introducing
+  a sample pipeline or changing combat/bomb math.
 - Visual readability smoke: `tests/visual-readability.spec.js` now captures
   Banana Drill and Duel Lab canvas screenshots and asserts nonblank board
   rendering, CT/T color-family pixels, and selected/target action pixels across
@@ -146,13 +151,13 @@ threat, or utility overlays.
 
 ## Next Presentation Targets
 
-1. Add authored-feeling procedural cues for reload, bomb tick, plant/defuse,
-   utility bloom, and footstep surface without overpowering decision panels.
-2. Replace latest-event visual assumptions in remaining board markers/casualty
+1. Replace latest-event visual assumptions in remaining board markers/casualty
    effects as the execute timeline grows beyond one or two combat beats.
-3. Add richer pixel/screenshot checks for casualty, targetable enemy, and
+2. Add richer pixel/screenshot checks for casualty, targetable enemy, and
    selected-spent states once scenarios can force those states without direct
    store mutation.
+3. Graduate procedural audio into an authored-asset pipeline once the cue
+   vocabulary and mix hierarchy stop changing every slice.
 
 ## Acceptance Checks
 

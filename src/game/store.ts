@@ -86,15 +86,32 @@ function appendFeedback(
   details: Omit<FeedbackEvent, 'id' | 'createdAt' | 'type'> = {}
 ): FeedbackEvent[] {
   feedbackSequence += 1;
+  const createdAt = Date.now() + feedbackSequence / 1000;
   return [
     {
-      id: `${Date.now()}:${feedbackSequence}:${type}`,
-      createdAt: Date.now(),
+      id: `${createdAt}:${feedbackSequence}:${type}`,
+      createdAt,
       type,
       ...details,
     },
     ...events,
   ].slice(0, FEEDBACK_LOG_LIMIT);
+}
+
+function appendBombTickFeedback(events: FeedbackEvent[], previousRound: RoundState, nextRound: RoundState): FeedbackEvent[] {
+  if (
+    previousRound.bombPlanted &&
+    !previousRound.bombDefused &&
+    nextRound.bombPlanted &&
+    nextRound.bombTimer < previousRound.bombTimer
+  ) {
+    return appendFeedback(events, 'bomb_tick', {
+      team: nextRound.activeTeam,
+      intensity: nextRound.bombTimer <= 2 ? 1.25 : nextRound.bombTimer <= 4 ? 1.05 : 0.85,
+    });
+  }
+
+  return events;
 }
 
 function getBestTradeShot(
@@ -1106,11 +1123,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog: contactEvent ? [contactEvent, ...state.combatLog].slice(0, 8) : state.combatLog,
         executeInterrupt,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'move_complete', {
           team: unit.team,
           unitId: unit.id,
           intensity: contactEvent ? 1.2 : 0.9,
-        }),
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1199,11 +1216,11 @@ export const useGameStore = create<GameStore>((set, get) => {
           heldAngle,
         ],
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'hold_angle', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'hold_angle', {
           team: unit.team,
           unitId: unit.id,
           intensity: 0.9,
-        }),
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1294,11 +1311,19 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'smoke_throw', {
-          team: unit.team,
-          unitId: unit.id,
-          intensity: 1,
-        }),
+        feedbackEvents: appendBombTickFeedback(appendFeedback(
+          appendFeedback(state.feedbackEvents, 'smoke_throw', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 1,
+          }),
+          'smoke_bloom',
+          {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 0.95,
+          }
+        ), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1415,11 +1440,19 @@ export const useGameStore = create<GameStore>((set, get) => {
           flashBurst,
           ...state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000),
         ].slice(0, FLASH_BURST_LOG_LIMIT),
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'flash_throw', {
-          team: unit.team,
-          unitId: unit.id,
-          intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
-        }),
+        feedbackEvents: appendBombTickFeedback(appendFeedback(
+          appendFeedback(state.feedbackEvents, 'flash_throw', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
+          }),
+          'flash_pop',
+          {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: affectedUnitIds.length > 0 ? 1.2 : 0.85,
+          }
+        ), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1483,6 +1516,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         plannedActions: [],
         inputMode: 'move',
         smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'bomb_pickup', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 0.95,
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1537,6 +1575,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'reload_weapon', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: reloadAmount >= unit.weapon.clipSize * 0.5 ? 1 : 0.8,
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1600,6 +1643,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         plannedActions: [],
         inputMode: 'move',
         smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'bomb_plant', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: plantSite === 'B' ? 1.05 : 1,
+        }), round, nextRound),
       });
     },
 
@@ -1645,6 +1693,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         planningMode: false,
         plannedActions: [],
         inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'bomb_defuse', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: unit.hasDefuseKit ? 1.05 : 0.95,
+        }),
       });
     },
 
@@ -1718,6 +1771,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         smokes: nextSmokes,
         combatLog: [event, ...state.combatLog].slice(0, 8),
+        feedbackEvents: appendBombTickFeedback(state.feedbackEvents, round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -1922,11 +1976,19 @@ export const useGameStore = create<GameStore>((set, get) => {
             flashBursts: nextFlashBursts,
             hoveredTile: null,
             pathPreview: [],
-            feedbackEvents: appendFeedback(get().feedbackEvents, 'smoke_throw', {
-              team: unit.team,
-              unitId: unit.id,
-              intensity: 1,
-            }),
+            feedbackEvents: appendFeedback(
+              appendFeedback(get().feedbackEvents, 'smoke_throw', {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: 1,
+              }),
+              'smoke_bloom',
+              {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: 0.95,
+              }
+            ),
           });
         }
 
@@ -1986,11 +2048,19 @@ export const useGameStore = create<GameStore>((set, get) => {
             flashBursts: nextFlashBursts,
             hoveredTile: null,
             pathPreview: [],
-            feedbackEvents: appendFeedback(get().feedbackEvents, 'flash_throw', {
-              team: unit.team,
-              unitId: unit.id,
-              intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
-            }),
+            feedbackEvents: appendFeedback(
+              appendFeedback(get().feedbackEvents, 'flash_throw', {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
+              }),
+              'flash_pop',
+              {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: affectedUnitIds.length > 0 ? 1.2 : 0.85,
+              }
+            ),
           });
         }
       }
@@ -2085,6 +2155,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           inputMode: 'move',
           smokes: nextSmokes,
           flashBursts: nextFlashBursts,
+          feedbackEvents: appendBombTickFeedback(get().feedbackEvents, round, nextRound),
         });
         if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
         return;
@@ -2322,10 +2393,10 @@ export const useGameStore = create<GameStore>((set, get) => {
         flashBursts: nextFlashBursts,
         combatLog,
         executeInterrupt,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'move_complete', {
           team: round.activeTeam,
           intensity: contactEvent ? 1.2 : 1,
-        }),
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -2407,11 +2478,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'turn_change', {
           team: nextRound.activeTeam,
           unitId: unit.id,
           intensity: 0.8,
-        }),
+        }), round, nextRound),
       });
       if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -2447,10 +2518,10 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         smokes: advanced.smokes,
         aiStatus: null,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'turn_change', {
           team: advanced.round.activeTeam,
           intensity: 1,
-        }),
+        }), state.round, advanced.round),
       });
       if (advanced.round.activeTeam === 'CT' && advanced.round.phase !== 'roundend') maybeRunCtAiTurn();
     },
@@ -2680,10 +2751,10 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog,
         aiStatus: null,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'ai_end', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'ai_end', {
           team: 'CT',
           intensity: 1,
-        }),
+        }), round, advanced.round),
       });
     },
 
