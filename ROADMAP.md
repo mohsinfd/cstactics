@@ -134,6 +134,10 @@ move, trigger contact, and freeze into a trade decision. See
   board/lighting values lifted, and unit bodies now bias toward the default
   camera for readability while mechanical facing remains represented by tactical
   arcs and gameplay state.
+- First tiny cinematic-contact proof slice is implemented: Banana Drill contact
+  now drives a short camera push/settle beat and brighter shot-lane/impact
+  markers, with proof screenshots/video captured under
+  `artifacts/contact-cinematic-slice/`.
 - Canvas readability regression now includes luminance/mid-value guardrails so
   the tactical board cannot regress into a near-black presentation while still
   passing nonblank pixel checks.
@@ -368,6 +372,10 @@ Work:
 - World-class presentation roadmap added. The immediate track is board
   brightness/readability, camera-readable units, authored movement/contact
   timelines, cinematic contact staging, and authored audio.
+- First presentation director proof slice is started for reaction contact:
+  short camera emphasis plus board-level tracer/impact feedback. This proves
+  the direction, but it still needs a real reusable cinematic queue, authored
+  unit poses, and production audio.
 - Camera presets and smoother pan/zoom limits.
 - Sound design for shots, plants, defuses, UI, and phase changes. First-pass
   procedural interaction cues are implemented; authored sample assets and a

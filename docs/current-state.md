@@ -222,6 +222,10 @@ verbs that make those nouns matter.
 - First presentation-ceiling pass removed HUD-level map dimming, lifted map and
   lighting values, and biases unit bodies toward the default camera while
   keeping tactical facing represented by arcs/gameplay state.
+- First tiny Presentation Director slice is implemented for Banana Drill
+  contact: reaction-fire interrupts now trigger a short camera push/settle beat
+  plus a brighter board-level shot lane, contact ring, muzzle glint, impact
+  spark, and proof artifacts under `artifacts/contact-cinematic-slice/`.
 
 ## Partially Implemented
 
@@ -238,8 +242,9 @@ verbs that make those nouns matter.
 - Economy exists as state, but no buy phase or round-to-round decision loop uses it.
 - Planning exists for movement with a first-pass ticked execute, editable timing
   beats, a reusable execute/contact event stream, and compact live/debrief rail,
-  but not yet a full cinematic queue/replay system with simultaneous combat
-  beats and production interrupt sequencing.
+  plus one thin contact presentation beat, but not yet a full cinematic
+  queue/replay system with simultaneous combat beats and production interrupt
+  sequencing.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 

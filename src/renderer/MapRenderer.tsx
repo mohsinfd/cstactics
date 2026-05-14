@@ -1934,12 +1934,19 @@ function CombatTracerOverlay() {
 
 function ContactBreakPulse() {
   const interrupt = useGameStore((s) => s.executeInterrupt);
+  const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
   const groupRef = useRef<THREE.Group>(null);
   const outerRef = useRef<THREE.MeshBasicMaterial>(null);
   const innerRef = useRef<THREE.MeshBasicMaterial>(null);
   const startedAtRef = useRef({ id: '', time: 0 });
+  const sparkOffsets = useMemo(() => [
+    { x: -0.28, z: -0.12, rotation: -0.7, length: 0.46 },
+    { x: 0.24, z: -0.22, rotation: 0.5, length: 0.38 },
+    { x: -0.1, z: 0.28, rotation: 1.15, length: 0.32 },
+    { x: 0.34, z: 0.16, rotation: -1.1, length: 0.42 },
+  ], []);
 
   useFrame((state) => {
     if (!interrupt || !groupRef.current) return;
@@ -1963,11 +1970,69 @@ function ContactBreakPulse() {
   if (!interrupt) return null;
 
   const [wx, , wz] = tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
+  const attacker = units.find((unit) => unit.id === interrupt.event.attackerId);
+  const target = units.find((unit) => unit.id === interrupt.event.targetId);
+  const attackerPoint = attacker
+    ? tileWorld(attacker.position.x, attacker.position.y, ts)
+    : null;
+  const targetPoint = target
+    ? tileWorld(target.position.x, target.position.y, ts)
+    : tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
   const shot = getShotPresentation(interrupt.event.weaponCategory);
   const color = getCombatEventColor(interrupt.event);
 
   return (
     <group ref={groupRef} position={[wx, FLOOR_H + 0.34, wz]} raycast={() => null}>
+      {attackerPoint && (
+        <>
+          <Line
+            points={[
+              [attackerPoint[0] - wx, FLOOR_H + 0.62, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, FLOOR_H + 0.62, targetPoint[2] - wz],
+            ]}
+            color={color}
+            lineWidth={8}
+            transparent
+            opacity={0.34}
+          />
+          <Line
+            points={[
+              [attackerPoint[0] - wx, FLOOR_H + 0.68, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, FLOOR_H + 0.68, targetPoint[2] - wz],
+            ]}
+            color="#ffffff"
+            lineWidth={3}
+            transparent
+            opacity={0.88}
+          />
+          <mesh position={[attackerPoint[0] - wx, FLOOR_H + 0.78, attackerPoint[2] - wz]}>
+            <sphereGeometry args={[0.18, 12, 8]} />
+            <meshBasicMaterial color="#fff4b8" transparent opacity={0.82} depthWrite={false} />
+          </mesh>
+        </>
+      )}
+      <mesh position={[targetPoint[0] - wx, FLOOR_H + 0.75, targetPoint[2] - wz]}>
+        <sphereGeometry args={[0.22, 14, 10]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.88} depthWrite={false} />
+      </mesh>
+      {sparkOffsets.map((spark, index) => (
+        <mesh
+          key={index}
+          position={[targetPoint[0] - wx + spark.x, FLOOR_H + 0.72, targetPoint[2] - wz + spark.z]}
+          rotation={[0, spark.rotation, 0]}
+        >
+          <boxGeometry args={[0.06, 0.06, spark.length]} />
+          <meshBasicMaterial color={index % 2 === 0 ? '#ffffff' : '#ffd166'} transparent opacity={0.78} depthWrite={false} />
+        </mesh>
+      ))}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ts * 0.86, ts * 1.02, 48]} />
+        <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ts * 1.12, ts * 1.22, 64]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
       <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
         <ringGeometry args={[ts * 0.55, ts * 0.72, 4]} />
         <meshBasicMaterial ref={outerRef} color={color} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
@@ -1977,13 +2042,13 @@ function ContactBreakPulse() {
         <meshBasicMaterial ref={innerRef} color={shot.secondaryColor} transparent opacity={0.56} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
-        position={[0, 0.1, 0]}
+        position={[0, 0.14, -0.78]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.2}
+        fontSize={0.28}
         color="#ffffff"
         anchorX="center"
         anchorY="middle"
-        outlineWidth={0.035}
+        outlineWidth={0.045}
         outlineColor="#09090f"
         font={undefined}
       >

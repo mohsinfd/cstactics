@@ -7,8 +7,8 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
@@ -19,6 +19,21 @@ import { useGameStore } from '../game/store';
 type MapControlsHandle = {
   target: THREE.Vector3;
   update: () => void;
+};
+
+type CameraRigRefs = {
+  cameraRef: RefObject<ThreeOrthographicCamera | null>;
+  controlsRef: RefObject<MapControlsHandle | null>;
+};
+
+type PresentationBeatState = {
+  id: string;
+  startedAt: number;
+  basePosition: THREE.Vector3;
+  baseTarget: THREE.Vector3;
+  baseZoom: number;
+  target: THREE.Vector3;
+  settled: boolean;
 };
 
 type CameraCommand =
@@ -49,6 +64,14 @@ const WHEEL_INPUT = {
   pinchZoomFactor: 1.14,
 } as const;
 
+const CONTACT_CAMERA_BEAT = {
+  durationSeconds: 3,
+  pushInZoom: 1.42,
+  targetBlend: 0.42,
+  shakeWorld: 0.46,
+  shakeZoom: 0.035,
+} as const;
+
 function getCrispDevicePixelRatio(): number {
   if (typeof window === 'undefined') return 1.5;
   return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
@@ -65,6 +88,90 @@ function isLikelyMouseWheel(deltaX: number, deltaY: number, deltaMode: number, s
   const roundedY = Math.round(absY);
   const isCleanStep = Math.abs(absY - roundedY) < 0.01;
   return isCleanStep && (roundedY % 100 === 0 || roundedY % 120 === 0);
+}
+
+function tileToWorld(mapWidth: number, tileSize: number, x: number, y: number): THREE.Vector3 {
+  return new THREE.Vector3(
+    (mapWidth - 1 - x) * tileSize + tileSize / 2,
+    0,
+    y * tileSize + tileSize / 2
+  );
+}
+
+function PresentationDirector({ cameraRef, controlsRef }: CameraRigRefs) {
+  const map = useGameStore((s) => s.map);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const beatRef = useRef<PresentationBeatState>({
+    id: '',
+    startedAt: 0,
+    basePosition: new THREE.Vector3(),
+    baseTarget: new THREE.Vector3(),
+    baseZoom: CAMERA_PRESET.zoom,
+    target: new THREE.Vector3(),
+    settled: true,
+  });
+
+  useFrame((state) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    if (interrupt && beatRef.current.id !== interrupt.id) {
+      beatRef.current = {
+        id: interrupt.id,
+        startedAt: state.clock.elapsedTime,
+        basePosition: camera.position.clone(),
+        baseTarget: controls.target.clone(),
+        baseZoom: camera.zoom,
+        target: tileToWorld(map.width, map.tileSize, interrupt.contactTile.x, interrupt.contactTile.y),
+        settled: false,
+      };
+    }
+
+    if (!beatRef.current.id) return;
+
+    const elapsed = state.clock.elapsedTime - beatRef.current.startedAt;
+    const progress = THREE.MathUtils.clamp(elapsed / CONTACT_CAMERA_BEAT.durationSeconds, 0, 1);
+    if (progress >= 1) {
+      if (!beatRef.current.settled) {
+        controls.target.copy(beatRef.current.baseTarget);
+        camera.position.copy(beatRef.current.basePosition);
+        camera.zoom = beatRef.current.baseZoom;
+        camera.lookAt(controls.target);
+        camera.updateProjectionMatrix();
+        controls.update();
+        beatRef.current.settled = true;
+      }
+      return;
+    }
+
+    const easeIn = THREE.MathUtils.smootherstep(progress, 0, 0.45);
+    const easeOut = 1 - THREE.MathUtils.smoothstep(progress, 0.56, 1);
+    const contactWeight = easeIn * easeOut;
+    const shake = Math.sin(elapsed * 52) * CONTACT_CAMERA_BEAT.shakeWorld * contactWeight;
+    const lift = Math.cos(elapsed * 39) * CONTACT_CAMERA_BEAT.shakeWorld * 0.45 * contactWeight;
+    const stagedTarget = beatRef.current.baseTarget.clone().lerp(
+      beatRef.current.target,
+      CONTACT_CAMERA_BEAT.targetBlend * contactWeight
+    );
+    const stagedPosition = beatRef.current.basePosition.clone().lerp(
+      beatRef.current.basePosition.clone().add(
+        beatRef.current.target.clone().sub(beatRef.current.baseTarget).multiplyScalar(CONTACT_CAMERA_BEAT.targetBlend)
+      ),
+      contactWeight
+    );
+
+    stagedPosition.x += shake;
+    stagedPosition.z += lift;
+    controls.target.copy(stagedTarget);
+    camera.position.copy(stagedPosition);
+    camera.zoom = beatRef.current.baseZoom * (1 + (CONTACT_CAMERA_BEAT.pushInZoom - 1) * contactWeight + CONTACT_CAMERA_BEAT.shakeZoom * contactWeight);
+    camera.lookAt(controls.target);
+    camera.updateProjectionMatrix();
+    controls.update();
+  });
+
+  return null;
 }
 
 export function IsometricScene() {
@@ -359,6 +466,7 @@ export function IsometricScene() {
       />
 
       {/* === Scene content === */}
+      <PresentationDirector cameraRef={cameraRef} controlsRef={controlsRef} />
       <MapRenderer />
       <Suspense fallback={null}>
         <UnitRenderer />

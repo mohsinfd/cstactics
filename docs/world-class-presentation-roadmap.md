@@ -169,6 +169,14 @@ Use XCOM-style proportions:
 - Trade action is obvious but the board remains visible.
 - Kill/death feedback carries emotional weight without hiding tactical state.
 
+Progress:
+
+- First proof slice added for Banana Drill contact: reaction-fire interrupts now
+  kick a short camera push/settle beat while the board shows a brighter shot
+  lane, contact ring, muzzle glint, and impact sparks. This is intentionally
+  small; the next step is to move the beat definitions into a reusable
+  presentation queue driven by execute/contact timeline events.
+
 ### Milestone P5: Production Sound
 
 - Replace procedural-only cues with authored samples.
@@ -195,10 +203,12 @@ Use XCOM-style proportions:
 
 ## Immediate Execution Queue
 
-1. Remove HUD map-darkening overlay.
-2. Brighten map palette, lighting, and out-of-bounds frame.
+1. Remove HUD map-darkening overlay. Done.
+2. Brighten map palette, lighting, and out-of-bounds frame. Done.
 3. Make unit bodies camera-readable while preserving mechanical facing arcs.
-4. Add board brightness regression.
-5. Start event-timeline presentation service for movement/contact.
+   First pass done.
+4. Add board brightness regression. Done.
+5. Start event-timeline presentation service for movement/contact. Started with
+   the Banana Drill contact proof; generalize into a reusable queue next.
 6. Replace movement interpolation with authored move beats.
 7. Prototype one authored weapon recoil/hit/death sequence in Duel Lab.
