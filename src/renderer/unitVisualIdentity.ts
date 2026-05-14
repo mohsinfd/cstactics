@@ -2,6 +2,21 @@ import type { RoleId, Team, WeaponCategory } from '../game/types';
 
 export type UnitBaseGlyph = 'long' | 'wedge' | 'command' | 'utility' | 'stealth';
 
+export interface WeaponVisualProfile {
+  category: WeaponCategory;
+  bodyLength: number;
+  bodyWidth: number;
+  bodyHeight: number;
+  barrelLength: number;
+  barrelRadius: number;
+  muzzleOffset: number;
+  muzzleScale: number;
+  magazineVisible: boolean;
+  scopeVisible: boolean;
+  suppressorVisible: boolean;
+  stockScale: number;
+}
+
 export interface TeamVisualIdentity {
   id: Team;
   label: string;
@@ -148,12 +163,89 @@ export const ROLE_VISUAL_IDENTITIES = {
   },
 } satisfies Record<RoleId, RoleVisualIdentity>;
 
+export const WEAPON_VISUAL_PROFILES = {
+  sniper: {
+    category: 'sniper',
+    bodyLength: 1.54,
+    bodyWidth: 0.045,
+    bodyHeight: 0.075,
+    barrelLength: 0.24,
+    barrelRadius: 0.017,
+    muzzleOffset: 0.88,
+    muzzleScale: 1.16,
+    magazineVisible: true,
+    scopeVisible: true,
+    suppressorVisible: false,
+    stockScale: 1.12,
+  },
+  rifle: {
+    category: 'rifle',
+    bodyLength: 1.04,
+    bodyWidth: 0.068,
+    bodyHeight: 0.075,
+    barrelLength: 0.18,
+    barrelRadius: 0.023,
+    muzzleOffset: 0.63,
+    muzzleScale: 1,
+    magazineVisible: true,
+    scopeVisible: false,
+    suppressorVisible: false,
+    stockScale: 1,
+  },
+  smg: {
+    category: 'smg',
+    bodyLength: 0.78,
+    bodyWidth: 0.074,
+    bodyHeight: 0.072,
+    barrelLength: 0.13,
+    barrelRadius: 0.022,
+    muzzleOffset: 0.48,
+    muzzleScale: 0.84,
+    magazineVisible: true,
+    scopeVisible: false,
+    suppressorVisible: false,
+    stockScale: 0.82,
+  },
+  pistol: {
+    category: 'pistol',
+    bodyLength: 0.44,
+    bodyWidth: 0.06,
+    bodyHeight: 0.07,
+    barrelLength: 0.08,
+    barrelRadius: 0.017,
+    muzzleOffset: 0.28,
+    muzzleScale: 0.68,
+    magazineVisible: false,
+    scopeVisible: false,
+    suppressorVisible: false,
+    stockScale: 0,
+  },
+  melee: {
+    category: 'melee',
+    bodyLength: 0.34,
+    bodyWidth: 0.035,
+    bodyHeight: 0.052,
+    barrelLength: 0,
+    barrelRadius: 0.012,
+    muzzleOffset: 0.2,
+    muzzleScale: 0.46,
+    magazineVisible: false,
+    scopeVisible: false,
+    suppressorVisible: false,
+    stockScale: 0,
+  },
+} satisfies Record<WeaponCategory, WeaponVisualProfile>;
+
 export function getTeamVisualIdentity(team: Team): TeamVisualIdentity {
   return TEAM_VISUAL_IDENTITIES[team];
 }
 
 export function getRoleVisualIdentity(roleId: RoleId): RoleVisualIdentity {
   return ROLE_VISUAL_IDENTITIES[roleId];
+}
+
+export function getWeaponVisualProfile(category: WeaponCategory): WeaponVisualProfile {
+  return WEAPON_VISUAL_PROFILES[category] ?? WEAPON_VISUAL_PROFILES.rifle;
 }
 
 export function getUnitVisualIdentity(team: Team, roleId: RoleId): UnitVisualIdentity {

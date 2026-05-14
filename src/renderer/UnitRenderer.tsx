@@ -31,6 +31,7 @@ import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds, getSegmentProgress } from './movementEasing';
 import {
+  getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
   TEAM_VISUAL_IDENTITIES,
   type RoleVisualIdentity,
@@ -56,34 +57,28 @@ const TEAM_RENDER_PALETTES = {
 } satisfies Record<Unit['team'], TeamPalette>;
 
 type RoleRenderConfig = RoleVisualIdentity & {
-  weaponLen: RoleVisualIdentity['weaponLength'];
   baseShape: RoleVisualIdentity['baseGlyph'];
 };
 
 const ROLE_RENDER_CONFIG = {
   awper: {
     ...ROLE_VISUAL_IDENTITIES.awper,
-    weaponLen: ROLE_VISUAL_IDENTITIES.awper.weaponLength,
     baseShape: ROLE_VISUAL_IDENTITIES.awper.baseGlyph,
   },
   entry: {
     ...ROLE_VISUAL_IDENTITIES.entry,
-    weaponLen: ROLE_VISUAL_IDENTITIES.entry.weaponLength,
     baseShape: ROLE_VISUAL_IDENTITIES.entry.baseGlyph,
   },
   igl: {
     ...ROLE_VISUAL_IDENTITIES.igl,
-    weaponLen: ROLE_VISUAL_IDENTITIES.igl.weaponLength,
     baseShape: ROLE_VISUAL_IDENTITIES.igl.baseGlyph,
   },
   support: {
     ...ROLE_VISUAL_IDENTITIES.support,
-    weaponLen: ROLE_VISUAL_IDENTITIES.support.weaponLength,
     baseShape: ROLE_VISUAL_IDENTITIES.support.baseGlyph,
   },
   lurker: {
     ...ROLE_VISUAL_IDENTITIES.lurker,
-    weaponLen: ROLE_VISUAL_IDENTITIES.lurker.weaponLength,
     baseShape: ROLE_VISUAL_IDENTITIES.lurker.baseGlyph,
   },
 } satisfies Record<RoleId, RoleRenderConfig>;
@@ -841,7 +836,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const phase = useGameStore((s) => s.round.phase);
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
-  const latestCombatEvent = useGameStore((s) => s.combatLog[0]);
+  const latestCombatEvent = useGameStore((s) =>
+    s.combatLog.find((event) => event.attackerId === unit.id || event.targetId === unit.id)
+  );
   const ts = map.tileSize;
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
@@ -891,6 +888,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const isSpent = isActiveTeam && unit.ap <= 0;
   const p = TEAM_RENDER_PALETTES[unit.team];
   const rc = ROLE_RENDER_CONFIG[unit.role.id];
+  const weaponProfile = getWeaponVisualProfile(unit.weapon.category);
   const spriteTexture = useMemo(
     () => createUnitSpriteTexture(unit.team, unit.role.id, rc.accent),
     [rc.accent, unit.role.id, unit.team]
@@ -1053,14 +1051,16 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
     if (muzzleFlashRef.current) {
       muzzleFlashRef.current.visible = shotPulse > 0.02;
-      muzzleFlashRef.current.scale.setScalar(0.35 + shotPulse * shotPresentation.muzzleScale * (combatFxRef.current.wasCritical ? 1.28 : 1));
+      muzzleFlashRef.current.scale.setScalar(
+        0.35 + shotPulse * shotPresentation.muzzleScale * weaponProfile.muzzleScale * (combatFxRef.current.wasCritical ? 1.28 : 1)
+      );
     }
     if (muzzleMaterialRef.current) {
       muzzleMaterialRef.current.opacity = Math.min(0.92, shotPulse);
       muzzleMaterialRef.current.color.set(combatFxRef.current.wasCritical ? '#ffffff' : shotPresentation.secondaryColor);
     }
     if (muzzleLightRef.current) {
-      muzzleLightRef.current.intensity = shotPulse * shotPresentation.muzzleScale * (combatFxRef.current.wasCritical ? 2.15 : 1.25);
+      muzzleLightRef.current.intensity = shotPulse * shotPresentation.muzzleScale * weaponProfile.muzzleScale * (combatFxRef.current.wasCritical ? 2.15 : 1.25);
     }
 
     if (hitFlashRef.current) {
@@ -1105,6 +1105,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   }), [p, rc.accent, isSelected, isHovered, isActiveTeam]);
 
   const s = rc.bodyScale;
+  const muzzleAnchorZ = weaponProfile.muzzleOffset + (weaponProfile.suppressorVisible ? 0.11 : 0);
+  const barrelCenterZ = weaponProfile.bodyLength * 0.5 + weaponProfile.barrelLength * 0.42;
 
   return (
     <group
@@ -1329,43 +1331,47 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         {/* === WEAPON === */}
         <group ref={weaponRef} position={[-0.12, 0.72 * s, 0.22]}>
           <mesh rotation={[Math.PI * 0.03, 0, 0]} castShadow material={mats.weapon}>
-            <boxGeometry args={[unit.role.id === 'awper' ? 0.045 : 0.07, 0.075, rc.weaponLen]} />
+            <boxGeometry args={[weaponProfile.bodyWidth, weaponProfile.bodyHeight, weaponProfile.bodyLength]} />
           </mesh>
           {/* Stock */}
-          <mesh position={[0, 0, -rc.weaponLen * 0.45]} castShadow material={mats.weapon}>
-            <boxGeometry args={[0.04, 0.09, 0.12]} />
-          </mesh>
-          {/* Magazine */}
-          {rc.weaponLen > 0.5 && (
-            <mesh position={[0, -0.07, 0]} castShadow material={mats.weapon}>
-              <boxGeometry args={[0.03, 0.10, 0.04]} />
+          {weaponProfile.stockScale > 0 && (
+            <mesh position={[0, 0, -weaponProfile.bodyLength * 0.45]} castShadow material={mats.weapon}>
+              <boxGeometry args={[0.04 * weaponProfile.stockScale, 0.09, 0.12 * weaponProfile.stockScale]} />
             </mesh>
           )}
-          <mesh position={[0, 0, rc.weaponLen * 0.54]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <cylinderGeometry args={[unit.role.id === 'awper' ? 0.018 : 0.025, unit.role.id === 'awper' ? 0.015 : 0.022, 0.18, 8]} />
-            <meshStandardMaterial color="#090909" roughness={0.25} metalness={0.7} />
-          </mesh>
-          {/* Scope (AWPer only) */}
-          {rc.hasScope && (
+          {/* Magazine */}
+          {weaponProfile.magazineVisible && (
+            <mesh position={[0, -0.07, -weaponProfile.bodyLength * 0.04]} castShadow material={mats.weapon}>
+              <boxGeometry args={[0.03, 0.1, 0.04]} />
+            </mesh>
+          )}
+          {weaponProfile.barrelLength > 0 && (
+            <mesh position={[0, 0, barrelCenterZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[weaponProfile.barrelRadius, weaponProfile.barrelRadius * 0.86, weaponProfile.barrelLength, 8]} />
+              <meshStandardMaterial color="#090909" roughness={0.25} metalness={0.7} />
+            </mesh>
+          )}
+          {/* Scope */}
+          {weaponProfile.scopeVisible && (
             <>
               <mesh position={[0, 0.06, 0.15]} castShadow>
                 <cylinderGeometry args={[0.025, 0.03, 0.32, 8]} />
                 <meshStandardMaterial color={rc.accent} roughness={0.2} metalness={0.9} emissive={rc.accent} emissiveIntensity={0.2} />
               </mesh>
-              <mesh position={[0, 0.03, rc.weaponLen * 0.3]} castShadow>
+              <mesh position={[0, 0.03, weaponProfile.bodyLength * 0.3]} castShadow>
                 <boxGeometry args={[0.09, 0.035, 0.18]} />
                 <meshStandardMaterial color="#15191f" roughness={0.22} metalness={0.65} />
               </mesh>
             </>
           )}
-          {/* Suppressor (Lurker) */}
-          {unit.role.id === 'lurker' && (
-            <mesh position={[0, 0, rc.weaponLen * 0.55]} castShadow>
+          {/* Suppressor */}
+          {weaponProfile.suppressorVisible && (
+            <mesh position={[0, 0, weaponProfile.muzzleOffset]} castShadow>
               <cylinderGeometry args={[0.035, 0.025, 0.22, 8]} />
               <meshStandardMaterial color="#1a1a1a" roughness={0.3} metalness={0.6} />
             </mesh>
           )}
-          <group ref={muzzleFlashRef} position={[0, 0, rc.weaponLen * 0.72]} visible={false} raycast={() => null}>
+          <group ref={muzzleFlashRef} position={[0, 0, muzzleAnchorZ]} visible={false} raycast={() => null}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <coneGeometry args={[0.16, 0.34, 8]} />
               <meshBasicMaterial

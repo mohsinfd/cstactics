@@ -82,6 +82,12 @@ verbs that make those nouns matter.
 - Combat events now carry weapon identity, and first-pass shot presentation uses
   weapon-class tracer width/count, board damage numbers, recoil scale, audio
   weight, contact-break styling, and combat-log weapon chips.
+- Combat audio now has a first-pass cue/mix profile layer with quieter UI and
+  movement buses, stronger reaction/contact buses, gain caps, and chronological
+  playback for newly seen recent events instead of only the newest log item.
+- Unit weapon meshes now follow the actual equipped weapon category for length,
+  barrel, scope, suppressor, muzzle anchor, and muzzle scale while preserving
+  role body/gear identity.
 - Dead units now leave a small team/role casualty marker on the tactical board.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
@@ -167,6 +173,9 @@ verbs that make those nouns matter.
   side pistols.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
+- First-pass combat contact presentation foundation: recent combat/feedback
+  events can play as short ordered cue bursts, and unit weapon silhouettes are
+  no longer tied only to role defaults.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
   for crisper camera/browser zoom.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while

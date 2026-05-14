@@ -141,6 +141,11 @@ move, trigger contact, and freeze into a trade decision. See
   identity, board damage numbers show HP loss, tracer/recoil/audio/HUD styling
   differs by weapon class, and contact breaks get a stronger pulse/readout.
   Implemented.
+- Combat contact presentation foundation: audio cue/mix profiles now separate
+  UI, movement, utility, combat, reaction, and impact buses; recent events play
+  chronologically instead of only the latest item; unit weapon meshes now use the
+  actual equipped weapon category for profile, scope, suppressor, barrel, and
+  muzzle placement. Implemented as a first pass.
 - First-pass contact moment polish: Contact Break now leads with a clear
   tactical decision call, stopped/shooter/responder facts, and stronger
   reaction-fire audio/VFX that fades as a combat beat instead of lingering as a
@@ -154,9 +159,9 @@ move, trigger contact, and freeze into a trade decision. See
   continues to own interrupted executes. Implemented.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
-- Next visual/audio slice: build a combat contact presentation foundation where
-  actual weapon category drives unit weapon mesh/recoil/audio identity and
-  short combat event queues can present multiple beats cleanly.
+- Next visual/audio slice: author higher-quality unit sprite/model layers and
+  a richer combat mix pass for reload, footsteps, utility bloom, bomb ticks, and
+  multi-beat execute replay timing.
 
 ### Milestone C: Utility Timing
 
