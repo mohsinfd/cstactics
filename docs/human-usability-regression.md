@@ -130,6 +130,11 @@ and actions should sit in a compact lower-edge command deck; objectives,
 score/phase, and camera controls should stay small at the edges; the board
 center should remain open except for brief targeting/combat feedback.
 
+The HUD layer must never dim the tactical board. Atmosphere belongs to scene
+lighting/materials, not a full-screen UI overlay. Any future vignette or
+cinematic darkening must be event-scoped and must have a screenshot/readability
+gate.
+
 ## Immediate Failure Examples
 
 - Zooming or panning makes `End Turn`, `Run Execute`, or action buttons disappear.

@@ -10,6 +10,9 @@ function analyzePng(buffer) {
   let spentSlate = 0;
   let ctBlue = 0;
   let tRed = 0;
+  let lumaSum = 0;
+  let midValue = 0;
+  let nearBlack = 0;
 
   for (let y = 0; y < image.height; y += 2) {
     for (let x = 0; x < image.width; x += 2) {
@@ -22,6 +25,11 @@ function analyzePng(buffer) {
       if (a < 40) continue;
 
       buckets.add(`${r >> 4},${g >> 4},${b >> 4}`);
+
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lumaSum += luma;
+      if (luma > 25) midValue += 1;
+      if (luma < 12) nearBlack += 1;
 
       if (r + g + b > 24 && r + g + b < 742) nonBlank += 1;
       if ((r > 210 && g > 155 && b < 150) || (r > 215 && g > 215 && b > 185)) brightAction += 1;
@@ -42,6 +50,9 @@ function analyzePng(buffer) {
     spentSlate,
     ctBlue,
     tRed,
+    averageLuma: lumaSum / Math.max(1, Math.ceil(image.width / 2) * Math.ceil(image.height / 2)),
+    midValue,
+    nearBlack,
   };
 }
 
@@ -67,6 +78,18 @@ function expectNonBlankCanvas(stats, label) {
     stats.bucketCount,
     `${label} canvas should have enough color variation to not be blank: ${JSON.stringify(stats)}`
   ).toBeGreaterThan(55);
+  expect(
+    stats.averageLuma,
+    `${label} canvas should keep the tactical board out of near-black values: ${JSON.stringify(stats)}`
+  ).toBeGreaterThan(24);
+  expect(
+    stats.midValue,
+    `${label} canvas should keep enough mid-value board pixels readable: ${JSON.stringify(stats)}`
+  ).toBeGreaterThan(stats.sampled * 0.45);
+  expect(
+    stats.nearBlack,
+    `${label} canvas should not be dominated by near-black board pixels: ${JSON.stringify(stats)}`
+  ).toBeLessThan(stats.sampled * 0.35);
 }
 
 test.describe('unit visual readability smoke', () => {

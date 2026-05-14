@@ -156,6 +156,7 @@ function SafeText(props: ComponentProps<typeof Text>) {
 
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
+const DEFAULT_CAMERA_READABLE_YAW = 2.45;
 
 type UnitStateVisualProfile = {
   color: string;
@@ -1229,6 +1230,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
     const walkPhase = state.clock.elapsedTime * 13;
     if (bodyRef.current) {
+      const rootYaw = groupRef.current?.rotation.y ?? angle;
+      bodyRef.current.rotation.y = dampAngle(
+        bodyRef.current.rotation.y,
+        DEFAULT_CAMERA_READABLE_YAW - rootYaw,
+        movementIntensity > 0 ? 8 : 12,
+        delta
+      );
       bodyRef.current.position.y = THREE.MathUtils.damp(
         bodyRef.current.position.y,
         movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.07,

@@ -151,6 +151,10 @@ verbs that make those nouns matter.
 - XCOM-inspired HUD proportion pass: the selected-unit detail now defaults to a
   lower-edge unit flag/action deck, and Contact Break sits as a side decision
   panel instead of blocking the tactical center.
+- World-class presentation rebuild roadmap is captured in
+  `docs/world-class-presentation-roadmap.md`; the core simulation remains the
+  asset to preserve while lighting, unit readability, animation, camera, HUD,
+  and sound become the rebuild track.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
 - Main-thread orchestration, specialist-agent ownership, and done-definition
@@ -205,6 +209,9 @@ verbs that make those nouns matter.
   for Banana Drill and Duel Lab, checking nonblank board rendering, CT/T color
   families, and action/target highlight pixels across desktop, narrow laptop,
   and compact HUD viewports.
+- The canvas readability smoke now also guards board luminance/mid-value pixel
+  coverage so presentation changes cannot silently push the tactical map back
+  into near-black values.
 - The visual readability smoke also forces a selected 0-AP Duel Lab unit and
   checks for slate/DONE-state pixels plus selected ownership pixels, guarding
   against selected-but-unavailable units reading as actionable.
@@ -212,6 +219,9 @@ verbs that make those nouns matter.
   keeping map masks, LOS, route timing, and cover data unchanged.
 - Compact canvas readability now keeps the underlying tactical mat out of
   near-black so the board holds readable pixels behind the HUD on small screens.
+- First presentation-ceiling pass removed HUD-level map dimming, lifted map and
+  lighting values, and biases unit bodies toward the default camera while
+  keeping tactical facing represented by arcs/gameplay state.
 
 ## Partially Implemented
 

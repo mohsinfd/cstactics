@@ -7,6 +7,11 @@ decisions: recognizable maps, meaningful timing, readable crossfires, tense bomb
 pressure, synchronized utility, trades, and clean turn-based command decisions.
 The game can look indie, but it should never feel rough, vague, or toy-like.
 
+The presentation rebuild track is now captured in
+`docs/world-class-presentation-roadmap.md`. The core game logic should stay
+renderer-independent; the next ceiling break is an authored presentation layer
+for lighting, unit readability, animation timing, camera, HUD, and sound.
+
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do
 not land, every other feature sits on weak ground.
@@ -125,6 +130,13 @@ move, trigger contact, and freeze into a trade decision. See
 - XCOM-inspired HUD proportions are implemented as a first pass: selected-unit
   status/actions live in a compact lower-edge deck, and Contact Break reads from
   the side instead of occupying the board's center.
+- First presentation-ceiling pass started: HUD-level map dimming removed,
+  board/lighting values lifted, and unit bodies now bias toward the default
+  camera for readability while mechanical facing remains represented by tactical
+  arcs and gameplay state.
+- Canvas readability regression now includes luminance/mid-value guardrails so
+  the tactical board cannot regress into a near-black presentation while still
+  passing nonblank pixel checks.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -353,6 +365,9 @@ Work:
 - XCOM-style edge placement is started: the lower command band should stay
   compact, top HUD should remain sparse, and the center of the tactical board
   should be reserved for units, paths, contact, and shot feedback.
+- World-class presentation roadmap added. The immediate track is board
+  brightness/readability, camera-readable units, authored movement/contact
+  timelines, cinematic contact staging, and authored audio.
 - Camera presets and smoother pan/zoom limits.
 - Sound design for shots, plants, defuses, UI, and phase changes. First-pass
   procedural interaction cues are implemented; authored sample assets and a

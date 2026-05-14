@@ -41,15 +41,15 @@ function SafeText(props: ComponentProps<typeof Text>) {
 
 // --- Color palette: muted tactical tones ---
 const TILE_COLORS: Record<string, string> = {
-  floor:       '#6f7b8e',
-  bombsite_a:  '#963d3d',
-  bombsite_b:  '#963d3d',
-  spawn_t:     '#c59b2f',
-  spawn_ct:    '#2d80bd',
-  wall:        '#171b24',
-  cover_half:  '#c0a661',
-  cover_full:  '#8d7650',
-  out_of_bounds: '#11151d',
+  floor:       '#9aa8ba',
+  bombsite_a:  '#c15d58',
+  bombsite_b:  '#c15d58',
+  spawn_t:     '#d2a83f',
+  spawn_ct:    '#52a6df',
+  wall:        '#3a4658',
+  cover_half:  '#dcc676',
+  cover_full:  '#ad966b',
+  out_of_bounds: '#263044',
 };
 
 const WALL_HEIGHT = 0.95;
@@ -170,7 +170,14 @@ function InstancedFloor({ positions, elevations, color, tileSize }: {
   const mesh = useMemo(() => {
     const size = tileSize - GRID_GAP;
     const geo = new THREE.BoxGeometry(size, FLOOR_H, size);
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.015, vertexColors: true });
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.86,
+      metalness: 0.015,
+      vertexColors: true,
+      emissive: '#172030',
+      emissiveIntensity: 0.08,
+    });
     const inst = new THREE.InstancedMesh(geo, mat, positions.length);
     const d = new THREE.Object3D();
     const colorAttr = new Float32Array(positions.length * 3);
@@ -226,8 +233,8 @@ function WallLayer() {
       color: TILE_COLORS.wall,
       roughness: 0.86,
       metalness: 0.02,
-      emissive: '#05070b',
-      emissiveIntensity: 0.08,
+      emissive: '#26344a',
+      emissiveIntensity: 0.22,
     });
     const inst = new THREE.InstancedMesh(geo, mat, wallPositions.length);
     const d = new THREE.Object3D();
@@ -242,7 +249,7 @@ function WallLayer() {
 
       // Subtle variation keeps the boundary from looking tiled-flat.
       const hash = ((x * 73 + z * 137) % 100) / 100;
-      const variation = 0.82 + hash * 0.14;
+      const variation = 0.98 + hash * 0.16;
       colorAttr[i * 3] = baseColor.r * variation;
       colorAttr[i * 3 + 1] = baseColor.g * variation;
       colorAttr[i * 3 + 2] = baseColor.b * variation;
@@ -250,7 +257,7 @@ function WallLayer() {
 
     inst.instanceMatrix.needsUpdate = true;
     inst.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-    inst.castShadow = true;
+    inst.castShadow = false;
     inst.receiveShadow = true;
     return inst;
   }, [wallPositions, ts]);
@@ -2136,7 +2143,7 @@ function GroundPlane() {
     <mesh position={[(map.width * ts) / 2, -0.05, (map.height * ts) / 2]}
       rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[map.width * ts + 20, map.height * ts + 20]} />
-      <meshBasicMaterial color="#151a24" />
+      <meshBasicMaterial color={TILE_COLORS.out_of_bounds} />
     </mesh>
   );
 }

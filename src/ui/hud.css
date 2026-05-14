@@ -24,17 +24,6 @@
   isolation: isolate;
 }
 
-[data-testid="hud-root"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 50% 43%, rgba(101, 183, 255, 0.08), transparent 28%),
-    radial-gradient(circle at 20% 90%, rgba(244, 196, 48, 0.06), transparent 24%),
-    linear-gradient(180deg, rgba(1, 3, 7, 0.18), transparent 28%, transparent 72%, rgba(1, 3, 7, 0.32));
-}
-
 :where(
   [data-testid="hud-selected-unit-panel"],
   [data-testid="hud-command-bar"],

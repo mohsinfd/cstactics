@@ -1,0 +1,204 @@
+# World-Class Presentation Roadmap
+
+## Mandate
+
+Keep the core tactics engine. Replace the prototype presentation ceiling.
+
+The target is not "a React/Three prototype with nicer colors." The target is a
+small but world-class tactical diorama: Inferno is readable in five seconds,
+units have authored posture and timing, contact moments feel cinematic, and the
+HUD supports decisions without stealing the screen.
+
+## North Star
+
+Counter-Strike slowed into XCOM should feel like this:
+
+1. The board is the hero.
+2. Units are readable from the default camera at all times.
+3. Actions resolve through authored beats, not raw interpolation.
+4. Contact freezes on the interesting frame.
+5. The HUD behaves like an instrument panel, not a debug overlay.
+6. Every presentation choice is testable through screenshots and human-click
+   browser flows.
+
+## Non-Negotiable Architecture
+
+- **Simulation remains renderer-independent.** Store actions produce events:
+  move, step, utility bloom/pop, spotted, reaction shot, hit, kill, plant,
+  defuse, contact break, and round end.
+- **Presentation consumes events.** Animation, sound, camera, particles, and HUD
+  should read a timeline stream instead of inventing gameplay outcomes.
+- **Renderer is replaceable.** Three.js is acceptable as a stage while it helps;
+  it must not trap art direction, animation, or UI in ad hoc geometry.
+- **Authoring beats procedural.** Procedural fallback is fine, but world-class
+  feel comes from authored timing, poses, samples, and shot/contact staging.
+
+## Art Direction
+
+### Tactical Diorama
+
+- Inferno should read as a stylized physical board, not a black grid.
+- Walkable lanes need mid-value materials so paths, units, and utility stand
+  apart without the HUD dimming the world.
+- Out-of-bounds mass should frame the playable space, not swallow it.
+- Landmark props should be recognizable silhouettes first, decorative detail
+  second.
+
+### Unit Readability
+
+- Mechanical facing belongs to cones, arcs, held lanes, weapon aim lines, and
+  combat math.
+- Character bodies should present toward the default camera enough that team,
+  role, weapon, and alive/spent/dead state read immediately.
+- Role identity should be larger than tiny labels: AWP silhouette, utility belt,
+  entry bulk, IGL comms, lurker slimmer profile.
+- Long term, choose one production path:
+  - rigged low-poly GLB soldiers with authored clips, or
+  - high-resolution 2.5D sprite sheets with authored directional poses.
+
+## Animation System
+
+Replace "position interpolation" with a presentation timeline.
+
+### Required Clips
+
+- idle ready
+- select pulse / readiness shift
+- start move anticipation
+- tactical step / run
+- stop and brace
+- aim raise
+- recoil by weapon class
+- hit flinch
+- kill collapse / casualty pose
+- smoke throw
+- flash throw
+- plant / defuse / pickup
+
+### Timing Rules
+
+- Every movement segment has anticipation, travel, and settle.
+- Every shot has aim raise, muzzle event, recoil, impact, and recovery.
+- Contact freezes on a deliberate frame with the shooter/target readable.
+- Camera and audio are timed to the same beats as units.
+
+## HUD And UX
+
+Use XCOM-style proportions:
+
+- Selected-unit status, weapon/ammo, AP, and actions live in a compact lower-edge
+  command deck.
+- Top HUD only communicates score, side, round, and phase.
+- Scenario/debug tools are secondary and visually demoted.
+- Contact Break is a side decision panel unless it is intentionally staged as a
+  cinematic pause.
+- The board center is reserved for units, paths, utility, targeting, and combat
+  feedback.
+
+## Audio Direction
+
+- Procedural cues are temporary scaffolding.
+- Build an authored sample library for:
+  - UI confirm/deny/hover/select
+  - footsteps by movement intensity
+  - rifle/SMG/pistol/AWP/suppressed shots
+  - hit, armor hit, headshot, kill
+  - smoke bloom, flash pop, plant, defuse, bomb tick
+  - contact sting, trade opportunity, round win/loss
+- Mix by bus: UI, movement, utility, combat, contact, objective, ambient.
+- No cue should mask the contact decision.
+
+## Camera Direction
+
+- Default camera must show Inferno as a coherent board.
+- Camera movement should never be required to use the HUD.
+- Add cinematic camera beats only after the tactical camera is stable:
+  - subtle push on contact
+  - recoil shake
+  - kill hit-stop
+  - bomb pressure pulse
+- Tactical readability always beats cinematic flourish.
+
+## Tooling And Pipeline
+
+- Add screenshot gates for desktop, narrow laptop, compact, contact, zoom stress,
+  Duel Lab, and Banana Drill.
+- Add a board-brightness/readability pixel smoke so the map cannot regress into
+  near-black.
+- Keep authored visual profiles in data files.
+- Introduce asset manifests for sprites, GLBs, audio samples, and VFX profiles.
+- Add debug scene selectors for 1v1 movement, shooting, utility, contact,
+  plant/defuse, and round-end.
+
+## Milestones
+
+### Milestone P0: Stop Presentation Regressions
+
+- Remove HUD-level map dimming.
+- Restore board mid-values and lighting.
+- Keep selected-unit UI at the lower edge.
+- Keep Contact Break off the tactical center.
+- Add docs/tests that define HUD proportion and board brightness.
+
+### Milestone P1: Readable Tactical Board
+
+- Material pass for lane hierarchy, out-of-bounds mass, cover, sites, and
+  landmark props.
+- Board brightness and contrast gates.
+- Cleaner utility/cover/held-lane overlay priority.
+- First viewport should read as Inferno without interacting.
+
+### Milestone P2: Camera-Readable Units
+
+- Decouple mechanical facing from character presentation facing.
+- Add bigger role silhouettes and weapon silhouettes.
+- Add selected/spent/target/dead states that read before labels.
+- Decide final unit pipeline: GLB rig or authored 2.5D sprite sheets.
+
+### Milestone P3: Authored Motion
+
+- Add event-driven presentation timelines.
+- Replace move interpolation with start/step/settle beats.
+- Add aim/recoil/hit/death/utility clips.
+- Add contact freeze pose and hit-stop.
+
+### Milestone P4: Cinematic Contact
+
+- Contact Break becomes a staged event: camera nudge, shooter read, target read,
+  shot, result, trade window.
+- Trade action is obvious but the board remains visible.
+- Kill/death feedback carries emotional weight without hiding tactical state.
+
+### Milestone P5: Production Sound
+
+- Replace procedural-only cues with authored samples.
+- Add mix buses, ducking, and priority rules.
+- Every action gets a satisfying but restrained response.
+
+### Milestone P6: Asset Pipeline
+
+- Establish repeatable import/export for units, props, VFX, and audio.
+- Add budgets for texture size, triangle count, animation clips, and load time.
+- Build a tiny style bible with color, silhouette, lighting, motion, and sound
+  examples.
+
+### Milestone P7: Vertical Slice Polish Bar
+
+- Banana 2v2:
+  - T plans a flash/smoke/swing.
+  - CT holds.
+  - Contact triggers.
+  - Reaction shot resolves.
+  - Trade decision is readable.
+  - Kill/death/utility/audio feel intentional.
+- This slice must look good in a screenshot and feel good in a 30-second clip.
+
+## Immediate Execution Queue
+
+1. Remove HUD map-darkening overlay.
+2. Brighten map palette, lighting, and out-of-bounds frame.
+3. Make unit bodies camera-readable while preserving mechanical facing arcs.
+4. Add board brightness regression.
+5. Start event-timeline presentation service for movement/contact.
+6. Replace movement interpolation with authored move beats.
+7. Prototype one authored weapon recoil/hit/death sequence in Duel Lab.

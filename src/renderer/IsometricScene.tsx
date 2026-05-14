@@ -273,14 +273,14 @@ export function IsometricScene() {
       style={{
         width: '100vw',
         height: '100vh',
-        background: '#10131a',
+        background: '#202838',
         touchAction: 'none',
         transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
       onWheel={handleWheel}
     >
-      <color attach="background" args={['#10131a']} />
+      <color attach="background" args={['#202838']} />
 
       {/* Camera */}
       <OrthographicCamera
@@ -321,16 +321,16 @@ export function IsometricScene() {
 
       {/* Hemisphere: warm ground, cool sky */}
       <hemisphereLight
-        args={['#d7deee', '#2a2630', 0.78]}
+        args={['#f4f8ff', '#4a4148', 1.05]}
       />
 
       {/* Ambient fill */}
-      <ambientLight intensity={0.76} color="#c9d2e2" />
+      <ambientLight intensity={1.04} color="#e5edf8" />
 
       {/* Main sun (warm, casts shadows) */}
       <directionalLight
         position={[cx + 60, 100, cz - 40]}
-        intensity={1.2}
+        intensity={1.42}
         color="#ffe0b0"
         castShadow
         shadow-mapSize-width={2048}
@@ -347,14 +347,14 @@ export function IsometricScene() {
       {/* Cool fill from opposite side */}
       <directionalLight
         position={[cx - 50, 50, cz + 50]}
-        intensity={0.42}
+        intensity={0.64}
         color="#7788aa"
       />
 
       {/* Slight rim light from behind */}
       <directionalLight
         position={[cx, 30, cz - 80]}
-        intensity={0.28}
+        intensity={0.44}
         color="#aabbcc"
       />
 
@@ -365,7 +365,7 @@ export function IsometricScene() {
       </Suspense>
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#10131a', 360, 640]} />
+      <fog attach="fog" args={['#202838', 520, 820]} />
     </Canvas>
   );
 }
