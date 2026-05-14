@@ -22,8 +22,9 @@ pass after integration.
 ## Scope
 
 This roadmap began as a renderer audit plus an additive identity artifact. The
-current player-visualization slice now makes a small renderer-only polish pass
-in `src/renderer/UnitRenderer.tsx`, limited to team headgear and sprite marks.
+current player-visualization direction is now whitebox tactical miniatures:
+renderer-only primitive units in `src/renderer/UnitRenderer.tsx`, with solid
+team color first, role silhouettes second, and state overlays above both.
 
 ## Current Visual Vocabulary
 
@@ -167,6 +168,13 @@ threat, or utility overlays.
   are overlay layers calibrated to the concept board. Future unit art should
   replace the simple marker with an actual movable rig/sprite, but the
   coordinate strategy is the correct one.
+- Whitebox primitive miniatures: the live tactical board no longer needs a
+  canvas sprite billboard for unit readability. CT units should read as solid
+  blue, T units as solid red, using larger capsule/cylinder/sphere/box
+  primitives with subdued role marks. Keep the character body biased toward the
+  default camera for readability, but keep the small rifle primitive on the
+  gameplay-facing root so weapon direction still matches mechanical facing.
+  Selected units need an obvious ring plus world-space chevron/flag treatment.
 
 ## Next Presentation Targets
 

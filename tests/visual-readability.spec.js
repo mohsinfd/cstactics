@@ -10,6 +10,7 @@ function analyzePng(buffer) {
   let spentSlate = 0;
   let ctBlue = 0;
   let tRed = 0;
+  let boardLight = 0;
   let lumaSum = 0;
   let midValue = 0;
   let nearBlack = 0;
@@ -33,6 +34,7 @@ function analyzePng(buffer) {
 
       if (r + g + b > 24 && r + g + b < 742) nonBlank += 1;
       if ((r > 210 && g > 155 && b < 150) || (r > 215 && g > 215 && b > 185)) brightAction += 1;
+      if (r > 135 && r < 235 && g > 145 && g < 245 && b > 150 && b < 250 && Math.abs(r - g) < 46 && b >= r * 0.86) boardLight += 1;
       if (r > 95 && r < 220 && g > 105 && g < 225 && b > 115 && b < 235 && b > r * 1.04) spentSlate += 1;
       if (b > 82 && b > r * 1.15 && b >= g * 0.85 && r < 150) ctBlue += 1;
       if (r > 135 && g < 115 && b < 110 && r > g * 1.25 && r > b * 1.25) tRed += 1;
@@ -47,6 +49,7 @@ function analyzePng(buffer) {
     nonBlank,
     bucketCount: buckets.size,
     brightAction,
+    boardLight,
     spentSlate,
     ctBlue,
     tRed,
@@ -95,6 +98,13 @@ function expectNonBlankCanvas(stats, label) {
 test.describe('unit visual readability smoke', () => {
   test('Banana Drill and Duel Lab screenshots keep team and action pixels readable', async ({ page }) => {
     await waitForReadableCanvas(page);
+
+    const firstLoad = await canvasStats(page);
+    expectNonBlankCanvas(firstLoad, 'first load tactical board');
+    expect(
+      firstLoad.boardLight,
+      `first load should contain visible light slate board pixels, not only blue void: ${JSON.stringify(firstLoad)}`
+    ).toBeGreaterThan(firstLoad.sampled * 0.035);
 
     await page.getByTestId('hud-command-contact-drill').click();
     await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().units.length)).toBeGreaterThan(2);

@@ -217,6 +217,14 @@ verbs that make those nouns matter.
   against selected-but-unavailable units reading as actionable.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while
   keeping map masks, LOS, route timing, and cover data unchanged.
+- CS2 stratboard whitebox pass: renderer colors now flow through
+  `src/renderer/artDirection.ts`, the board renders as a floating clay tactical
+  model over a pale studio void, walls use taller white room-boundary masses,
+  landmark props are primitive-only silhouettes, and gameplay/map data remains
+  unchanged.
+- First-load board visibility is guarded by an R3F-side camera bootstrap plus a
+  browser pixel smoke that checks for light clay board pixels before scenario
+  buttons are clicked.
 - Compact canvas readability now keeps the underlying tactical mat out of
   near-black so the board holds readable pixels behind the HUD on small screens.
 - First presentation-ceiling pass removed HUD-level map dimming, lifted map and

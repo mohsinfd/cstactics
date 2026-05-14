@@ -22,12 +22,14 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
-import type { CombatEvent, CoverObject, FlashBurst, MapData, TileCoord } from '../game/types';
+import type { CombatEvent, FlashBurst, MapData, Tile, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
 import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
 import { getWatchedLane, hasLineOfSight } from '../game/los';
 import { getShotPresentation } from '../game/shotPresentation';
+import { ART, standardMaterialProps, type ArtMaterialProfile, type ArtPaletteToken } from './artDirection';
+import { LandmarkCoverProp } from './diorama/LandmarkProps';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
@@ -39,30 +41,53 @@ function SafeText(props: ComponentProps<typeof Text>) {
   );
 }
 
-// --- Color palette: muted tactical tones ---
+type ArtColor = ArtPaletteToken | THREE.ColorRepresentation;
+
+const WHITEBOX = {
+  floor: ART.palette.floorTop,
+  floorSite: ART.palette.floorSite,
+  floorSpawnT: '#e7dfd9',
+  floorSpawnCT: '#e0e9ee',
+  slabSide: '#c3c7c4',
+  slabSideDark: '#9fa8a9',
+  wallTop: ART.palette.wallTop,
+  wallCapSide: '#d5d4cc',
+  wallSide: '#d7d7d1',
+  wallPlinth: '#b8bebc',
+  wallDark: '#9ea8a9',
+  archLight: '#eee9df',
+  archMid: '#d0d2cf',
+  archDark: '#aab2b0',
+  siteA: '#d26c65',
+  siteB: '#dfc861',
+} as const;
+
+// --- Color palette: muted low-poly diorama tones ---
 const TILE_COLORS: Record<string, string> = {
-  floor:       '#9aa8ba',
-  bombsite_a:  '#c15d58',
-  bombsite_b:  '#c15d58',
-  spawn_t:     '#d2a83f',
-  spawn_ct:    '#52a6df',
-  wall:        '#435064',
-  cover_half:  '#dcc676',
-  cover_full:  '#ad966b',
-  out_of_bounds: '#303c52',
+  floor: WHITEBOX.floor,
+  bombsite_a: WHITEBOX.floorSite,
+  bombsite_b: WHITEBOX.floorSite,
+  spawn_t: WHITEBOX.floorSpawnT,
+  spawn_ct: WHITEBOX.floorSpawnCT,
+  wall: WHITEBOX.wallSide,
+  cover_half: WHITEBOX.archMid,
+  cover_full: WHITEBOX.archMid,
+  out_of_bounds: ART.palette.void,
 };
 
-const WALL_HEIGHT = 0.95;
-const COVER_HALF_H = 0.9;
-const COVER_FULL_H = 1.8;
-const FLOOR_H = 0.1;
-const GRID_GAP = 0.003; // nearly seamless so the silhouette reads before the grid
-const MOVE_ONE_AP_COLOR = '#5df2ff';
-const MOVE_TWO_AP_COLOR = '#f7cf5f';
-const MOVE_BOUNDARY_COLOR = '#9dfcff';
-const THREAT_COLOR = '#ff8a3d';
-const SMOKE_PREVIEW_COLOR = '#c5d1df';
-const FLASH_PREVIEW_COLOR = '#fff1a8';
+const WALL_HEIGHT = ART.heights.wall * 1.62;
+const WALL_CAP_H = Math.max(0.18, ART.heights.wallCap * 1.5);
+const WALL_PLINTH_H = 0.16;
+const COVER_HALF_H = ART.heights.coverHalf;
+const COVER_FULL_H = ART.heights.coverFull;
+const FLOOR_H = ART.heights.floor;
+const GRID_GAP = ART.heights.gridGap; // nearly seamless so the silhouette reads before the grid
+const MOVE_ONE_AP_COLOR = ART.palette.moveOneAP;
+const MOVE_TWO_AP_COLOR = ART.palette.moveTwoAP;
+const MOVE_BOUNDARY_COLOR = ART.palette.selected;
+const THREAT_COLOR = ART.palette.danger;
+const SMOKE_PREVIEW_COLOR = ART.palette.smoke;
+const FLASH_PREVIEW_COLOR = ART.palette.flash;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS_TILES = 2;
 const FLASH_THROW_RANGE = 12;
@@ -90,6 +115,253 @@ function tileWorld(x: number, y: number, ts: number): [number, number, number] {
   return [(90 - 1 - x) * ts + ts / 2, 0, y * ts + ts / 2];
 }
 
+function tileElevationY(elevation: number, ts: number): number {
+  return elevation * ts * ART.heights.elevationStep;
+}
+
+function tileSurfaceY(elevation: number, ts: number): number {
+  return tileElevationY(elevation, ts) + FLOOR_H / 2;
+}
+
+function tileSlabBottomY(elevation: number, ts: number): number {
+  return tileSurfaceY(elevation, ts) - ART.heights.slabDepth;
+}
+
+function footprintKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+const CARDINAL_DIRECTIONS = [
+  { dx: 1, dy: 0, shade: 0.9 },
+  { dx: -1, dy: 0, shade: 1 },
+  { dx: 0, dy: 1, shade: 0.84 },
+  { dx: 0, dy: -1, shade: 0.96 },
+] as const;
+
+function buildCoverFootprintKeys(map: MapData): Set<string> {
+  const keys = new Set<string>();
+
+  for (const cover of map.coverObjects) {
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
+          keys.add(footprintKey(x, y));
+        }
+      }
+    }
+  }
+
+  return keys;
+}
+
+function isCoverFootprintTile(
+  tile: Tile | undefined,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return tile?.type === 'cover_half' || tile?.type === 'cover_full' || coverFootprint.has(footprintKey(x, y));
+}
+
+function isRenderedFloorFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  const tile = map.grid[y]?.[x];
+  return Boolean(tile && (tile.walkable || isCoverFootprintTile(tile, coverFootprint, x, y)));
+}
+
+function isRenderedWallFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  const tile = map.grid[y]?.[x];
+  if (tile?.type !== 'wall') return false;
+  return CARDINAL_DIRECTIONS.some(({ dx, dy }) => isRenderedFloorFootprintTile(map, coverFootprint, x + dx, y + dy));
+}
+
+function isBoardFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return isRenderedFloorFootprintTile(map, coverFootprint, x, y) ||
+    isRenderedWallFootprintTile(map, coverFootprint, x, y);
+}
+
+function isTrueVoidAt(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return !isBoardFootprintTile(map, coverFootprint, x, y);
+}
+
+function buildFloorSlabEdgeGeometry(map: MapData, ts: number): THREE.BufferGeometry | null {
+  const vertices: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const coverFootprint = buildCoverFootprintKeys(map);
+  const slabColor = new THREE.Color(WHITEBOX.slabSide);
+  const half = ts / 2;
+
+  const addFace = (corners: [number, number, number][], shade: number) => {
+    const start = vertices.length / 3;
+    const color = slabColor.clone().multiplyScalar(shade);
+
+    corners.forEach(([x, y, z]) => {
+      vertices.push(x, y, z);
+      colors.push(color.r, color.g, color.b);
+    });
+    indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (!isBoardFootprintTile(map, coverFootprint, x, y)) continue;
+      const tile = map.grid[y]?.[x];
+      if (!tile) continue;
+
+      const [wx, , wz] = tileWorld(x, y, ts);
+      const topY = tileSurfaceY(tile.elevation, ts);
+      const bottomY = tileSlabBottomY(tile.elevation, ts);
+
+      CARDINAL_DIRECTIONS.forEach(({ dx, dy, shade }) => {
+        if (!isTrueVoidAt(map, coverFootprint, x + dx, y + dy)) return;
+
+        if (dx === 1) {
+          const edgeX = wx - half;
+          addFace([
+            [edgeX, bottomY, wz + half],
+            [edgeX, bottomY, wz - half],
+            [edgeX, topY, wz - half],
+            [edgeX, topY, wz + half],
+          ], shade);
+        } else if (dx === -1) {
+          const edgeX = wx + half;
+          addFace([
+            [edgeX, bottomY, wz - half],
+            [edgeX, bottomY, wz + half],
+            [edgeX, topY, wz + half],
+            [edgeX, topY, wz - half],
+          ], shade);
+        } else if (dy === 1) {
+          const edgeZ = wz + half;
+          addFace([
+            [wx - half, bottomY, edgeZ],
+            [wx + half, bottomY, edgeZ],
+            [wx + half, topY, edgeZ],
+            [wx - half, topY, edgeZ],
+          ], shade);
+        } else {
+          const edgeZ = wz - half;
+          addFace([
+            [wx + half, bottomY, edgeZ],
+            [wx - half, bottomY, edgeZ],
+            [wx - half, topY, edgeZ],
+            [wx + half, topY, edgeZ],
+          ], shade);
+        }
+      });
+    }
+  }
+
+  if (vertices.length === 0) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function buildFloorTopGeometry(map: MapData, ts: number): THREE.BufferGeometry | null {
+  const vertices: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const half = ts / 2;
+
+  const addTopFace = (x: number, y: number, tile: Tile) => {
+    const [wx, , wz] = tileWorld(x, y, ts);
+    const topY = tileSurfaceY(tile.elevation, ts) + 0.002;
+    const start = vertices.length / 3;
+    const color = new THREE.Color(TILE_COLORS[tile.type] || TILE_COLORS.floor);
+
+    vertices.push(
+      wx - half, topY, wz - half,
+      wx - half, topY, wz + half,
+      wx + half, topY, wz + half,
+      wx + half, topY, wz - half,
+    );
+
+    for (let i = 0; i < 4; i++) {
+      colors.push(color.r, color.g, color.b);
+    }
+
+    indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const tile = map.grid[y]?.[x];
+      if (!tile || !tile.walkable) continue;
+      addTopFace(x, y, tile);
+    }
+  }
+
+  if (vertices.length === 0) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeStandardMaterial(
+  color: ArtColor,
+  profile: ArtMaterialProfile,
+  overrides: THREE.MeshStandardMaterialParameters = {},
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial(standardMaterialProps(color, profile, overrides));
+}
+
+function makeBoxMaterials({
+  top,
+  side,
+  bottom = side,
+  profile,
+  vertexColors = false,
+  overrides = {},
+}: {
+  top: ArtColor;
+  side: ArtColor;
+  bottom?: ArtColor;
+  profile: ArtMaterialProfile;
+  vertexColors?: boolean;
+  overrides?: THREE.MeshStandardMaterialParameters;
+}): THREE.MeshStandardMaterial[] {
+  const sideProps = { vertexColors, ...overrides };
+  const topProps = { vertexColors, ...overrides };
+
+  return [
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(top, profile, topProps),
+    makeStandardMaterial(bottom, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+  ];
+}
+
 function gridDistance(a: TileCoord, b: TileCoord): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -98,6 +370,65 @@ function gridDistance(a: TileCoord, b: TileCoord): number {
 
 type LinePoint = [number, number, number];
 type BoundarySegment = [LinePoint, LinePoint];
+
+function curvedLinePoints(points: LinePoint[], segmentsPerPoint = 8): LinePoint[] {
+  if (points.length <= 2) return points;
+  const curve = new THREE.CatmullRomCurve3(
+    points.map((point) => new THREE.Vector3(...point)),
+    false,
+    'centripetal',
+    0.32,
+  );
+  return curve.getPoints(Math.max(14, points.length * segmentsPerPoint)).map((point) => [point.x, point.y, point.z]);
+}
+
+function arrowHeadSegments(points: LinePoint[], size: number): BoundarySegment[] {
+  if (points.length < 2) return [];
+  const end = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const dx = end[0] - prev[0];
+  const dz = end[2] - prev[2];
+  const len = Math.sqrt(dx * dx + dz * dz) || 1;
+  const ux = dx / len;
+  const uz = dz / len;
+  const px = -uz;
+  const pz = ux;
+  const back: LinePoint = [end[0] - ux * size, end[1], end[2] - uz * size];
+  const left: LinePoint = [back[0] + px * size * 0.44, end[1], back[2] + pz * size * 0.44];
+  const right: LinePoint = [back[0] - px * size * 0.44, end[1], back[2] - pz * size * 0.44];
+  return [[end, left], [end, right]];
+}
+
+function ArrowHeadLines({
+  points,
+  color,
+  size,
+  lineWidth,
+  renderOrder,
+}: {
+  points: LinePoint[];
+  color: string;
+  size: number;
+  lineWidth: number;
+  renderOrder: number;
+}) {
+  return (
+    <>
+      {arrowHeadSegments(points, size).map((segment, index) => (
+        <Line
+          key={index}
+          points={segment}
+          color={color}
+          lineWidth={lineWidth}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          renderOrder={renderOrder}
+        />
+      ))}
+    </>
+  );
+}
 
 function getCombatEventColor(event: CombatEvent): string {
   const shot = getShotPresentation(event.weaponCategory);
@@ -138,68 +469,43 @@ function FloorLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  const groups = useMemo(() => {
-    const g: Record<string, { pos: [number, number, number][]; elev: number[] }> = {};
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        const t = map.grid[y]?.[x];
-        if (!t || !t.walkable) continue;
-        const key = t.type;
-        if (!g[key]) g[key] = { pos: [], elev: [] };
-        g[key].pos.push(tileWorld(x, y, ts));
-        g[key].elev.push(t.elevation);
-      }
-    }
-    return g;
-  }, [map, ts]);
-
-  return (
-    <>
-      {Object.entries(groups).map(([type, data]) => (
-        <InstancedFloor key={type} positions={data.pos} elevations={data.elev}
-          color={TILE_COLORS[type] || TILE_COLORS.floor} tileSize={ts} />
-      ))}
-    </>
+  const geometry = useMemo(
+    () => buildFloorTopGeometry(map, ts),
+    [map, ts],
   );
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial(standardMaterialProps(WHITEBOX.floor, 'floor', {
+      vertexColors: true,
+      emissive: WHITEBOX.floor,
+      emissiveIntensity: 0.012,
+    })),
+    [],
+  );
+
+  if (!geometry) return null;
+  return <mesh geometry={geometry} material={material} receiveShadow raycast={() => null} />;
 }
 
-function InstancedFloor({ positions, elevations, color, tileSize }: {
-  positions: [number, number, number][]; elevations: number[];
-  color: string; tileSize: number;
-}) {
-  const mesh = useMemo(() => {
-    const size = tileSize - GRID_GAP;
-    const geo = new THREE.BoxGeometry(size, FLOOR_H, size);
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.86,
-      metalness: 0.015,
-      vertexColors: true,
-      emissive: '#172030',
-      emissiveIntensity: 0.08,
-    });
-    const inst = new THREE.InstancedMesh(geo, mat, positions.length);
-    const d = new THREE.Object3D();
-    const colorAttr = new Float32Array(positions.length * 3);
-    const baseColor = new THREE.Color(color);
-    positions.forEach(([x, , z], i) => {
-      d.position.set(x, elevations[i] * tileSize * 0.4, z);
-      d.updateMatrix();
-      inst.setMatrixAt(i, d.matrix);
+function FloorSlabEdgeLayer() {
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
 
-      const hash = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
-      const laneWear = (Math.sin(x * 0.31) + Math.cos(z * 0.27)) * 0.018;
-      const variation = THREE.MathUtils.clamp(0.94 + hash * 0.1 + laneWear, 0.9, 1.06);
-      colorAttr[i * 3] = baseColor.r * variation;
-      colorAttr[i * 3 + 1] = baseColor.g * variation;
-      colorAttr[i * 3 + 2] = baseColor.b * variation;
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    inst.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-    inst.receiveShadow = true;
-    return inst;
-  }, [positions, elevations, color, tileSize]);
-  return <primitive object={mesh} />;
+  const geometry = useMemo(
+    () => buildFloorSlabEdgeGeometry(map, ts),
+    [map, ts],
+  );
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial(standardMaterialProps(WHITEBOX.slabSide, 'stone', {
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      emissive: WHITEBOX.slabSideDark,
+      emissiveIntensity: 0.04,
+    })),
+    [],
+  );
+
+  if (!geometry) return null;
+  return <mesh geometry={geometry} material={material} receiveShadow raycast={() => null} />;
 }
 
 // ---- Walls (readable perimeter mass, not full black building slabs) ----
@@ -207,63 +513,98 @@ function WallLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  const wallPositions = useMemo(() => {
-    const p: [number, number, number][] = [];
-    const dirs = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ];
+  const wallTiles = useMemo(() => {
+    const p: Array<{ position: [number, number, number]; elevation: number }> = [];
+    const coverFootprint = buildCoverFootprintKeys(map);
 
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        if (map.grid[y]?.[x]?.type !== 'wall') continue;
-        const touchesFloor = dirs.some(([dx, dy]) => map.grid[y + dy]?.[x + dx]?.walkable);
-        if (touchesFloor) p.push(tileWorld(x, y, ts));
+        const tile = map.grid[y]?.[x];
+        if (!tile || !isRenderedWallFootprintTile(map, coverFootprint, x, y)) continue;
+        p.push({ position: tileWorld(x, y, ts), elevation: tile.elevation });
       }
     }
     return p;
   }, [map, ts]);
 
-  const mesh = useMemo(() => {
-    if (wallPositions.length === 0) return null;
-    const geo = new THREE.BoxGeometry(ts - GRID_GAP, WALL_HEIGHT, ts - GRID_GAP);
-    const mat = new THREE.MeshStandardMaterial({
-      color: TILE_COLORS.wall,
-      roughness: 0.86,
-      metalness: 0.02,
-      emissive: '#26344a',
-      emissiveIntensity: 0.22,
+  const meshes = useMemo(() => {
+    if (wallTiles.length === 0) return null;
+    const bodyHeight = Math.max(0.01, WALL_HEIGHT - WALL_CAP_H);
+    const size = ts * 1.04 - GRID_GAP;
+    const plinthGeo = new THREE.BoxGeometry(size * 1.08, WALL_PLINTH_H, size * 1.08);
+    const bodyGeo = new THREE.BoxGeometry(size, bodyHeight, size);
+    const capGeo = new THREE.BoxGeometry(size * 1.02, WALL_CAP_H, size * 1.02);
+    const plinthMat = makeBoxMaterials({
+      top: WHITEBOX.wallPlinth,
+      side: WHITEBOX.wallDark,
+      bottom: WHITEBOX.wallDark,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallDark,
+        emissiveIntensity: 0.025,
+      },
     });
-    const inst = new THREE.InstancedMesh(geo, mat, wallPositions.length);
+    const bodyMat = makeBoxMaterials({
+      top: WHITEBOX.wallSide,
+      side: WHITEBOX.wallSide,
+      bottom: WHITEBOX.wallDark,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallDark,
+        emissiveIntensity: 0.03,
+      },
+    });
+    const capMat = makeBoxMaterials({
+      top: WHITEBOX.wallTop,
+      side: WHITEBOX.wallCapSide,
+      bottom: WHITEBOX.wallSide,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallTop,
+        emissiveIntensity: 0.018,
+      },
+    });
+    const plinth = new THREE.InstancedMesh(plinthGeo, plinthMat, wallTiles.length);
+    const body = new THREE.InstancedMesh(bodyGeo, bodyMat, wallTiles.length);
+    const cap = new THREE.InstancedMesh(capGeo, capMat, wallTiles.length);
     const d = new THREE.Object3D();
 
-    // Add slight random color variation per instance
-    const colorAttr = new Float32Array(wallPositions.length * 3);
-    const baseColor = new THREE.Color(TILE_COLORS.wall);
-    wallPositions.forEach(([x, , z], i) => {
-      d.position.set(x, WALL_HEIGHT / 2, z);
-      d.updateMatrix();
-      inst.setMatrixAt(i, d.matrix);
+    wallTiles.forEach(({ position: [x, , z], elevation }, i) => {
+      const baseY = tileSurfaceY(elevation, ts);
 
-      // Subtle variation keeps the boundary from looking tiled-flat.
-      const hash = ((x * 73 + z * 137) % 100) / 100;
-      const variation = 0.98 + hash * 0.16;
-      colorAttr[i * 3] = baseColor.r * variation;
-      colorAttr[i * 3 + 1] = baseColor.g * variation;
-      colorAttr[i * 3 + 2] = baseColor.b * variation;
+      d.position.set(x, baseY + WALL_PLINTH_H / 2, z);
+      d.updateMatrix();
+      plinth.setMatrixAt(i, d.matrix);
+
+      d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight / 2, z);
+      d.updateMatrix();
+      body.setMatrixAt(i, d.matrix);
+
+      d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight + WALL_CAP_H / 2, z);
+      d.updateMatrix();
+      cap.setMatrixAt(i, d.matrix);
     });
 
-    inst.instanceMatrix.needsUpdate = true;
-    inst.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-    inst.castShadow = false;
-    inst.receiveShadow = true;
-    return inst;
-  }, [wallPositions, ts]);
+    plinth.instanceMatrix.needsUpdate = true;
+    plinth.castShadow = false;
+    plinth.receiveShadow = true;
+    body.instanceMatrix.needsUpdate = true;
+    body.castShadow = false;
+    body.receiveShadow = true;
+    cap.instanceMatrix.needsUpdate = true;
+    cap.castShadow = false;
+    cap.receiveShadow = true;
+    return { plinth, body, cap };
+  }, [wallTiles, ts]);
 
-  if (!mesh) return null;
-  return <primitive object={mesh} />;
+  if (!meshes) return null;
+  return (
+    <group>
+      <primitive object={meshes.plinth} />
+      <primitive object={meshes.body} />
+      <primitive object={meshes.cap} />
+    </group>
+  );
 }
 
 // ---- Cover objects ----
@@ -280,17 +621,17 @@ function CoverLayer() {
 
         return (
           <group key={i}>
-            <CoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
+            <LandmarkCoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
             <SafeText
               position={[cx, h + 0.08, cz]}
               rotation={[-Math.PI / 2, 0, Math.PI]}
               fontSize={0.12}
-              color="#dcc77e"
+              color={ART.props.coverLabel}
               fillOpacity={0.16}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.01}
-              outlineColor="#000000"
+              outlineColor={ART.props.outline}
               outlineOpacity={0.28}
               font={undefined}
             >
@@ -325,24 +666,36 @@ function BombsiteMarkers() {
       {sites.map(({ site, cx, cz, w, h }) => (
         <group key={site}>
           {/* Glowing plant zone */}
-          <mesh position={[cx, FLOOR_H + 0.03, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh
+            position={[cx, ART.overlayY.siteMarker, cz]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            renderOrder={ART.overlayOrder.siteLabel}
+          >
             <planeGeometry args={[w, h]} />
-            <meshBasicMaterial color="#e44740" transparent opacity={0.32} side={THREE.DoubleSide} />
+            <meshBasicMaterial
+              color={site === 'A' ? WHITEBOX.siteA : WHITEBOX.siteB}
+              transparent
+              opacity={0.2}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
           </mesh>
           {/* Site letter */}
           <SafeText
-            position={[cx, FLOOR_H + 0.08, cz]}
+            position={[cx, ART.overlayY.siteText, cz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
-            fontSize={2.65}
-            color="#ffdad5"
-            fillOpacity={0.94}
+            fontSize={2.25}
+            color={ART.palette.labelInk}
+            fillOpacity={0.72}
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.06}
-            outlineColor="#3f0f0d"
+            outlineWidth={0.08}
+            outlineColor={ART.palette.labelHalo}
+            outlineOpacity={0.82}
+            renderOrder={ART.overlayOrder.siteLabel}
             font={undefined}
           >
-            {site}
+            {`${site} SITE`}
           </SafeText>
         </group>
       ))}
@@ -375,16 +728,17 @@ function CalloutLabels() {
         return (
           <SafeText
             key={l.name}
-            position={[wx, FLOOR_H + 0.09, wz]}
+            position={[wx, ART.overlayY.calloutText, wz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
             fontSize={1.55}
-            color="#f4f7fb"
-            fillOpacity={0.82}
+            color={ART.palette.labelInk}
+            fillOpacity={0.58}
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.12}
-            outlineColor="#0b0d12"
-            outlineOpacity={0.85}
+            outlineWidth={0.14}
+            outlineColor={ART.palette.labelHalo}
+            outlineOpacity={0.72}
+            renderOrder={ART.overlayOrder.siteLabel}
             font={undefined}
           >
             {displayCalloutName(l.name).toUpperCase()}
@@ -407,7 +761,7 @@ function SmokeLayer() {
       {smokes.map((smoke) => {
         const [wx, , wz] = tileWorld(smoke.position.x, smoke.position.y, ts);
         const radius = smoke.radius * ts;
-        const color = smoke.team === 'CT' ? '#a9c7e8' : '#d9c89a';
+        const color = smoke.team === 'CT' ? ART.palette.ctAccent : ART.palette.tAccent;
         return (
           <group key={smoke.id} position={[wx, 0, wz]} raycast={() => null}>
             <mesh position={[0, FLOOR_H + 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -417,7 +771,7 @@ function SmokeLayer() {
             <mesh position={[0, FLOOR_H + 0.48, 0]}>
               <cylinderGeometry args={[radius * 0.94, radius * 0.72, 0.78, 36, 1, true]} />
               <meshStandardMaterial
-                color="#b8c0ca"
+                color={ART.palette.smoke}
                 transparent
                 opacity={0.26}
                 roughness={1}
@@ -428,17 +782,17 @@ function SmokeLayer() {
             </mesh>
             <mesh position={[0, FLOOR_H + 0.91, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[radius * 0.48, radius * 0.92, 40]} />
-              <meshBasicMaterial color="#eef4fb" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
+              <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
             <SafeText
               position={[0, FLOOR_H + 0.98, 0]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.2}
-              color="#eef4fb"
+              color={ART.palette.textLight}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}
-              outlineColor="#313943"
+              outlineColor={ART.props.outline}
               font={undefined}
             >
               SMOKE
@@ -473,21 +827,21 @@ function FlashBurstMarker({ burst }: { burst: FlashBurst }) {
     <group ref={groupRef} position={[wx, FLOOR_H + 0.32, wz]} raycast={() => null}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 44]} />
-        <meshBasicMaterial ref={discMaterialRef} color="#fff3b0" transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial ref={discMaterialRef} color={ART.palette.flash} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[radius * 0.16, radius, 48]} />
-        <meshBasicMaterial ref={ringMaterialRef} color="#fff8df" transparent opacity={0.86} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial ref={ringMaterialRef} color={ART.palette.textLight} transparent opacity={0.86} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.34}
-        color="#2a2110"
+        color={ART.palette.textDark}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
-        outlineColor="#fff4c2"
+        outlineColor={ART.palette.flash}
         font={undefined}
       >
         {burst.affectedUnitIds.length > 0 ? `FLASH ${burst.affectedUnitIds.length}` : 'FLASH'}
@@ -519,7 +873,7 @@ function PlantedBombMarker() {
 
   const [wx, , wz] = tileWorld(round.bombPosition.x, round.bombPosition.y, ts);
   const isDefused = round.bombDefused;
-  const color = isDefused ? '#65b7ff' : (isDropped ? '#ffd166' : '#ff4e6a');
+  const color = isDefused ? ART.palette.ctAccent : (isDropped ? ART.palette.tAccent : ART.palette.bombAccent);
 
   return (
     <group position={[wx, FLOOR_H + 0.18, wz]} raycast={() => null}>
@@ -529,7 +883,12 @@ function PlantedBombMarker() {
       </mesh>
       <mesh position={[0, 0.13, 0]} castShadow>
         <boxGeometry args={[0.42, 0.22, 0.28]} />
-        <meshStandardMaterial color="#2b1714" roughness={0.58} emissive={isDefused ? '#123252' : (isDropped ? '#5a3d10' : '#6b120e')} emissiveIntensity={0.32} />
+        <meshStandardMaterial
+          {...standardMaterialProps('wallDark', 'metal', {
+            emissive: isDefused ? ART.palette.ctAccent : (isDropped ? ART.palette.tAccent : ART.palette.bombAccent),
+            emissiveIntensity: 0.18,
+          })}
+        />
       </mesh>
       <mesh position={[0.13, 0.26, 0.02]}>
         <sphereGeometry args={[0.045, 8, 6]} />
@@ -539,11 +898,11 @@ function PlantedBombMarker() {
         position={[0, 0.08, ts * 0.64]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.22}
-        color={isDefused ? '#d8ecff' : (isDropped ? '#fff1b5' : '#ffd7dd')}
+        color={isDefused ? ART.palette.textLight : (isDropped ? ART.palette.flash : ART.palette.textLight)}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.03}
-        outlineColor="#100709"
+        outlineColor={ART.props.outline}
         font={undefined}
       >
         {isDefused ? 'DEFUSED' : (isDropped ? 'DROPPED' : `${round.bombTimer}T`)}
@@ -566,561 +925,40 @@ function WalkableHighlight() {
 
   return (
     <>
-      <MovementBand tiles={groups.twoAp} color={MOVE_TWO_AP_COLOR} opacity={0.15} tileSize={ts} />
-      <MovementBand tiles={groups.oneAp} color={MOVE_ONE_AP_COLOR} opacity={0.18} tileSize={ts} />
+      <MovementBand
+        tiles={groups.twoAp}
+        color={MOVE_TWO_AP_COLOR}
+        opacity={0.17}
+        tileSize={ts}
+        y={ART.overlayY.movementBand}
+        renderOrder={ART.overlayOrder.movementBand}
+      />
+      <MovementBand
+        tiles={groups.oneAp}
+        color={MOVE_ONE_AP_COLOR}
+        opacity={0.2}
+        tileSize={ts}
+        y={ART.overlayY.movementBand}
+        renderOrder={ART.overlayOrder.movementBand}
+      />
       <MovementBoundary
         tiles={movementTiles}
         color={MOVE_BOUNDARY_COLOR}
         tileSize={ts}
-        y={FLOOR_H + 0.125}
+        y={ART.overlayY.movementBoundary}
         lineWidth={2.4}
+        renderOrder={ART.overlayOrder.movementBoundary}
       />
       <MovementBoundary
         tiles={groups.oneAp}
         color={MOVE_ONE_AP_COLOR}
         tileSize={ts}
-        y={FLOOR_H + 0.135}
+        y={ART.overlayY.oneApBoundary}
         lineWidth={1.35}
         opacity={0.72}
+        renderOrder={ART.overlayOrder.movementBoundary}
       />
     </>
-  );
-}
-
-function CoverProp({
-  cover,
-  x,
-  z,
-  h,
-  tileSize,
-}: {
-  cover: CoverObject;
-  x: number;
-  z: number;
-  h: number;
-  tileSize: number;
-}) {
-  const width = cover.width * tileSize * 0.88;
-  const depth = cover.height * tileSize * 0.88;
-  const label = cover.label.toLowerCase();
-
-  if (label.includes('fountain')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.04} depth={depth * 1.04} opacity={0.16} />
-        <FountainProp x={x} z={z} width={width} depth={depth} />
-      </group>
-    );
-  }
-  if (label.includes('banana car') || label === 'truck') {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.1} depth={depth * 1.12} opacity={label.includes('banana car') ? 0.22 : 0.18} />
-        <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} isLandmarkCar={label.includes('banana car')} />
-      </group>
-    );
-  }
-  if (label.includes('coffin')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.03} depth={depth * 0.98} opacity={0.2} />
-        <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />
-      </group>
-    );
-  }
-  if (label.includes('orange')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.05} depth={depth * 1.02} opacity={0.17} />
-        <OrangesProp x={x} z={z} width={width} depth={depth} height={h} />
-      </group>
-    );
-  }
-  if (label.includes('logs')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.18} opacity={0.19} />
-        <LogsProp x={x} z={z} width={width} depth={depth} />
-      </group>
-    );
-  }
-  if (label.includes('sandbags')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.06} depth={depth * 1.08} opacity={0.18} />
-        <SandbagsProp x={x} z={z} width={width} depth={depth} />
-      </group>
-    );
-  }
-  if (label.includes('library shelf')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.02} opacity={0.17} />
-        <LibraryShelfProp x={x} z={z} width={width} depth={depth} height={h} />
-      </group>
-    );
-  }
-  if (label.includes('pillar')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={tileSize * 0.78} depth={tileSize * 0.78} opacity={0.18} />
-        <PillarProp x={x} z={z} height={h} />
-      </group>
-    );
-  }
-  if (label.includes('rail') || label.includes('wall')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.01} depth={depth * 1.02} opacity={0.14} shape="plane" />
-        <WallStripProp x={x} z={z} width={width} depth={depth} height={h} />
-      </group>
-    );
-  }
-  if (label.includes('box')) {
-    return (
-      <group>
-        <ContactShadow x={x} z={z} width={width * 1.04} depth={depth * 1.04} opacity={0.17} />
-        <CrateStackProp x={x} z={z} width={width} depth={depth} height={h} label={label} />
-      </group>
-    );
-  }
-
-  const color = cover.coverType === 'half' ? '#8a7d5a' : '#6a6050';
-  return (
-    <group>
-      <ContactShadow x={x} z={z} width={width * 1.02} depth={depth * 1.02} opacity={0.15} shape="plane" />
-      <mesh position={[x, h / 2, z]} castShadow receiveShadow>
-        <boxGeometry args={[width, h, depth]} />
-        <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
-      </mesh>
-    </group>
-  );
-}
-
-function ContactShadow({
-  x,
-  z,
-  width,
-  depth,
-  opacity,
-  shape = 'circle',
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  opacity: number;
-  shape?: 'circle' | 'plane';
-}) {
-  return (
-    <mesh position={[x, FLOOR_H + 0.018, z]} rotation={[-Math.PI / 2, 0, 0]} scale={[width / 2, depth / 2, 1]} raycast={() => null}>
-      {shape === 'plane' ? <planeGeometry args={[2, 2]} /> : <circleGeometry args={[1, 32]} />}
-      <meshBasicMaterial color="#05070a" transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} />
-    </mesh>
-  );
-}
-
-function VehicleProp({
-  x,
-  z,
-  width,
-  depth,
-  isTruck,
-  isLandmarkCar = false,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  isTruck: boolean;
-  isLandmarkCar?: boolean;
-}) {
-  const bodyColor = isTruck ? '#6f776f' : '#56473b';
-  const trimColor = isTruck ? '#b9c2b5' : (isLandmarkCar ? '#292f33' : '#2d2b28');
-  const glassColor = isTruck ? '#d8e6df' : '#9ab0b3';
-  const bodyH = isTruck ? 0.68 : (isLandmarkCar ? 0.74 : 0.46);
-  const cabinH = isTruck ? 0.55 : (isLandmarkCar ? 0.5 : 0.34);
-  const bodyDepth = depth * (isLandmarkCar ? 0.92 : 0.8);
-  const cabinDepth = depth * (isLandmarkCar ? 0.66 : 0.62);
-
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, bodyH, bodyDepth]} />
-        <meshStandardMaterial color={bodyColor} roughness={0.58} metalness={0.22} />
-      </mesh>
-      <mesh position={[width * 0.18, bodyH + cabinH / 2 - 0.04, -depth * 0.02]} castShadow>
-        <boxGeometry args={[width * (isLandmarkCar ? 0.48 : 0.42), cabinH, cabinDepth]} />
-        <meshStandardMaterial color={trimColor} roughness={0.5} metalness={0.25} />
-      </mesh>
-      <mesh position={[width * 0.18, bodyH + cabinH * 0.58, -cabinDepth * 0.51]} castShadow>
-        <boxGeometry args={[width * 0.3, cabinH * 0.32, 0.035]} />
-        <meshStandardMaterial color={glassColor} roughness={0.24} metalness={0.08} transparent opacity={0.7} />
-      </mesh>
-      <mesh position={[width * 0.18, bodyH + cabinH * 0.58, cabinDepth * 0.51]} castShadow>
-        <boxGeometry args={[width * 0.3, cabinH * 0.32, 0.035]} />
-        <meshStandardMaterial color={glassColor} roughness={0.24} metalness={0.08} transparent opacity={0.58} />
-      </mesh>
-      <mesh position={[-width * 0.16, bodyH + 0.035, 0]} castShadow>
-        <boxGeometry args={[width * 0.33, 0.05, bodyDepth * 0.82]} />
-        <meshStandardMaterial color={isLandmarkCar ? '#6a4f3d' : bodyColor} roughness={0.7} metalness={0.12} />
-      </mesh>
-      {isLandmarkCar && [-0.28, 0.28].map((sz) => (
-        <mesh key={`rust-${sz}`} position={[-width * 0.06, bodyH + 0.068, sz * depth]} castShadow>
-          <boxGeometry args={[width * 0.16, 0.018, depth * 0.07]} />
-          <meshStandardMaterial color="#8c4b24" roughness={0.94} metalness={0.02} />
-        </mesh>
-      ))}
-      {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
-        <mesh key={`${sx}-${sz}`} position={[sx * width, 0.14, sz * depth]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.14, 0.14, 0.12, 12]} />
-          <meshStandardMaterial color="#111216" roughness={0.72} metalness={0.08} />
-        </mesh>
-      )))}
-      {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
-        <mesh key={`hub-${sx}-${sz}`} position={[sx * width, 0.14, sz * depth + Math.sign(sz) * 0.062]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.07, 0.07, 0.014, 10]} />
-          <meshStandardMaterial color="#6f7479" roughness={0.48} metalness={0.28} />
-        </mesh>
-      )))}
-      <mesh position={[-width * 0.46, bodyH * 0.58, 0]} castShadow>
-        <boxGeometry args={[0.08, 0.18, depth * 0.5]} />
-        <meshStandardMaterial color="#f6d76a" roughness={0.35} emissive="#9b6b18" emissiveIntensity={0.12} />
-      </mesh>
-      <mesh position={[width * 0.5, bodyH * 0.5, 0]} castShadow>
-        <boxGeometry args={[0.06, 0.14, depth * 0.42]} />
-        <meshStandardMaterial color="#9c211d" roughness={0.38} emissive="#5e100d" emissiveIntensity={0.08} />
-      </mesh>
-    </group>
-  );
-}
-
-function FountainProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  const radius = Math.min(width, depth) * 0.38;
-
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius, radius * 1.12, 0.34, 36]} />
-        <meshStandardMaterial color="#8f8775" roughness={0.78} metalness={0.02} />
-      </mesh>
-      <mesh position={[0, 0.37, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[radius * 0.68, radius * 1.02, 36]} />
-        <meshStandardMaterial color="#b7ad96" roughness={0.82} metalness={0.01} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0.37, 0]} castShadow>
-        <cylinderGeometry args={[radius * 0.58, radius * 0.66, 0.12, 32]} />
-        <meshStandardMaterial color="#2f6e82" roughness={0.36} metalness={0.05} emissive="#1d5060" emissiveIntensity={0.18} />
-      </mesh>
-      <mesh position={[0, 0.445, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[radius * 0.5, 32]} />
-        <meshBasicMaterial color="#75c2d6" transparent opacity={0.34} depthWrite={false} />
-      </mesh>
-      <mesh position={[0, 0.56, 0]} castShadow>
-        <cylinderGeometry args={[radius * 0.12, radius * 0.18, 0.36, 18]} />
-        <meshStandardMaterial color="#b4a27d" roughness={0.6} />
-      </mesh>
-    </group>
-  );
-}
-
-function CoffinsProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      {[-0.22, 0.22].map((offset) => (
-        <mesh key={offset} position={[offset * width, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width * 0.36, height, depth * 0.9]} />
-          <meshStandardMaterial color="#403b37" roughness={0.7} metalness={0.04} />
-        </mesh>
-      ))}
-      {[-0.22, 0.22].map((offset) => (
-        <mesh key={`face-${offset}`} position={[offset * width, height * 0.72, -depth * 0.46]} castShadow>
-          <boxGeometry args={[width * 0.26, height * 0.08, 0.035]} />
-          <meshStandardMaterial color="#6f6255" roughness={0.62} metalness={0.08} />
-        </mesh>
-      ))}
-      <mesh position={[0, height + 0.04, 0]} castShadow>
-        <boxGeometry args={[width * 0.86, 0.08, depth * 0.78]} />
-        <meshStandardMaterial color="#1c1a18" roughness={0.82} />
-      </mesh>
-      <mesh position={[0, height + 0.09, 0]} castShadow>
-        <boxGeometry args={[width * 0.72, 0.035, depth * 0.08]} />
-        <meshStandardMaterial color="#897457" roughness={0.7} metalness={0.1} />
-      </mesh>
-      <mesh position={[0, height * 0.42, depth * 0.46]} castShadow>
-        <boxGeometry args={[width * 0.62, height * 0.05, 0.035]} />
-        <meshStandardMaterial color="#201c19" roughness={0.84} />
-      </mesh>
-    </group>
-  );
-}
-
-function OrangesProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color="#8c6540" roughness={0.76} metalness={0.02} />
-      </mesh>
-      {[-0.36, -0.12, 0.13, 0.36].map((sx) => (
-        <mesh key={`slat-${sx}`} position={[sx * width, height * 0.56, -depth * 0.51]} castShadow>
-          <boxGeometry args={[width * 0.045, height * 0.86, 0.04]} />
-          <meshStandardMaterial color="#5b3b27" roughness={0.86} />
-        </mesh>
-      ))}
-      {[-0.25, 0.05, 0.35, -0.02].map((sx, index) => (
-        <mesh key={sx} position={[sx * width, height + 0.13, (index - 1) * depth * 0.2]} castShadow>
-          <sphereGeometry args={[index === 3 ? 0.1 : 0.13, 12, 8]} />
-          <meshStandardMaterial color={index % 2 ? '#e09236' : '#d9822b'} roughness={0.7} emissive="#6d2e0d" emissiveIntensity={0.07} />
-        </mesh>
-      ))}
-      <mesh position={[0, height + 0.045, 0]} castShadow>
-        <boxGeometry args={[width * 0.86, 0.05, depth * 0.08]} />
-        <meshStandardMaterial color="#61412a" roughness={0.82} />
-      </mesh>
-    </group>
-  );
-}
-
-function LogsProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      {[-0.22, 0, 0.22].map((offset, index) => (
-        <group key={offset} position={[0, 0.2 + index * 0.06, offset * depth]} rotation={[0, 0, Math.PI / 2]}>
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.16, 0.16, width * 0.92, 14]} />
-            <meshStandardMaterial color={index % 2 === 0 ? '#6f4a2d' : '#7a5636'} roughness={0.82} />
-          </mesh>
-          {[-1, 1].map((side) => (
-            <mesh key={side} position={[0, side * width * 0.46, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[0.158, 14]} />
-              <meshStandardMaterial color="#9a7047" roughness={0.88} side={THREE.DoubleSide} />
-            </mesh>
-          ))}
-          {[-0.21, 0.18].map((stripe) => (
-            <mesh key={`stripe-${stripe}`} position={[0.01, stripe * width, 0.118]} rotation={[Math.PI / 2, 0, 0]}>
-              <boxGeometry args={[0.035, 0.018, width * 0.17]} />
-              <meshStandardMaterial color="#3b2418" roughness={0.9} />
-            </mesh>
-          ))}
-          {[-0.3, 0.3].map((band) => (
-            <mesh key={`band-${band}`} position={[0, band * width, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.163, 0.012, 6, 14]} />
-              <meshStandardMaterial color="#2d2925" roughness={0.74} metalness={0.18} />
-            </mesh>
-          ))}
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function SandbagsProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  const bags = [
-    [-0.28, -0.18, 0],
-    [0.05, -0.18, 0.03],
-    [0.34, -0.14, -0.02],
-    [-0.12, 0.18, 0.08],
-    [0.22, 0.18, 0.04],
-    [-0.36, 0.02, 0.02],
-    [0.42, 0.05, 0.03],
-  ];
-
-  return (
-    <group position={[x, 0, z]}>
-      {bags.map(([sx, sz, lift], index) => (
-        <group key={index} position={[sx * width, 0.18 + lift, sz * depth]}>
-          <mesh scale={[0.38, 0.12, 0.22]} castShadow receiveShadow>
-            <sphereGeometry args={[1, 16, 8]} />
-            <meshStandardMaterial color={index % 2 ? '#9b8a63' : '#ab9a70'} roughness={0.94} />
-          </mesh>
-          <mesh position={[0, 0.045, 0]} scale={[0.26, 0.025, 0.19]} castShadow>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#7c6e50" roughness={0.96} />
-          </mesh>
-          <mesh position={[0, 0.08, 0]} scale={[0.3, 0.012, 0.04]} castShadow>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#6b5f45" roughness={0.98} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function CrateStackProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-  label,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-  label: string;
-}) {
-  const dark = label.includes('dark');
-  const baseColor = dark ? '#4f463d' : '#7b6244';
-  const slatColor = dark ? '#2f2a25' : '#4f3825';
-  const stack = [
-    [0, height * 0.26, 0, 0.94, 0.52, 0.9],
-    [-0.16, height * 0.78, -0.05, 0.62, 0.45, 0.74],
-  ];
-
-  return (
-    <group position={[x, 0, z]}>
-      {stack.map(([sx, sy, sz, sw, sh, sd], index) => (
-        <group key={index} position={[sx * width, sy, sz * depth]}>
-          <mesh castShadow receiveShadow>
-            <boxGeometry args={[width * sw, height * sh, depth * sd]} />
-            <meshStandardMaterial color={baseColor} roughness={0.84} metalness={0.02} />
-          </mesh>
-          {[-0.26, 0.26].map((slat) => (
-            <mesh key={slat} position={[slat * width * sw, 0, -depth * sd * 0.51]} castShadow>
-              <boxGeometry args={[width * 0.055, height * sh * 0.88, 0.035]} />
-              <meshStandardMaterial color={slatColor} roughness={0.9} />
-            </mesh>
-          ))}
-          <mesh position={[0, height * sh * 0.2, -depth * sd * 0.515]} castShadow>
-            <boxGeometry args={[width * sw * 0.78, height * 0.055, 0.04]} />
-            <meshStandardMaterial color={slatColor} roughness={0.9} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function LibraryShelfProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color="#4d3929" roughness={0.66} />
-      </mesh>
-      {[-0.25, 0, 0.25].map((sx, index) => (
-        <mesh key={sx} position={[sx * width, height * 0.65, depth * 0.51]} castShadow>
-          <boxGeometry args={[width * 0.12, height * 0.42, 0.04]} />
-          <meshStandardMaterial color={['#9a3430', '#d0ac56', '#2f6f82'][index]} roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function PillarProp({
-  x,
-  z,
-  height,
-}: {
-  x: number;
-  z: number;
-  height: number;
-}) {
-  return (
-    <mesh position={[x, height / 2, z]} castShadow receiveShadow>
-      <cylinderGeometry args={[0.38, 0.44, height, 12]} />
-      <meshStandardMaterial color="#73695b" roughness={0.78} />
-    </mesh>
-  );
-}
-
-function WallStripProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  const stripHeight = Math.min(height, 1.05);
-
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, stripHeight / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, stripHeight, depth]} />
-        <meshStandardMaterial color="#8d7f68" roughness={0.84} metalness={0.02} />
-      </mesh>
-      <mesh position={[0, stripHeight + 0.025, 0]} castShadow>
-        <boxGeometry args={[width * 0.94, 0.05, depth * 0.9]} />
-        <meshStandardMaterial color="#b0a287" roughness={0.86} metalness={0.01} />
-      </mesh>
-    </group>
   );
 }
 
@@ -1166,16 +1004,38 @@ function ThreatenedMovementOverlay() {
 
   return (
     <>
-      <MovementBand tiles={threatenedTiles.protected} color="#d8c170" opacity={0.13} tileSize={ts} />
-      <MovementBand tiles={threatenedTiles.flanked} color={THREAT_COLOR} opacity={0.2} tileSize={ts} />
-      <MovementBand tiles={threatenedTiles.exposed} color="#ff4e6a" opacity={0.24} tileSize={ts} />
+      <MovementBand
+        tiles={threatenedTiles.protected}
+        color={ART.palette.moveTwoAP}
+        opacity={0.13}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
+      <MovementBand
+        tiles={threatenedTiles.flanked}
+        color={ART.palette.dangerZoneRed}
+        opacity={0.2}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
+      <MovementBand
+        tiles={threatenedTiles.exposed}
+        color={ART.palette.dangerZoneRed}
+        opacity={0.28}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
       <MovementBoundary
         tiles={[...threatenedTiles.exposed, ...threatenedTiles.flanked]}
-        color={THREAT_COLOR}
+        color={ART.palette.fireLineRed}
         tileSize={ts}
-        y={FLOOR_H + 0.155}
+        y={ART.overlayY.threatBoundary}
         lineWidth={1.6}
         opacity={0.78}
+        renderOrder={ART.overlayOrder.threatBoundary}
       />
     </>
   );
@@ -1223,20 +1083,24 @@ function HoveredTileHighlight() {
   const topKnownThreat = knownThreats[0] ?? null;
   const isWatched = crossedHeldAngles.length > 0;
   const isThreatened = knownThreats.length > 0;
-  const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
+  const color = isWatched ? ART.palette.danger : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
   const threatLabel = topKnownThreat?.coverState === 'protected'
     ? topKnownThreat.coverQuality === 'corner' ? 'CORNER' : 'COVER'
     : topKnownThreat?.coverState === 'flanked'
       ? 'FLANK'
       : 'OPEN';
   const label = isFlashMode ? 'FLASH' : (isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP'))));
-  const smokeColor = '#b9c6d8';
-  const flashColor = '#fff1a8';
+  const smokeColor = ART.palette.smoke;
+  const flashColor = ART.palette.flash;
   const displayColor = isFlashMode ? flashColor : (isSmokeMode ? smokeColor : color);
   const coverEdges = getCoverEdges(map, hoveredTile);
 
   return (
-    <group position={[wx, FLOOR_H + 0.16, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group
+      position={[wx, ART.overlayY.hoveredTile, wz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={ART.overlayOrder.hoveredTile}
+    >
       <mesh raycast={() => null}>
         <planeGeometry args={[ts - GRID_GAP, ts - GRID_GAP]} />
         <meshBasicMaterial
@@ -1249,16 +1113,17 @@ function HoveredTileHighlight() {
       </mesh>
       <mesh position={[0, 0, 0.01]} raycast={() => null}>
         <ringGeometry args={[ts * 0.38, ts * 0.5, 4]} />
-        <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
         position={[0, 0, 0.035]}
         fontSize={0.28}
-        color="#101318"
+        color={ART.palette.textDark}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.035}
-        outlineColor={isFlashMode ? '#6d5720' : (isSmokeMode ? '#3f4a58' : '#f8f3dc')}
+        outlineColor={isFlashMode ? ART.palette.tAccent : (isSmokeMode ? ART.props.outline : ART.palette.textLight)}
+        renderOrder={ART.overlayOrder.hoveredTile}
         font={undefined}
       >
         {label}
@@ -1300,10 +1165,10 @@ function SmokeTargetPreview() {
   const valid = Boolean(tile?.walkable && inRange && unit.smokeGrenades > 0 && unit.ap > 0);
   const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
   const radius = SMOKE_RADIUS_TILES * ts;
-  const color = valid ? SMOKE_PREVIEW_COLOR : '#ff6b6b';
+  const color = valid ? SMOKE_PREVIEW_COLOR : ART.props.invalid;
 
   return (
-    <group position={[wx, FLOOR_H + 0.24, wz]} raycast={() => null}>
+    <group position={[wx, ART.overlayY.utilityPreview, wz]} renderOrder={ART.overlayOrder.utilityPreview} raycast={() => null}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 40]} />
         <meshBasicMaterial color={color} transparent opacity={valid ? 0.18 : 0.1} side={THREE.DoubleSide} depthWrite={false} />
@@ -1316,11 +1181,12 @@ function SmokeTargetPreview() {
         position={[0, 0.02, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.26}
-        color={valid ? '#eef4fb' : '#ffd1d1'}
+        color={valid ? ART.palette.textLight : ART.props.invalid}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.035}
-        outlineColor="#18202a"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
         font={undefined}
       >
         {valid ? 'SMOKE' : 'NO THROW'}
@@ -1355,10 +1221,10 @@ function FlashTargetPreview() {
     : [];
   const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
   const radius = FLASH_RADIUS_TILES * ts;
-  const color = valid ? FLASH_PREVIEW_COLOR : '#ff6b6b';
+  const color = valid ? FLASH_PREVIEW_COLOR : ART.props.invalid;
 
   return (
-    <group position={[wx, FLOOR_H + 0.3, wz]} raycast={() => null}>
+    <group position={[wx, ART.overlayY.flashPreview, wz]} renderOrder={ART.overlayOrder.utilityPreview} raycast={() => null}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 44]} />
         <meshBasicMaterial color={color} transparent opacity={valid ? 0.14 : 0.08} side={THREE.DoubleSide} depthWrite={false} />
@@ -1371,11 +1237,12 @@ function FlashTargetPreview() {
         position={[0, 0.03, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.28}
-        color={valid ? '#fff8d8' : '#ffd1d1'}
+        color={valid ? ART.palette.textLight : ART.props.invalid}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
-        outlineColor="#201905"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
         font={undefined}
       >
         {valid ? `FLASH ${affectedEnemies.length}` : 'NO THROW'}
@@ -1462,6 +1329,7 @@ function MovementBoundary({
   y,
   lineWidth,
   opacity = 0.95,
+  renderOrder = ART.overlayOrder.movementBoundary,
 }: {
   tiles: Array<{ x: number; y: number }>;
   color: string;
@@ -1469,6 +1337,7 @@ function MovementBoundary({
   y: number;
   lineWidth: number;
   opacity?: number;
+  renderOrder?: number;
 }) {
   const segments = useMemo(
     () => getBoundarySegments(tiles, tileSize, y),
@@ -1487,6 +1356,7 @@ function MovementBoundary({
           lineWidth={lineWidth}
           transparent
           opacity={opacity}
+          renderOrder={renderOrder}
         />
       ))}
     </group>
@@ -1498,11 +1368,15 @@ function MovementBand({
   color,
   opacity,
   tileSize,
+  y = ART.overlayY.movementBand,
+  renderOrder = ART.overlayOrder.movementBand,
 }: {
   tiles: Array<{ x: number; y: number }>;
   color: string;
   opacity: number;
   tileSize: number;
+  y?: number;
+  renderOrder?: number;
 }) {
   const mesh = useMemo(() => {
     if (tiles.length === 0) return null;
@@ -1516,17 +1390,18 @@ function MovementBand({
       depthWrite: false,
     });
     const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
+    inst.renderOrder = renderOrder;
     const d = new THREE.Object3D();
     tiles.forEach((tile, i) => {
       const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
-      d.position.set(wx, FLOOR_H + 0.04, wz);
+      d.position.set(wx, y, wz);
       d.rotation.set(-Math.PI / 2, 0, 0);
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
     });
     inst.instanceMatrix.needsUpdate = true;
     return inst;
-  }, [tiles, color, opacity, tileSize]);
+  }, [tiles, color, opacity, tileSize, y, renderOrder]);
 
   if (!mesh) return null;
   return <primitive object={mesh} raycast={() => null} />;
@@ -1545,14 +1420,34 @@ function PathPreview() {
     const unit = units.find((u) => u.id === selectedUnitId);
     if (!unit) return null;
     const allTiles = [unit.position, ...pathPreview];
-    return allTiles.map((t): [number, number, number] => {
+    const rawPoints = allTiles.map((t): [number, number, number] => {
       const [wx, , wz] = tileWorld(t.x, t.y, ts);
-      return [wx, FLOOR_H + 0.12, wz];
+      return [wx, ART.overlayY.pathPreview, wz];
     });
+    return curvedLinePoints(rawPoints);
   }, [pathPreview, selectedUnitId, units, ts]);
 
   if (!points || points.length < 2) return null;
-  return <Line points={points} color="#44ff88" lineWidth={3} />;
+  return (
+    <>
+      <Line
+        points={points}
+        color={ART.palette.moveArrowBlue}
+        lineWidth={4.2}
+        transparent
+        opacity={0.95}
+        depthTest={false}
+        renderOrder={ART.overlayOrder.pathPreview}
+      />
+      <ArrowHeadLines
+        points={points}
+        color={ART.palette.moveArrowBlue}
+        size={ts * 0.42}
+        lineWidth={4.2}
+        renderOrder={ART.overlayOrder.pathPreview}
+      />
+    </>
+  );
 }
 
 function PlannedActionPreview() {
@@ -1576,32 +1471,67 @@ function PlannedActionPreview() {
           const preview = getShotPreview(map, enemy, unit, 0, action.target, smokes);
           return preview.hasLineOfSight && preview.inRange;
         }));
-        const utilityColor = action.kind === 'flash' ? '#fff1a8' : '#c5d1df';
-        const color = !isMove ? utilityColor : (isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166')));
+        const utilityColor = action.kind === 'flash' ? ART.palette.flash : ART.palette.smoke;
+        const color = !isMove
+          ? utilityColor
+          : (isWatched || isDanger ? ART.palette.fireLineRed : ART.palette.moveArrowBlue);
         const label = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
         const beat = getPlannedActionBeat(action);
-        const points = [action.from, ...action.path].map((tile): [number, number, number] => {
+        const stackOffset = Math.min(index, 8);
+        const plannedPathY = ART.overlayY.plannedPath + stackOffset * 0.006;
+        const plannedMarkerY = ART.overlayY.plannedMarker + stackOffset * 0.004;
+        const rawPoints = [action.from, ...action.path].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-          return [wx, FLOOR_H + 0.24 + index * 0.012, wz];
+          return [wx, plannedPathY, wz];
         });
+        const points = isMove ? curvedLinePoints(rawPoints) : rawPoints;
         const [wx, , wz] = tileWorld(action.target.x, action.target.y, ts);
 
         return (
           <group key={action.id}>
-            {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
-            <group position={[wx, FLOOR_H + 0.21, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+            {points.length >= 2 && (
+              <>
+                <Line
+                  points={points}
+                  color={color}
+                  lineWidth={isMove ? 3.8 : 2.4}
+                  transparent
+                  opacity={isMove ? 0.92 : 0.82}
+                  depthTest={false}
+                  dashed={isWatched || isDanger}
+                  dashSize={0.32}
+                  gapSize={0.18}
+                  renderOrder={ART.overlayOrder.plannedPath}
+                />
+                {isMove && (
+                  <ArrowHeadLines
+                    points={points}
+                    color={color}
+                    size={ts * 0.38}
+                    lineWidth={3.8}
+                    renderOrder={ART.overlayOrder.plannedPath}
+                  />
+                )}
+              </>
+            )}
+            <group
+              position={[wx, plannedMarkerY, wz]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={ART.overlayOrder.plannedMarker}
+            >
               <mesh raycast={() => null}>
                 <ringGeometry args={[ts * 0.24, ts * 0.42, 24]} />
-                <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
+                <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
               </mesh>
               <SafeText
                 position={[0, 0, 0.04]}
                 fontSize={0.18}
-                color="#101318"
+                color={ART.palette.textDark}
                 anchorX="center"
                 anchorY="middle"
                 outlineWidth={0.03}
                 outlineColor={color}
+                renderOrder={ART.overlayOrder.plannedMarker}
                 font={undefined}
               >
                 {`${beat.timeLabel}\n${label}`}
@@ -1624,16 +1554,35 @@ function HeldAngleOverlay() {
     <>
       {heldAngles.map((angle) => {
         const unit = units.find((u) => u.id === angle.unitId);
-        const color = unit?.team === 'CT' ? '#ff4e6a' : '#ff9d3d';
+        const color = unit?.team === 'CT' ? ART.palette.fireLineRed : ART.palette.moveArrowBlue;
         const points = [angle.origin, ...angle.laneTiles].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-          return [wx, FLOOR_H + 0.31, wz];
+          return [wx, ART.overlayY.heldLaneLine, wz];
         });
 
         return (
           <group key={angle.id}>
-            {points.length >= 2 && <Line points={points} color={color} lineWidth={3} />}
-            <HeldLaneTiles tiles={angle.laneTiles} color={color} tileSize={ts} />
+            {points.length >= 2 && (
+              <Line
+                points={points}
+                color={color}
+                lineWidth={3.2}
+                transparent
+                opacity={0.92}
+                dashed={unit?.team === 'CT'}
+                dashSize={0.34}
+                gapSize={0.18}
+                depthTest={false}
+                renderOrder={ART.overlayOrder.heldLaneLine}
+              />
+            )}
+            <HeldLaneTiles
+              tiles={angle.laneTiles}
+              color={color}
+              tileSize={ts}
+              y={ART.overlayY.heldLaneTile}
+              renderOrder={ART.overlayOrder.heldLaneTile}
+            />
           </group>
         );
       })}
@@ -1663,27 +1612,48 @@ function HoldAngleHoverPreview() {
 
   if (!preview) return null;
 
-  const color = preview.unit.team === 'CT' ? '#ff87a0' : '#ffb86b';
+  const color = preview.unit.team === 'CT' ? ART.palette.fireLineRed : ART.palette.moveArrowBlue;
   const points = [preview.unit.position, ...preview.laneTiles].map((tile): [number, number, number] => {
     const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-    return [wx, FLOOR_H + 0.39, wz];
+    return [wx, ART.overlayY.holdPreview, wz];
   });
   const lastTile = preview.laneTiles[preview.laneTiles.length - 1];
   const [labelX, , labelZ] = tileWorld(lastTile.x, lastTile.y, ts);
 
   return (
     <group>
-      {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
-      <HeldLaneTiles tiles={preview.laneTiles} color={color} tileSize={ts} opacity={0.18} />
+      {points.length >= 2 && (
+        <Line
+          points={points}
+          color={color}
+          lineWidth={2.8}
+          transparent
+          opacity={0.84}
+          dashed={preview.unit.team === 'CT'}
+          dashSize={0.3}
+          gapSize={0.18}
+          depthTest={false}
+          renderOrder={ART.overlayOrder.utilityPreview}
+        />
+      )}
+      <HeldLaneTiles
+        tiles={preview.laneTiles}
+        color={color}
+        tileSize={ts}
+        opacity={0.18}
+        y={ART.overlayY.holdPreview}
+        renderOrder={ART.overlayOrder.utilityPreview}
+      />
       <SafeText
-        position={[labelX, FLOOR_H + 0.42, labelZ]}
+        position={[labelX, ART.overlayY.holdLabel, labelZ]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.25}
-        color="#ffd7dd"
+        color={ART.palette.textLight}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.025}
-        outlineColor="#14080d"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
         font={undefined}
       >
         HOLD
@@ -1697,11 +1667,15 @@ function HeldLaneTiles({
   color,
   tileSize,
   opacity = 0.28,
+  y = ART.overlayY.heldLaneTile,
+  renderOrder = ART.overlayOrder.heldLaneTile,
 }: {
   tiles: TileCoord[];
   color: string;
   tileSize: number;
   opacity?: number;
+  y?: number;
+  renderOrder?: number;
 }) {
   const mesh = useMemo(() => {
     if (tiles.length === 0) return null;
@@ -1715,17 +1689,18 @@ function HeldLaneTiles({
       depthWrite: false,
     });
     const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
+    inst.renderOrder = renderOrder;
     const d = new THREE.Object3D();
     tiles.forEach((tile, i) => {
       const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
-      d.position.set(wx, FLOOR_H + 0.18, wz);
+      d.position.set(wx, y, wz);
       d.rotation.set(-Math.PI / 2, 0, 0);
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
     });
     inst.instanceMatrix.needsUpdate = true;
     return inst;
-  }, [tiles, color, opacity, tileSize]);
+  }, [tiles, color, opacity, tileSize, y, renderOrder]);
 
   if (!mesh) return null;
   return <primitive object={mesh} raycast={() => null} />;
@@ -1753,7 +1728,7 @@ function CombatEventMarker() {
     const pulse = 1 + Math.sin(progress * Math.PI) * shot.impactScale * (event.killed ? 0.46 : event.hit ? 0.32 : 0.15);
     const opacity = Math.max(0, 0.92 * (1 - progress));
 
-    groupRef.current.position.y = FLOOR_H + 0.5 + lift;
+    groupRef.current.position.y = ART.overlayY.combatMarker + lift;
     groupRef.current.scale.setScalar(pulse);
     if (ringMaterialRef.current) {
       ringMaterialRef.current.opacity = opacity;
@@ -1769,20 +1744,21 @@ function CombatEventMarker() {
   const fontSize = event.killed ? 0.31 : event.critical ? 0.28 : event.hit ? 0.36 : 0.34;
 
   return (
-    <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
+    <group ref={groupRef} position={[wx, ART.overlayY.combatMarker, wz]} renderOrder={ART.overlayOrder.combat}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
         <ringGeometry args={[ts * 0.32, ts * (0.5 + shot.impactScale * 0.08), 36]} />
-        <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
+        <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={fontSize}
-        color={event.critical || event.killed ? '#ffffff' : event.hit ? shot.secondaryColor : '#fff1b5'}
+        color={event.critical || event.killed ? ART.palette.textLight : event.hit ? shot.secondaryColor : ART.palette.flash}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
-        outlineColor="#11080c"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.combat}
         font={undefined}
       >
         {label}
@@ -1848,9 +1824,9 @@ function CombatTracerOverlay() {
       : event.type === 'reaction_fire'
         ? `${shot.label} REACTION`
         : shot.label;
-  const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
-  const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
-  const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];
+  const start: LinePoint = [sx, ART.overlayY.muzzle, sz];
+  const end: LinePoint = [tx, ART.overlayY.tracerTarget, tz];
+  const midpoint: LinePoint = [(sx + tx) / 2, ART.overlayY.damageText, (sz + tz) / 2];
   const dx = tx - sx;
   const dz = tz - sz;
   const length = Math.sqrt(dx * dx + dz * dz) || 1;
@@ -1859,7 +1835,7 @@ function CombatTracerOverlay() {
   const tracerCount = event.hit ? shot.tracerCount : 1;
 
   return (
-    <group ref={groupRef} raycast={() => null}>
+    <group ref={groupRef} renderOrder={ART.overlayOrder.combat} raycast={() => null}>
       {Array.from({ length: tracerCount }).map((_, index) => {
         const offset = (index - (tracerCount - 1) / 2) * shot.tracerSpread;
         const tracerStart: LinePoint = [
@@ -1881,39 +1857,41 @@ function CombatTracerOverlay() {
             lineWidth={event.hit ? Math.max(2, shot.tracerWidth - index * 0.6) : 2}
             transparent
             opacity={0.92}
+            renderOrder={ART.overlayOrder.combat}
           />
         );
       })}
-      <group ref={muzzleRef} position={start}>
+      <group ref={muzzleRef} position={start} renderOrder={ART.overlayOrder.combat}>
         <mesh>
           <sphereGeometry args={[0.07 + shot.muzzleScale * 0.06, 12, 8]} />
           <meshBasicMaterial color={color} transparent opacity={0.82} depthWrite={false} />
         </mesh>
       </group>
-      <group ref={impactRef} position={end} rotation={[-Math.PI / 2, 0, 0]}>
+      <group ref={impactRef} position={end} rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.combat}>
         <mesh>
           <ringGeometry args={[0.18, event.hit ? 0.28 + shot.impactScale * 0.16 : 0.3, 28]} />
           <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       </group>
       {event.hit && (
-        <group ref={damageRef} position={[end[0], FLOOR_H + 0.9, end[2]]}>
+        <group ref={damageRef} position={[end[0], ART.overlayY.damageText, end[2]]} renderOrder={ART.overlayOrder.combat}>
           <SafeText
             position={[0, 0, 0]}
             rotation={[-Math.PI / 2, 0, 0]}
             fontSize={0.21}
-            color={event.killed || event.critical ? '#ffffff' : shot.secondaryColor}
+            color={event.killed || event.critical ? ART.palette.textLight : shot.secondaryColor}
             anchorX="center"
             anchorY="middle"
             outlineWidth={0.025}
-            outlineColor="#09090f"
+            outlineColor={ART.props.outline}
+            renderOrder={ART.overlayOrder.combat}
             font={undefined}
           >
             {`-${event.damage} HP`}
           </SafeText>
         </group>
       )}
-      <group ref={labelRef} position={midpoint}>
+      <group ref={labelRef} position={midpoint} renderOrder={ART.overlayOrder.combat}>
         <SafeText
           position={[0, 0, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
@@ -1922,7 +1900,8 @@ function CombatTracerOverlay() {
           anchorX="center"
           anchorY="middle"
           outlineWidth={0.03}
-          outlineColor="#09090f"
+          outlineColor={ART.props.outline}
+          renderOrder={ART.overlayOrder.combat}
           font={undefined}
         >
           {label}
@@ -1980,76 +1959,88 @@ function ContactBreakPulse() {
     : tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
   const shot = getShotPresentation(interrupt.event.weaponCategory);
   const color = getCombatEventColor(interrupt.event);
+  const laneY = ART.overlayY.contactLane - ART.overlayY.contactPulse;
+  const sparkY = ART.overlayY.contactSpark - ART.overlayY.contactPulse;
+  const labelY = ART.overlayY.contactLabel - ART.overlayY.contactPulse;
 
   return (
-    <group ref={groupRef} position={[wx, FLOOR_H + 0.34, wz]} raycast={() => null}>
+    <group
+      ref={groupRef}
+      position={[wx, ART.overlayY.contactPulse, wz]}
+      renderOrder={ART.overlayOrder.contactPulse}
+      raycast={() => null}
+    >
       {attackerPoint && (
         <>
           <Line
             points={[
-              [attackerPoint[0] - wx, FLOOR_H + 0.62, attackerPoint[2] - wz],
-              [targetPoint[0] - wx, FLOOR_H + 0.62, targetPoint[2] - wz],
+              [attackerPoint[0] - wx, laneY, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, laneY, targetPoint[2] - wz],
             ]}
             color={color}
             lineWidth={8}
             transparent
             opacity={0.34}
+            renderOrder={ART.overlayOrder.contactPulse}
           />
           <Line
             points={[
-              [attackerPoint[0] - wx, FLOOR_H + 0.68, attackerPoint[2] - wz],
-              [targetPoint[0] - wx, FLOOR_H + 0.68, targetPoint[2] - wz],
+              [attackerPoint[0] - wx, laneY + 0.045, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, laneY + 0.045, targetPoint[2] - wz],
             ]}
-            color="#ffffff"
+            color={ART.palette.textLight}
             lineWidth={3}
             transparent
             opacity={0.88}
+            renderOrder={ART.overlayOrder.contactPulse}
           />
-          <mesh position={[attackerPoint[0] - wx, FLOOR_H + 0.78, attackerPoint[2] - wz]}>
+          <mesh position={[attackerPoint[0] - wx, sparkY, attackerPoint[2] - wz]} renderOrder={ART.overlayOrder.contactPulse}>
             <sphereGeometry args={[0.18, 12, 8]} />
-            <meshBasicMaterial color="#fff4b8" transparent opacity={0.82} depthWrite={false} />
+            <meshBasicMaterial color={ART.palette.flash} transparent opacity={0.82} depthWrite={false} />
           </mesh>
         </>
       )}
-      <mesh position={[targetPoint[0] - wx, FLOOR_H + 0.75, targetPoint[2] - wz]}>
+      <mesh position={[targetPoint[0] - wx, sparkY, targetPoint[2] - wz]} renderOrder={ART.overlayOrder.contactPulse}>
         <sphereGeometry args={[0.22, 14, 10]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.88} depthWrite={false} />
+        <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.88} depthWrite={false} />
       </mesh>
       {sparkOffsets.map((spark, index) => (
         <mesh
           key={index}
-          position={[targetPoint[0] - wx + spark.x, FLOOR_H + 0.72, targetPoint[2] - wz + spark.z]}
+          position={[targetPoint[0] - wx + spark.x, sparkY - 0.03, targetPoint[2] - wz + spark.z]}
           rotation={[0, spark.rotation, 0]}
+          renderOrder={ART.overlayOrder.contactPulse}
         >
           <boxGeometry args={[0.06, 0.06, spark.length]} />
-          <meshBasicMaterial color={index % 2 === 0 ? '#ffffff' : '#ffd166'} transparent opacity={0.78} depthWrite={false} />
+          <meshBasicMaterial color={index % 2 === 0 ? ART.palette.textLight : ART.palette.tAccent} transparent opacity={0.78} depthWrite={false} />
         </mesh>
       ))}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
         <ringGeometry args={[ts * 0.86, ts * 1.02, 48]} />
         <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
         <ringGeometry args={[ts * 1.12, ts * 1.22, 64]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]} renderOrder={ART.overlayOrder.contactPulse}>
         <ringGeometry args={[ts * 0.55, ts * 0.72, 4]} />
         <meshBasicMaterial ref={outerRef} color={color} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
         <ringGeometry args={[ts * 0.28, ts * 0.44, 36]} />
         <meshBasicMaterial ref={innerRef} color={shot.secondaryColor} transparent opacity={0.56} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
-        position={[0, 0.14, -0.78]}
+        position={[0, labelY, -0.78]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.28}
-        color="#ffffff"
+        color={ART.palette.textLight}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.045}
-        outlineColor="#09090f"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.contactPulse}
         font={undefined}
       >
         {`CONTACT\n${interrupt.beatLabel}`}
@@ -2091,10 +2082,10 @@ function ShotPreviewOverlay() {
         const [tx, , tz] = tileWorld(target.position.x, target.position.y, ts);
         const midpoint: [number, number, number] = [
           (sx + tx) / 2,
-          FLOOR_H + 0.62,
+          ART.overlayY.shotLabel,
           (sz + tz) / 2,
         ];
-        const color = preview.hitChance >= 65 ? '#58ff9a' : preview.hitChance >= 35 ? '#ffd166' : '#ff6b82';
+        const color = ART.palette.fireLineRed;
         const coverLabel = preview.coverState === 'protected'
           ? preview.coverQuality === 'corner' ? 'CORNER' : preview.coverLabel.toUpperCase()
           : preview.coverState.toUpperCase();
@@ -2102,9 +2093,16 @@ function ShotPreviewOverlay() {
         return (
           <group key={`shot-${target.id}`}>
             <Line
-              points={[[sx, FLOOR_H + 0.58, sz], [tx, FLOOR_H + 0.58, tz]]}
+              points={[[sx, ART.overlayY.shotLine, sz], [tx, ART.overlayY.shotLine, tz]]}
               color={color}
-              lineWidth={2}
+              lineWidth={3.2}
+              transparent
+              opacity={0.94}
+              dashed
+              dashSize={0.36}
+              gapSize={0.18}
+              depthTest={false}
+              renderOrder={ART.overlayOrder.shotPreview}
             />
             <SafeText
               position={midpoint}
@@ -2113,8 +2111,9 @@ function ShotPreviewOverlay() {
               color={color}
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.03}
-              outlineColor="#08090d"
+              outlineWidth={0.04}
+              outlineColor={ART.palette.labelHalo}
+              renderOrder={ART.overlayOrder.shotPreview}
               font={undefined}
             >
               {`${preview.hitChance}%\n${coverLabel}`}
@@ -2200,25 +2199,12 @@ function InteractiveFloor() {
   );
 }
 
-// ---- Ground plane (beneath everything, dark) ----
-function GroundPlane() {
-  const map = useGameStore((s) => s.map);
-  const ts = map.tileSize;
-  return (
-    <mesh position={[(map.width * ts) / 2, -0.05, (map.height * ts) / 2]}
-      rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[map.width * ts + 20, map.height * ts + 20]} />
-      <meshBasicMaterial color={TILE_COLORS.out_of_bounds} />
-    </mesh>
-  );
-}
-
 // ---- Compose ----
 export function MapRenderer() {
   return (
     <group>
-      <GroundPlane />
       <FloorLayer />
+      <FloorSlabEdgeLayer />
       <WallLayer />
       <CoverLayer />
       <BombsiteMarkers />

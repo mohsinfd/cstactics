@@ -12,6 +12,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
+import { ART } from './artDirection';
 import { MapRenderer } from './MapRenderer';
 import { UnitRenderer } from './UnitRenderer';
 import { useGameStore } from '../game/store';
@@ -45,15 +46,7 @@ type CameraCommand =
   | 'pan-up'
   | 'pan-down';
 
-const CAMERA_PRESET = {
-  offsetX: 78,
-  height: 125,
-  offsetZ: -98,
-  targetOffsetZ: 8,
-  zoom: 4.9,
-  minZoom: 3.8,
-  maxZoom: 26,
-} as const;
+const CAMERA_PRESET = ART.camera.defaultPreset;
 
 const WHEEL_INPUT = {
   mouseStepThresholdPx: 80,
@@ -64,28 +57,17 @@ const WHEEL_INPUT = {
   pinchZoomFactor: 1.14,
 } as const;
 
-const CONTACT_CAMERA_BEAT = {
-  durationSeconds: 3,
-  pushInZoom: 1.42,
-  targetBlend: 0.42,
-  shakeWorld: 0.46,
-  shakeZoom: 0.035,
-} as const;
+const CONTACT_CAMERA_BEAT = ART.camera.contactBeat;
 
-const DUEL_LAB_CAMERA = {
-  offsetX: 34,
-  height: 64,
-  offsetZ: -44,
-  zoom: 11.2,
-  compactOffsetX: 42,
-  compactHeight: 72,
-  compactOffsetZ: -54,
-  compactZoom: 9.2,
-} as const;
+const DUEL_LAB_CAMERA = ART.camera.duelLab;
 
 function getCrispDevicePixelRatio(): number {
-  if (typeof window === 'undefined') return 1.5;
-  return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
+  if (typeof window === 'undefined') return ART.camera.dpr.fallback;
+  return THREE.MathUtils.clamp(
+    window.devicePixelRatio || ART.camera.dpr.fallback,
+    ART.camera.dpr.min,
+    ART.camera.dpr.max
+  );
 }
 
 function isLikelyMouseWheel(deltaX: number, deltaY: number, deltaMode: number, shiftKey: boolean): boolean {
@@ -107,6 +89,39 @@ function tileToWorld(mapWidth: number, tileSize: number, x: number, y: number): 
     0,
     y * tileSize + tileSize / 2
   );
+}
+
+function CameraBootstrap({
+  cameraRef,
+  controlsRef,
+  cameraPosition,
+  targetVector,
+  zoom,
+}: CameraRigRefs & {
+  cameraPosition: [number, number, number];
+  targetVector: THREE.Vector3;
+  zoom: number;
+}) {
+  const appliedKeyRef = useRef('');
+
+  useFrame(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const key = `${cameraPosition.join(',')}|${targetVector.x},${targetVector.y},${targetVector.z}|${zoom}`;
+    if (appliedKeyRef.current === key) return;
+
+    camera.position.set(...cameraPosition);
+    camera.zoom = zoom;
+    controls.target.copy(targetVector);
+    camera.lookAt(targetVector);
+    camera.updateProjectionMatrix();
+    controls.update();
+    appliedKeyRef.current = key;
+  });
+
+  return null;
 }
 
 function PresentationDirector({ cameraRef, controlsRef }: CameraRigRefs) {
@@ -428,14 +443,14 @@ export function IsometricScene() {
       style={{
         width: '100vw',
         height: '100vh',
-        background: '#263348',
+        background: ART.palette.void,
         touchAction: 'none',
         transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
       onWheel={handleWheel}
     >
-      <color attach="background" args={['#263348']} />
+      <color attach="background" args={[ART.palette.void]} />
 
       {/* Camera */}
       <OrthographicCamera
@@ -474,46 +489,57 @@ export function IsometricScene() {
 
       {/* === Lighting === */}
 
-      {/* Hemisphere: warm ground, cool sky */}
+      {/* Neutral studio hemisphere for clay whitebox readability */}
       <hemisphereLight
-        args={['#f4f8ff', '#4a4148', 1.05]}
+        args={[
+          ART.scene.lights.hemisphere.sky,
+          ART.scene.lights.hemisphere.ground,
+          ART.scene.lights.hemisphere.intensity,
+        ]}
       />
 
       {/* Ambient fill */}
-      <ambientLight intensity={1.04} color="#e5edf8" />
+      <ambientLight intensity={ART.scene.lights.ambient.intensity} color={ART.scene.lights.ambient.color} />
 
       {/* Main sun (warm, casts shadows) */}
       <directionalLight
-        position={[cx + 60, 100, cz - 40]}
-        intensity={1.42}
-        color="#ffe0b0"
+        position={[cx + 52, 96, cz - 64]}
+        intensity={ART.scene.lights.sun.intensity}
+        color={ART.scene.lights.sun.color}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-120}
-        shadow-camera-right={120}
-        shadow-camera-top={120}
-        shadow-camera-bottom={-120}
-        shadow-camera-near={1}
-        shadow-camera-far={350}
-        shadow-bias={-0.001}
+        shadow-mapSize-width={ART.shadows.mapSize}
+        shadow-mapSize-height={ART.shadows.mapSize}
+        shadow-camera-left={-ART.shadows.cameraExtent}
+        shadow-camera-right={ART.shadows.cameraExtent}
+        shadow-camera-top={ART.shadows.cameraExtent}
+        shadow-camera-bottom={-ART.shadows.cameraExtent}
+        shadow-camera-near={ART.shadows.cameraNear}
+        shadow-camera-far={ART.shadows.cameraFar}
+        shadow-bias={ART.shadows.bias}
       />
 
       {/* Cool fill from opposite side */}
       <directionalLight
-        position={[cx - 50, 50, cz + 50]}
-        intensity={0.64}
-        color="#7788aa"
+        position={[cx - 72, 62, cz + 72]}
+        intensity={ART.scene.lights.fill.intensity}
+        color={ART.scene.lights.fill.color}
       />
 
-      {/* Slight rim light from behind */}
+      {/* Soft neutral rim to separate white walls from the void */}
       <directionalLight
-        position={[cx, 30, cz - 80]}
-        intensity={0.44}
-        color="#aabbcc"
+        position={[cx - 12, 38, cz - 82]}
+        intensity={ART.scene.lights.rim.intensity}
+        color={ART.scene.lights.rim.color}
       />
 
       {/* === Scene content === */}
+      <CameraBootstrap
+        cameraRef={cameraRef}
+        controlsRef={controlsRef}
+        cameraPosition={cameraPosition}
+        targetVector={targetVector}
+        zoom={CAMERA_PRESET.zoom}
+      />
       <PresentationDirector cameraRef={cameraRef} controlsRef={controlsRef} />
       <MapRenderer />
       <Suspense fallback={null}>
@@ -521,7 +547,7 @@ export function IsometricScene() {
       </Suspense>
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#263348', 520, 820]} />
+      <fog attach="fog" args={[ART.palette.void, ART.scene.fog.near, ART.scene.fog.far]} />
     </Canvas>
   );
 }

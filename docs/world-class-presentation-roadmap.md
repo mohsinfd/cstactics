@@ -5,9 +5,9 @@
 Keep the core tactics engine. Replace the prototype presentation ceiling.
 
 The target is not "a React/Three prototype with nicer colors." The target is a
-small but world-class tactical diorama: Inferno is readable in five seconds,
-units have authored posture and timing, contact moments feel cinematic, and the
-HUD supports decisions without stealing the screen.
+CS2 stratboard-style 3D whitebox tactics map: a clean white/clay tactical level
+model with simplified red/blue miniatures, readable architecture, and strong
+tactical overlays for movement, sightlines, control zones, and executes.
 
 ## North Star
 
@@ -35,14 +35,19 @@ Counter-Strike slowed into XCOM should feel like this:
 
 ## Art Direction
 
-### Tactical Diorama
+### CS2 Whitebox Stratboard
 
-- Inferno should read as a stylized physical board, not a black grid.
-- Walkable lanes need mid-value materials so paths, units, and utility stand
-  apart without the HUD dimming the world.
-- Out-of-bounds mass should frame the playable space, not swallow it.
-- Landmark props should be recognizable silhouettes first, decorative detail
-  second.
+- Inferno should read as a clean clay/whitebox tactical level model, not a
+  moody low-poly diorama or black grid.
+- Walkable lanes use warm off-white tops, slightly darker side faces, and
+  near-white wall caps so paths, units, utility, and control overlays stand
+  apart without HUD dimming.
+- Out-of-bounds space should be a pale desaturated blue-gray studio void that
+  frames the playable board without becoming the visual subject.
+- Landmark props should stay primitive-only and light-gray/clay first; tactical
+  silhouette matters more than decorative color or material realism.
+- Strong color is reserved for tactical language: red/blue teams, movement
+  bands, danger, sightlines, utility volumes, contact, and execute timing.
 
 ### Unit Readability
 
@@ -216,6 +221,26 @@ Progress:
   lane, contact ring, muzzle glint, and impact sparks. This is intentionally
   small; the next step is to move the beat definitions into a reusable
   presentation queue driven by execute/contact timeline events.
+- Material and palette direction now lives in `src/renderer/artDirection.ts`.
+  The previous muted blue/gray low-poly diorama tokens have pivoted to a
+  CS2 stratboard whitebox target: warm off-white floors, near-white wall caps,
+  light-gray wall/cover sides, clay/plaster roughness, and a pale neutral
+  blue-gray studio void.
+- The tactical board now has a renderer-only floating slab edge pass between
+  floor and wall layers, with cover footprints included in the board silhouette
+  and slate walls split into darker bodies plus lighter cap instancing.
+- Renderer-only landmark cover props now live in
+  `src/renderer/diorama/LandmarkProps.tsx`, keeping MapRenderer focused on
+  floor, labels, overlays, and interaction while Banana/B silhouettes stay
+  driven by existing cover/callout data.
+- The first-load tactical view now uses a one-shot R3F camera bootstrap and a
+  pixel smoke for light clay board coverage, preventing regressions where the
+  canvas shows only blue void or the board falls back into near-black values.
+- The production board direction is now primitive-only 3D whitebox stratboard:
+  merged warm floor tops, visible slab skirts only at true void borders,
+  near-white wall caps, light clay landmark props, orthographic non-rotatable
+  camera framing, and tactical overlays stacked above the board instead of
+  decorative effects replacing them.
 
 ### Milestone P5: Production Sound
 
@@ -252,3 +277,6 @@ Progress:
    the Banana Drill contact proof; generalize into a reusable queue next.
 6. Replace movement interpolation with authored move beats.
 7. Prototype one authored weapon recoil/hit/death sequence in Duel Lab.
+8. Keep the main renderer on the CS2 whitebox stratboard target: clay palette,
+   studio lighting, closer orthographic default camera, and strong tactical
+   overlay contrast.
