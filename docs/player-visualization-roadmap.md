@@ -157,6 +157,11 @@ threat, or utility overlays.
   tactical map slice. The important visual learning is that units must remain
   larger and more billboarded than pure top-down pieces, while the map plane
   carries recognizable cover and site geometry underneath them.
+- Pixel-target bridge: the route now uses `public/concepts/isometric-duel-target.png`
+  as the playable board layer. Treat this as the approved composition target:
+  isometric camera, thick walls, grounded cover, readable CT/T silhouettes,
+  selection base, target frame, and shot lane. Do not regress back to a flat
+  skewed 2D board.
 
 ## Next Presentation Targets
 

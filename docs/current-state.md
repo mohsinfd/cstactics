@@ -240,6 +240,10 @@ verbs that make those nouns matter.
   loop but stages it on an angled B-site board slice so map-view composition,
   cover placement, target frames, shot lanes, and casualty placement can be
   tuned before integrating the style into real Duel Lab.
+- `/duel-2-5d` now uses the generated isometric concept target as its in-game
+  board art (`public/concepts/isometric-duel-target.png`) with clickable
+  hotspots layered over it. This is intentionally a pixel-target bridge, not
+  the final decomposed renderer.
 
 ## Partially Implemented
 

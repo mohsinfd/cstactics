@@ -146,6 +146,12 @@ cover silhouettes, unit scale, target frames, shot lane, invalid feedback, and
 casualty placement. It is still a presentation bridge, not the final
 store-integrated Duel Lab.
 
+The current `/duel-2-5d` implementation uses the generated concept image itself
+as the board layer so the playable route can match the approved art target
+immediately. The next production step is decomposition: rebuild that image as
+reusable map tiles, walls, cover props, unit rigs/sprites, decals, lighting, and
+VFX layers driven by the real Duel Lab state.
+
 ## Tooling And Pipeline
 
 - Add screenshot gates for desktop, narrow laptop, compact, contact, zoom stress,
