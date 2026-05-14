@@ -235,6 +235,11 @@ verbs that make those nouns matter.
   loop with move, shoot, invalid target feedback, AWP shot, impact, collapse,
   kill state, and reset. This is the current presentation target for judging
   the future 2.5D Duel Lab feel separately from current tactical UI debt.
+- A second playable board-camera proof exists at `/duel-2-5d` (alias
+  `/cinematic-1v1-25d`): it keeps the same 1v1 move/invalid/shoot/kill/reset
+  loop but stages it on an angled B-site board slice so map-view composition,
+  cover placement, target frames, shot lanes, and casualty placement can be
+  tuned before integrating the style into real Duel Lab.
 
 ## Partially Implemented
 

@@ -153,6 +153,10 @@ threat, or utility overlays.
   feedback, shot lane, impact bloom, and collapse state. This is not the final
   tactical renderer, but it establishes the near-term visual contract: actions
   should read in the world first, with HUD kept minimal and secondary.
+- Board-camera proof: `/duel-2-5d` applies that same contract to an angled
+  tactical map slice. The important visual learning is that units must remain
+  larger and more billboarded than pure top-down pieces, while the map plane
+  carries recognizable cover and site geometry underneath them.
 
 ## Next Presentation Targets
 

@@ -805,3 +805,30 @@ test('cinematic 1v1 proof gives clear target, invalid, kill, and reset feedback'
   await expect(page.getByTestId('cinematic-feedback')).toContainText('Select a contact action.');
   await expect(page.getByTestId('cinematic-target')).toBeEnabled();
 });
+
+test('2.5D board duel proof supports move, invalid targeting, kill, and reset', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-human', '2.5D proof is a desktop presentation slice for now.');
+
+  await page.goto('/duel-2-5d');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  await expect(page.getByTestId('hud-root')).toHaveCount(0);
+
+  await page.getByTestId('board-duel-move').click();
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Pick the blue peek tile.');
+  await page.getByTestId('board-duel-peek-tile').click();
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+
+  await page.getByTestId('board-duel-shoot').click();
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Target lock: 70%');
+  await page.mouse.click(640, 560);
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Invalid command.');
+
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Target lock: 70%');
+  await page.getByTestId('board-duel-target').click();
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Entry down. B lane held.');
+  await expect(page.getByTestId('board-duel-target')).toBeDisabled();
+
+  await page.getByTestId('board-duel-reset').click();
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  await expect(page.getByTestId('board-duel-target')).toBeEnabled();
+});

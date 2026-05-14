@@ -139,6 +139,13 @@ be obvious, wrong clicks must get immediate denial feedback, shots need a
 timed muzzle/tracer/impact beat, and death must leave a readable casualty
 state. It does not imply a permanent front-view game camera.
 
+The first board-camera proof now lives at `/duel-2-5d` with `/cinematic-1v1-25d`
+as an alias. It keeps the tiny 1v1 loop but moves it onto an angled B-site map
+slice. This is the near-term place to tune the planned view: board silhouette,
+cover silhouettes, unit scale, target frames, shot lane, invalid feedback, and
+casualty placement. It is still a presentation bridge, not the final
+store-integrated Duel Lab.
+
 ## Tooling And Pipeline
 
 - Add screenshot gates for desktop, narrow laptop, compact, contact, zoom stress,
