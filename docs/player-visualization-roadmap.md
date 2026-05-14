@@ -112,28 +112,38 @@ scale, muzzle/recoil strength, combat log weapon chips, contact-break styling,
 and procedural audio weight. This makes AWP shots, rifles, SMG bursts, and
 pistols feel different without changing tactical math.
 - Weapon mesh identity: the actual equipped `unit.weapon.category` now drives a
-`WeaponVisualProfile` for weapon body length, barrel, stock, magazine, scope,
-suppressor, muzzle anchor, and muzzle scale. Role identity still owns body,
-gear, and base glyphs, but the held weapon no longer lies when loadouts change.
+  `WeaponVisualProfile` for weapon body length, barrel, stock, magazine, scope,
+  suppressor, muzzle anchor, and muzzle scale. Role identity still owns body,
+  gear, and base glyphs, but the held weapon no longer lies when loadouts change.
+- Sprite identity contract: generated canvas sprites now read from
+  `SpriteVisualProfile` data in `unitVisualIdentity.ts` for team palette,
+  helmet/headwrap marks, armband/chest badge, role glyph placement, role weapon
+  layer, and gear-layer intent. This keeps the high-DPI generated sprite path,
+  but moves its art direction beside the 3D identity contract.
 - Combat beat decay: tracer overlays, muzzle flashes, impact rings, and damage
-labels should use the weapon `markerDurationSeconds` and fade/scale away as a
+  labels should use the weapon `markerDurationSeconds` and fade/scale away as a
 single action beat. Contact VFX can punch hard, especially on reaction hits or
 kills, but it should clear quickly so it does not compete with movement,
 threat, or utility overlays.
 - Combat audio presentation: procedural audio now uses a small cue/mix profile
-layer with restrained UI/movement buses and stronger combat/reaction/impact
-buses. `AudioFeedback` scans recent event arrays, dedupes by id, and plays
-newly seen combat/feedback events chronologically, which is the first step
-toward multi-beat execute audio without committing authored samples yet.
+  layer with restrained UI/movement buses and stronger combat/reaction/impact
+  buses. `AudioFeedback` scans recent event arrays, dedupes by id, and plays
+  newly seen combat/feedback events chronologically, which is the first step
+  toward multi-beat execute audio without committing authored samples yet.
+- Visual readability smoke: `tests/visual-readability.spec.js` now captures
+  Banana Drill and Duel Lab canvas screenshots and asserts nonblank board
+  rendering, CT/T color-family pixels, and selected/target action pixels across
+  the existing browser viewports. It is a coarse guard, not screenshot matching.
 
 ## Next Presentation Targets
 
-1. Move sprite palette/layer descriptors into the identity contract so generated
-  sprites and 3D miniatures share the same team/role art direction.
+1. Run a state readability pass for live, selected, targetable, spent,
+   threatened, and casualty units so action state reads faster than decorative
+   role detail.
 2. Add authored-feeling procedural cues for reload, bomb tick, plant/defuse,
-  utility bloom, and footstep surface without overpowering decision panels.
+   utility bloom, and footstep surface without overpowering decision panels.
 3. Replace latest-event visual assumptions in remaining board markers/casualty
-  effects as the execute timeline grows beyond one or two combat beats.
+   effects as the execute timeline grows beyond one or two combat beats.
 
 ## Acceptance Checks
 
@@ -143,4 +153,3 @@ toward multi-beat execute audio without committing authored samples yet.
 - Selected, hovered, spent, targetable, casualty, bomb, and kit states remain
 more visually prominent than decorative role details when they are active.
 - No new texture assets are required for this pass.
-

@@ -146,6 +146,10 @@ move, trigger contact, and freeze into a trade decision. See
   chronologically instead of only the latest item; unit weapon meshes now use the
   actual equipped weapon category for profile, scope, suppressor, barrel, and
   muzzle placement. Implemented as a first pass.
+- Sprite/model identity contract: generated unit sprites now consume shared
+  sprite visual profiles for team palette, headgear/chest marks, role glyphs,
+  and role weapon/gear layer intent; browser regression includes a coarse canvas
+  pixel-readability smoke for Banana Drill and Duel Lab. Implemented.
 - First-pass contact moment polish: Contact Break now leads with a clear
   tactical decision call, stopped/shooter/responder facts, and stronger
   reaction-fire audio/VFX that fades as a combat beat instead of lingering as a
@@ -159,9 +163,9 @@ move, trigger contact, and freeze into a trade decision. See
   continues to own interrupted executes. Implemented.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
-- Next visual/audio slice: author higher-quality unit sprite/model layers and
-  a richer combat mix pass for reload, footsteps, utility bloom, bomb ticks, and
-  multi-beat execute replay timing.
+- Next visual/audio slice: state readability pass for live, selected,
+  targetable, spent, threatened, and casualty units, plus richer authored-feeling
+  cues for reload, footsteps, utility bloom, bomb ticks, and replay timing.
 
 ### Milestone C: Utility Timing
 

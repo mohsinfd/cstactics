@@ -88,6 +88,9 @@ verbs that make those nouns matter.
 - Unit weapon meshes now follow the actual equipped weapon category for length,
   barrel, scope, suppressor, muzzle anchor, and muzzle scale while preserving
   role body/gear identity.
+- Generated unit sprites now use a shared sprite visual profile for team
+  palette, headgear marks, armband/chest badge, role glyph placement, and role
+  weapon/gear layer intent instead of duplicating canvas-only art direction.
 - Dead units now leave a small team/role casualty marker on the tactical board.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
@@ -178,6 +181,10 @@ verbs that make those nouns matter.
   no longer tied only to role defaults.
 - High-DPI canvas rendering and higher-resolution generated unit sprite overlays
   for crisper camera/browser zoom.
+- Browser regression now includes a lightweight canvas pixel-readability smoke
+  for Banana Drill and Duel Lab, checking nonblank board rendering, CT/T color
+  families, and action/target highlight pixels across desktop, narrow laptop,
+  and compact HUD viewports.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while
   keeping map masks, LOS, route timing, and cover data unchanged.
 

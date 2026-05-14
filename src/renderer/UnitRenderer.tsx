@@ -31,11 +31,13 @@ import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds, getSegmentProgress } from './movementEasing';
 import {
+  getSpriteVisualProfile,
   getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
   TEAM_VISUAL_IDENTITIES,
   type RoleVisualIdentity,
   type TeamVisualIdentity,
+  type UnitBaseGlyph,
 } from './unitVisualIdentity';
 
 type TeamPalette = TeamVisualIdentity & {
@@ -85,14 +87,15 @@ const ROLE_RENDER_CONFIG = {
 
 function drawCanvasRoleGlyph(
   ctx: CanvasRenderingContext2D,
-  glyph: RoleRenderConfig['baseShape'],
+  glyph: UnitBaseGlyph,
   accent: string,
+  stroke: string,
   cx: number,
   cy: number,
   scale = 1,
 ) {
   ctx.save();
-  ctx.strokeStyle = '#f7f8fb';
+  ctx.strokeStyle = stroke;
   ctx.fillStyle = accent;
   ctx.lineWidth = 4 * scale;
   ctx.lineCap = 'round';
@@ -159,7 +162,7 @@ function dampAngle(current: number, target: number, lambda: number, delta: numbe
   return current + angleDelta * (1 - Math.exp(-lambda * delta));
 }
 
-function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: string): THREE.CanvasTexture {
+function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   const spriteScale = 4;
   canvas.width = 192 * spriteScale;
@@ -170,13 +173,9 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
 
   ctx.scale(spriteScale, spriteScale);
 
-  const isCt = team === 'CT';
-  const vest = isCt ? '#224c88' : '#6b5b35';
-  const vestDark = isCt ? '#10233f' : '#332d1e';
-  const cloth = isCt ? '#1b2738' : '#3b3426';
-  const head = isCt ? '#324f7f' : '#8a6b4e';
-  const band = isCt ? '#eef4ff' : '#cc3333';
-  const skin = '#c99870';
+  const spriteProfile = getSpriteVisualProfile(team, roleId);
+  const { team: teamSprite, role: roleSprite } = spriteProfile;
+  const accent = roleSprite.accent;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.shadowColor = 'rgba(0,0,0,0.55)';
@@ -189,14 +188,14 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
 
   const gradient = ctx.createLinearGradient(58, 44, 134, 214);
   gradient.addColorStop(0, accent);
-  gradient.addColorStop(0.28, vest);
-  gradient.addColorStop(1, vestDark);
+  gradient.addColorStop(0.28, teamSprite.vest);
+  gradient.addColorStop(1, teamSprite.vestDark);
 
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   // Legs and boots.
-  ctx.fillStyle = cloth;
+  ctx.fillStyle = teamSprite.pants;
   ctx.fillRect(70, 150, 20, 55);
   ctx.fillRect(103, 150, 20, 55);
   ctx.fillStyle = '#08090d';
@@ -205,24 +204,24 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
 
   // Weapon silhouette behind the chest.
   ctx.strokeStyle = '#111318';
-  ctx.lineWidth = roleId === 'awper' ? 10 : 12;
+  ctx.lineWidth = roleSprite.weapon.width;
   ctx.beginPath();
-  ctx.moveTo(roleId === 'awper' ? 42 : 52, roleId === 'awper' ? 132 : 140);
-  ctx.lineTo(roleId === 'awper' ? 152 : 140, roleId === 'awper' ? 70 : 90);
+  ctx.moveTo(roleSprite.weapon.start.x, roleSprite.weapon.start.y);
+  ctx.lineTo(roleSprite.weapon.end.x, roleSprite.weapon.end.y);
   ctx.stroke();
   ctx.strokeStyle = accent;
-  ctx.globalAlpha = roleId === 'awper' ? 0.55 : 0.36;
+  ctx.globalAlpha = roleSprite.weapon.accentAlpha;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(roleId === 'awper' ? 44 : 55, roleId === 'awper' ? 130 : 138);
-  ctx.lineTo(roleId === 'awper' ? 150 : 137, roleId === 'awper' ? 72 : 92);
+  ctx.moveTo(roleSprite.weapon.start.x + 2, roleSprite.weapon.start.y - 2);
+  ctx.lineTo(roleSprite.weapon.end.x - 2, roleSprite.weapon.end.y + 2);
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  if (roleId === 'awper') {
+  if (roleSprite.weapon.scopeVisible) {
     ctx.fillStyle = '#0b0f17';
     ctx.fillRect(116, 78, 24, 10);
-    ctx.strokeStyle = '#9ee8ff';
+    ctx.strokeStyle = roleSprite.weapon.scopeAccent;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(138, 82, 7, 0, Math.PI * 2);
@@ -248,15 +247,24 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.fillRect(75, 99, 42, 13);
   ctx.fillStyle = accent;
   ctx.fillRect(76, 101, 40, 5);
+  ctx.fillStyle = teamSprite.chestMark;
+  ctx.fillRect(111, 116, 22, 14);
+  ctx.font = '900 10px system-ui, Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = teamSprite.chestTextColor;
+  ctx.strokeStyle = teamSprite.chestOutline;
+  ctx.lineWidth = 2;
+  ctx.strokeText(teamSprite.chestText, 122, 127);
+  ctx.fillText(teamSprite.chestText, 122, 127);
 
-  if (roleId === 'support') {
+  if (roleSprite.gearLayer === 'utility-belt') {
     ['#6ee7b7', '#f6d365', '#ff8a3d'].forEach((color, index) => {
       ctx.fillStyle = color;
       ctx.fillRect(66 + index * 22, 150, 13, 20);
     });
   }
 
-  if (roleId === 'igl') {
+  if (roleSprite.gearLayer === 'command-kit') {
     ctx.strokeStyle = '#8fffa2';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -269,7 +277,7 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
     ctx.fillRect(81, 132, 30, 10);
   }
 
-  if (roleId === 'lurker') {
+  if (roleSprite.gearLayer === 'stealth-cloak') {
     ctx.fillStyle = 'rgba(192,132,252,0.28)';
     ctx.beginPath();
     ctx.moveTo(96, 74);
@@ -279,10 +287,18 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
     ctx.fill();
   }
 
-  drawCanvasRoleGlyph(ctx, ROLE_RENDER_CONFIG[roleId].baseShape, accent, 96, 131, 0.72);
+  drawCanvasRoleGlyph(
+    ctx,
+    roleSprite.baseGlyph,
+    accent,
+    roleSprite.glyphStroke,
+    roleSprite.glyphCenter.x,
+    roleSprite.glyphCenter.y,
+    roleSprite.glyphScale
+  );
 
   // Arms and team marker.
-  ctx.strokeStyle = vestDark;
+  ctx.strokeStyle = teamSprite.vestDark;
   ctx.lineWidth = 16;
   ctx.beginPath();
   ctx.moveTo(58, 104);
@@ -290,7 +306,7 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.moveTo(134, 104);
   ctx.lineTo(150, 150);
   ctx.stroke();
-  ctx.strokeStyle = band;
+  ctx.strokeStyle = teamSprite.armband;
   ctx.lineWidth = 5;
   ctx.beginPath();
   ctx.moveTo(46, 137);
@@ -300,13 +316,13 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.stroke();
 
   // Neck, face, and helmet/headwrap.
-  ctx.fillStyle = skin;
+  ctx.fillStyle = teamSprite.skin;
   ctx.fillRect(85, 70, 22, 18);
-  ctx.fillStyle = skin;
+  ctx.fillStyle = teamSprite.skin;
   ctx.beginPath();
   ctx.ellipse(96, 58, 21, 24, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = head;
+  ctx.fillStyle = teamSprite.headgear;
   ctx.beginPath();
   ctx.ellipse(96, 46, 27, 20, 0, Math.PI, Math.PI * 2);
   ctx.lineTo(123, 58);
@@ -314,25 +330,25 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = band;
+  ctx.fillStyle = teamSprite.armband;
   ctx.fillRect(72, 56, 48, 6);
-  if (isCt) {
-    ctx.fillStyle = '#09111f';
+  if (teamSprite.headgearMark === 'helmet-stripe') {
+    ctx.fillStyle = teamSprite.faceShield;
     ctx.fillRect(78, 61, 36, 6);
-    ctx.fillStyle = '#dfeaff';
+    ctx.fillStyle = teamSprite.headgearAccent;
     ctx.fillRect(88, 34, 16, 5);
-    ctx.fillStyle = head;
+    ctx.fillStyle = teamSprite.headgear;
     ctx.fillRect(65, 54, 8, 22);
     ctx.fillRect(119, 54, 8, 22);
   } else {
-    ctx.fillStyle = '#cc3333';
+    ctx.fillStyle = teamSprite.headgearAccent;
     ctx.beginPath();
     ctx.moveTo(119, 58);
     ctx.lineTo(139, 70);
     ctx.lineTo(122, 74);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#8e2424';
+    ctx.fillStyle = teamSprite.headgearAccentDark;
     ctx.fillRect(76, 43, 42, 7);
     ctx.beginPath();
     ctx.moveTo(74, 48);
@@ -352,7 +368,7 @@ function createUnitSpriteTexture(team: Unit['team'], roleId: RoleId, accent: str
   ctx.fillStyle = '#f7f8fb';
   ctx.strokeStyle = '#07080d';
   ctx.lineWidth = 5;
-  const tag = ROLE_RENDER_CONFIG[roleId].shortTag;
+  const tag = roleSprite.shortTag;
   ctx.strokeText(tag, 96, 236);
   ctx.fillText(tag, 96, 236);
 
@@ -890,8 +906,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const rc = ROLE_RENDER_CONFIG[unit.role.id];
   const weaponProfile = getWeaponVisualProfile(unit.weapon.category);
   const spriteTexture = useMemo(
-    () => createUnitSpriteTexture(unit.team, unit.role.id, rc.accent),
-    [rc.accent, unit.role.id, unit.team]
+    () => createUnitSpriteTexture(unit.team, unit.role.id),
+    [unit.role.id, unit.team]
   );
 
   useEffect(() => () => {

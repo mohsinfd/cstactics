@@ -1,6 +1,57 @@
 import type { RoleId, Team, WeaponCategory } from '../game/types';
 
 export type UnitBaseGlyph = 'long' | 'wedge' | 'command' | 'utility' | 'stealth';
+export type SpriteHeadgearMark = 'helmet-stripe' | 'headwrap-tails';
+export type SpriteRoleGearLayer = 'long-gun' | 'assault-tabs' | 'command-kit' | 'utility-belt' | 'stealth-cloak';
+
+export interface SpritePoint {
+  x: number;
+  y: number;
+}
+
+export interface SpriteRoleWeaponLayer {
+  start: SpritePoint;
+  end: SpritePoint;
+  width: number;
+  accentAlpha: number;
+  scopeVisible: boolean;
+  scopeAccent: string;
+}
+
+export interface SpriteTeamLayerProfile {
+  vest: string;
+  vestDark: string;
+  pants: string;
+  headgear: string;
+  headgearDark: string;
+  skin: string;
+  armband: string;
+  chestMark: string;
+  chestText: string;
+  chestTextColor: string;
+  chestOutline: string;
+  faceShield: string;
+  headgearMark: SpriteHeadgearMark;
+  headgearAccent: string;
+  headgearAccentDark: string;
+  inactiveOpacity: number;
+}
+
+export interface SpriteRoleLayerProfile {
+  shortTag: string;
+  accent: string;
+  baseGlyph: UnitBaseGlyph;
+  glyphCenter: SpritePoint;
+  glyphScale: number;
+  glyphStroke: string;
+  gearLayer: SpriteRoleGearLayer;
+  weapon: SpriteRoleWeaponLayer;
+}
+
+export interface SpriteVisualProfile {
+  team: SpriteTeamLayerProfile;
+  role: SpriteRoleLayerProfile;
+}
 
 export interface WeaponVisualProfile {
   category: WeaponCategory;
@@ -95,6 +146,45 @@ export const TEAM_VISUAL_IDENTITIES = {
   },
 } satisfies Record<Team, TeamVisualIdentity>;
 
+export const TEAM_SPRITE_LAYER_PROFILES = {
+  CT: {
+    vest: '#224c88',
+    vestDark: '#10233f',
+    pants: '#1b2738',
+    headgear: '#324f7f',
+    headgearDark: '#1a3060',
+    skin: '#c99870',
+    armband: '#eef4ff',
+    chestMark: '#e9eef7',
+    chestText: 'CT',
+    chestTextColor: '#0f2040',
+    chestOutline: '#dfeaff',
+    faceShield: '#09111f',
+    headgearMark: 'helmet-stripe',
+    headgearAccent: '#dfeaff',
+    headgearAccentDark: '#09111f',
+    inactiveOpacity: TEAM_VISUAL_IDENTITIES.CT.dimFactor,
+  },
+  T: {
+    vest: '#6b5b35',
+    vestDark: '#332d1e',
+    pants: '#3b3426',
+    headgear: '#8a6b4e',
+    headgearDark: '#5c4a30',
+    skin: '#c99870',
+    armband: '#cc3333',
+    chestMark: '#c43232',
+    chestText: 'T',
+    chestTextColor: '#ffe2b5',
+    chestOutline: '#4a0808',
+    faceShield: '#2b160d',
+    headgearMark: 'headwrap-tails',
+    headgearAccent: '#cc3333',
+    headgearAccentDark: '#8e2424',
+    inactiveOpacity: TEAM_VISUAL_IDENTITIES.T.dimFactor,
+  },
+} satisfies Record<Team, SpriteTeamLayerProfile>;
+
 export const ROLE_VISUAL_IDENTITIES = {
   awper: {
     id: 'awper',
@@ -162,6 +252,94 @@ export const ROLE_VISUAL_IDENTITIES = {
     secondaryRead: 'dark cloak-like back plate',
   },
 } satisfies Record<RoleId, RoleVisualIdentity>;
+
+export const ROLE_SPRITE_LAYER_PROFILES = {
+  awper: {
+    shortTag: ROLE_VISUAL_IDENTITIES.awper.shortTag,
+    accent: ROLE_VISUAL_IDENTITIES.awper.accent,
+    baseGlyph: ROLE_VISUAL_IDENTITIES.awper.baseGlyph,
+    glyphCenter: { x: 96, y: 131 },
+    glyphScale: 0.72,
+    glyphStroke: '#f7f8fb',
+    gearLayer: 'long-gun',
+    weapon: {
+      start: { x: 42, y: 132 },
+      end: { x: 152, y: 70 },
+      width: 10,
+      accentAlpha: 0.55,
+      scopeVisible: true,
+      scopeAccent: '#9ee8ff',
+    },
+  },
+  entry: {
+    shortTag: ROLE_VISUAL_IDENTITIES.entry.shortTag,
+    accent: ROLE_VISUAL_IDENTITIES.entry.accent,
+    baseGlyph: ROLE_VISUAL_IDENTITIES.entry.baseGlyph,
+    glyphCenter: { x: 96, y: 131 },
+    glyphScale: 0.72,
+    glyphStroke: '#f7f8fb',
+    gearLayer: 'assault-tabs',
+    weapon: {
+      start: { x: 52, y: 140 },
+      end: { x: 140, y: 90 },
+      width: 12,
+      accentAlpha: 0.36,
+      scopeVisible: false,
+      scopeAccent: ROLE_VISUAL_IDENTITIES.entry.accent,
+    },
+  },
+  igl: {
+    shortTag: ROLE_VISUAL_IDENTITIES.igl.shortTag,
+    accent: ROLE_VISUAL_IDENTITIES.igl.accent,
+    baseGlyph: ROLE_VISUAL_IDENTITIES.igl.baseGlyph,
+    glyphCenter: { x: 96, y: 131 },
+    glyphScale: 0.72,
+    glyphStroke: '#f7f8fb',
+    gearLayer: 'command-kit',
+    weapon: {
+      start: { x: 52, y: 140 },
+      end: { x: 140, y: 90 },
+      width: 12,
+      accentAlpha: 0.36,
+      scopeVisible: false,
+      scopeAccent: ROLE_VISUAL_IDENTITIES.igl.accent,
+    },
+  },
+  support: {
+    shortTag: ROLE_VISUAL_IDENTITIES.support.shortTag,
+    accent: ROLE_VISUAL_IDENTITIES.support.accent,
+    baseGlyph: ROLE_VISUAL_IDENTITIES.support.baseGlyph,
+    glyphCenter: { x: 96, y: 131 },
+    glyphScale: 0.72,
+    glyphStroke: '#f7f8fb',
+    gearLayer: 'utility-belt',
+    weapon: {
+      start: { x: 52, y: 140 },
+      end: { x: 140, y: 90 },
+      width: 12,
+      accentAlpha: 0.36,
+      scopeVisible: false,
+      scopeAccent: ROLE_VISUAL_IDENTITIES.support.accent,
+    },
+  },
+  lurker: {
+    shortTag: ROLE_VISUAL_IDENTITIES.lurker.shortTag,
+    accent: ROLE_VISUAL_IDENTITIES.lurker.accent,
+    baseGlyph: ROLE_VISUAL_IDENTITIES.lurker.baseGlyph,
+    glyphCenter: { x: 96, y: 131 },
+    glyphScale: 0.72,
+    glyphStroke: '#f7f8fb',
+    gearLayer: 'stealth-cloak',
+    weapon: {
+      start: { x: 52, y: 140 },
+      end: { x: 140, y: 90 },
+      width: 12,
+      accentAlpha: 0.36,
+      scopeVisible: false,
+      scopeAccent: ROLE_VISUAL_IDENTITIES.lurker.accent,
+    },
+  },
+} satisfies Record<RoleId, SpriteRoleLayerProfile>;
 
 export const WEAPON_VISUAL_PROFILES = {
   sniper: {
@@ -242,6 +420,13 @@ export function getTeamVisualIdentity(team: Team): TeamVisualIdentity {
 
 export function getRoleVisualIdentity(roleId: RoleId): RoleVisualIdentity {
   return ROLE_VISUAL_IDENTITIES[roleId];
+}
+
+export function getSpriteVisualProfile(team: Team, roleId: RoleId): SpriteVisualProfile {
+  return {
+    team: TEAM_SPRITE_LAYER_PROFILES[team],
+    role: ROLE_SPRITE_LAYER_PROFILES[roleId],
+  };
 }
 
 export function getWeaponVisualProfile(category: WeaponCategory): WeaponVisualProfile {
