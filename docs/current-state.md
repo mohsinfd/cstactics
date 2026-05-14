@@ -244,6 +244,11 @@ verbs that make those nouns matter.
   board art (`public/concepts/isometric-duel-target.png`) with clickable
   hotspots layered over it. This is intentionally a pixel-target bridge, not
   the final decomposed renderer.
+- The same route now has an authored isometric floor graph over the concept
+  image: eight calibrated walkable nodes, cover hints, a visible move-tile
+  overlay, path line, and a movable CT gameplay marker. This proves the hybrid
+  direction: keep the painted board texture, but drive movement/targeting from
+  a separate tile layer.
 
 ## Partially Implemented
 

@@ -812,11 +812,23 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   await page.goto('/duel-2-5d');
   await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
   await expect(page.getByTestId('hud-root')).toHaveCount(0);
+  await expect(page.locator('.iso-tile')).toHaveCount(8);
 
   await page.getByTestId('board-duel-move').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Pick the blue peek tile.');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Pick a blue floor tile.');
+  const startTokenBox = await page.locator('.unit-token').boundingBox();
   await page.getByTestId('board-duel-peek-tile').click();
   await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  const movedTokenBox = await page.locator('.unit-token').boundingBox();
+  expect(startTokenBox, 'unit token should be measurable before movement').not.toBeNull();
+  expect(movedTokenBox, 'unit token should be measurable after movement').not.toBeNull();
+  expect(
+    Math.hypot(
+      (movedTokenBox?.x ?? 0) - (startTokenBox?.x ?? 0),
+      (movedTokenBox?.y ?? 0) - (startTokenBox?.y ?? 0)
+    ),
+    'unit token should visibly move across the isometric tile graph'
+  ).toBeGreaterThan(40);
 
   await page.getByTestId('board-duel-shoot').click();
   await expect(page.getByTestId('board-duel-feedback')).toContainText('Target lock: 70%');

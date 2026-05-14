@@ -101,6 +101,9 @@ For each sequence, assert:
   tactical view: click `Move Peek`, click the highlighted peek tile, click
   `Shoot 70%`, click empty floor for invalid feedback, click the T target for
   kill feedback, then reset. It intentionally has no main HUD root.
+- The `/duel-2-5d` proof must keep its isometric tile graph measurable: the
+  browser regression checks that eight floor tiles exist and that the CT
+  gameplay marker visibly moves after clicking a tile.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 

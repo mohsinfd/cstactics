@@ -152,6 +152,13 @@ immediately. The next production step is decomposition: rebuild that image as
 reusable map tiles, walls, cover props, unit rigs/sprites, decals, lighting, and
 VFX layers driven by the real Duel Lab state.
 
+The tactical calibration approach is now proven in miniature: the full board
+does not need to be physically cut into tiles. Keep the isometric board art as
+the visual layer, then author a separate ground graph for walkable positions,
+cover hints, path preview, target frames, and interaction hit areas. Only the
+walkable floor/control layer needs tile semantics; walls and props can remain
+painted or become layered props later.
+
 ## Tooling And Pipeline
 
 - Add screenshot gates for desktop, narrow laptop, compact, contact, zoom stress,
