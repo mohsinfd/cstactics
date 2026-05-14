@@ -75,6 +75,29 @@ function playUiTick(ctx: AudioContext, when: number, frequency: number, gainValu
   playTone(ctx, when, frequency, 0.045, gainValue, 'triangle');
 }
 
+function playReactionSting(
+  ctx: AudioContext,
+  when: number,
+  event: CombatEvent,
+  shot: ReturnType<typeof getShotPresentation>
+): void {
+  const weight = shot.audioGainScale;
+  const hitWeight = event.hit ? 1 : 0.62;
+
+  playTone(ctx, when + 0.012, shot.shotToneHz * 1.55, 0.07, 0.018 * weight * hitWeight, 'triangle');
+  playNoiseBurst(ctx, when + 0.025, shot.noiseDurationSeconds + 0.06, 0.045 * weight * hitWeight);
+
+  if (event.hit) {
+    playTone(ctx, when + 0.055, Math.max(42, shot.impactToneHz * 0.72), 0.2, 0.052 * weight, 'sawtooth');
+    playTone(ctx, when + 0.085, 240 + shot.impactToneHz, 0.075, 0.022 * weight, 'triangle');
+  }
+
+  if (event.killed) {
+    playTone(ctx, when + 0.12, 44, 0.34, 0.082 * weight, 'sawtooth');
+    playNoiseBurst(ctx, when + 0.14, 0.18, 0.052 * weight);
+  }
+}
+
 function playCombatCue(event: CombatEvent): void {
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -100,6 +123,9 @@ function playCombatCue(event: CombatEvent): void {
     (event.hit ? 0.035 : 0.02) * shot.audioGainScale,
     event.weaponCategory === 'sniper' ? 'sawtooth' : 'square'
   );
+  if (isReaction) {
+    playReactionSting(ctx, now, event, shot);
+  }
 
   if (event.hit) {
     playTone(ctx, now + 0.045, event.damage >= 45 ? shot.impactToneHz : Math.max(70, shot.impactToneHz * 1.18), 0.16, 0.055 * shot.audioGainScale, 'sine');

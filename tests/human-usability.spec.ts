@@ -281,6 +281,24 @@ test.describe('human usability regression', () => {
     await queueBananaDrillContact(page);
 
     await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
+    const decisionState = await page.evaluate(() => {
+      const interrupt = window.__CS_TACTICS_STORE__?.getState().executeInterrupt;
+      if (!interrupt) return null;
+      return {
+        stoppedName: interrupt.event.targetName,
+        shooterName: interrupt.event.attackerName,
+        decisionCall: interrupt.tradeShot
+          ? 'Trade now'
+          : interrupt.event.killed
+            ? 'No clean trade'
+            : 'Hold and recover',
+      };
+    });
+    expect(decisionState, 'contact break should carry decision context').not.toBeNull();
+    await expect(page.getByTestId('hud-contact-decision-call')).toHaveText(decisionState!.decisionCall);
+    await expect(page.getByTestId('hud-contact-stopped')).toContainText(decisionState!.stoppedName);
+    await expect(page.getByTestId('hud-contact-shooter')).toContainText(decisionState!.shooterName);
+    await expect(page.getByTestId('hud-contact-responder')).toBeVisible();
     await expect(page.getByTestId('hud-execute-timeline-panel')).toHaveCount(0);
     await expect(page.getByTestId('hud-contact-timeline')).toBeVisible();
     const timelineItemCount = await page.getByTestId('hud-contact-timeline-item').count();
@@ -319,7 +337,14 @@ test.describe('human usability regression', () => {
       'shot_result',
       'trade_decision',
     ]));
-    await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
+    await expectHudReachable(page, [
+      ...BASE_HUD_IDS,
+      'hud-contact-break-panel',
+      'hud-contact-decision-call',
+      'hud-contact-stopped',
+      'hud-contact-shooter',
+      'hud-contact-responder',
+    ]);
 
     const viewport = page.viewportSize();
     if (viewport && viewport.width <= 560) {

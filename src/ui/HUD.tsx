@@ -12,6 +12,7 @@
 // ============================================================
 import { useGameStore } from '../game/store';
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { ExecuteInterruptTimelineItem, ExecuteTimelineEvent, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
@@ -190,11 +191,14 @@ function ContactBreakPanel() {
 
   const event = interrupt.event;
   const target = units.find((unit) => unit.id === event.targetId);
+  const shooter = units.find((unit) => unit.id === event.attackerId);
   const tile = map.grid[interrupt.contactTile.y]?.[interrupt.contactTile.x];
   const tileLabel = tile?.label ?? 'contact tile';
   const trade = interrupt.tradeShot;
   const bomb = interrupt.bombPressure;
   const shot = getShotPresentation(event.weaponCategory);
+  const stoppedName = target?.name ?? event.targetName;
+  const shooterName = shooter?.name ?? event.attackerName;
   const resultText = event.killed
     ? event.critical ? `HS KILL -${event.damage}` : `KILL -${event.damage}`
     : event.critical
@@ -202,6 +206,20 @@ function ContactBreakPanel() {
       : event.hit
         ? `-${event.damage} HP`
         : 'MISS';
+  const decisionCall = trade
+    ? 'Trade now'
+    : event.killed
+      ? 'No clean trade'
+      : 'Hold and recover';
+  const decisionDetail = trade
+    ? `${trade.shooterName} can punish ${trade.targetName}`
+    : event.killed
+      ? `${stoppedName} is down; stabilize the break`
+      : `${stoppedName} survived; reset the angle`;
+  const shotReadout = `${event.hitChance}% / ${event.damage} dmg / ${getCoverStateLabel(event)}`;
+  const responderReadout = trade
+    ? `${trade.shooterName}: ${trade.hitChance}% / ${trade.damage} dmg / ${getCoverStateLabel(trade)}`
+    : 'No clean trade from AP, ammo, or line of sight';
   const bombText = bomb.bombPlanted
     ? `Bomb planted: ${bomb.bombTimer} turns`
     : bomb.bombDropped
@@ -272,8 +290,75 @@ function ContactBreakPanel() {
           {interrupt.beatLabel} {interrupt.phaseLabel}
         </div>
       </div>
-      <div style={{ color: '#ddd', fontSize: compact ? 10 : 11, lineHeight: 1.35, fontWeight: 750 }}>
-        {target?.name ?? event.targetName} stopped at {tileLabel}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: compact ? '1fr' : '1fr auto',
+        alignItems: 'center',
+        gap: compact ? 3 : 8,
+        padding: compact ? '5px 6px' : '6px 7px',
+        border: `1px solid ${shot.color}38`,
+        background: `${shot.color}14`,
+        borderRadius: 4,
+      }}>
+        <span
+          data-testid="hud-contact-decision-call"
+          style={{
+            color: trade ? '#f4e7b4' : event.killed ? '#ffb3c0' : '#d8dce4',
+            fontSize: compact ? 11 : 13,
+            fontWeight: 950,
+            letterSpacing: compact ? 0.3 : 0.5,
+            textTransform: 'uppercase',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {decisionCall}
+        </span>
+        <span style={{
+          color: event.hit ? '#ffffff' : '#d8c170',
+          fontSize: compact ? 10 : 12,
+          fontWeight: 950,
+          fontFamily: "'Courier New', monospace",
+          whiteSpace: 'nowrap',
+        }}>
+          {resultText}
+        </span>
+        <span style={{
+          gridColumn: compact ? '1' : '1 / 3',
+          color: '#96878e',
+          fontSize: compact ? 8 : 9,
+          fontWeight: 800,
+          lineHeight: 1.25,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {decisionDetail}
+        </span>
+      </div>
+      <div style={{
+        display: 'grid',
+        gap: compact ? 2 : 3,
+        marginTop: compact ? 5 : 6,
+        color: '#d8dce4',
+        fontSize: compact ? 8 : 9,
+        lineHeight: 1.25,
+      }}>
+        <DecisionFactRow compact={compact} label="Stopped" testId="hud-contact-stopped">
+          {stoppedName} at {tileLabel}
+        </DecisionFactRow>
+        <DecisionFactRow compact={compact} label="Shooter" testId="hud-contact-shooter">
+          {shooterName} - {event.weaponName} - {shotReadout}
+        </DecisionFactRow>
+        <DecisionFactRow compact={compact} label="Responder" testId="hud-contact-responder" color={trade ? '#f4e7b4' : '#8e7d82'}>
+          {responderReadout}
+        </DecisionFactRow>
+        {bombText && (
+          <DecisionFactRow compact={compact} label="Bomb" testId="hud-contact-bomb-pressure" color="#ffd166">
+            {bombText}
+          </DecisionFactRow>
+        )}
       </div>
       <div data-testid="hud-contact-timeline" style={{
         display: 'grid',
@@ -348,26 +433,8 @@ function ContactBreakPanel() {
           );
         })}
       </div>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: compact ? '1fr' : '1fr auto',
-        alignItems: 'center',
-        gap: compact ? 3 : 8,
-        marginTop: compact ? 6 : 7,
-        padding: compact ? '5px 6px' : '6px 7px',
-        border: `1px solid ${shot.color}32`,
-        background: `${shot.color}12`,
-        borderRadius: 4,
-      }}>
-        <span style={{ color: '#d8dce4', fontSize: compact ? 8 : 9, fontWeight: 850, textTransform: 'uppercase', letterSpacing: compact ? 0.3 : 0.5 }}>
-          {event.weaponName} {event.type === 'reaction_fire' ? 'reaction' : 'shot'}
-        </span>
-        <span style={{ color: event.hit ? '#ffffff' : '#d8c170', fontSize: compact ? 11 : 12, fontWeight: 950, fontFamily: "'Courier New', monospace" }}>
-          {resultText}
-        </span>
-      </div>
       <div style={{ color: '#70646a', fontSize: compact ? 8 : 9, lineHeight: 1.35, marginTop: 3, textTransform: 'uppercase', letterSpacing: compact ? 0.3 : 0.5 }}>
-        {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
+        Shot: {event.hitChance}% | {getCoverStateLabel(event)} | range -{formatPenalty(event.rangePenalty)} | cover -{formatPenalty(event.coverPenalty)}{event.flashPenalty > 0 ? ` | flash -${formatPenalty(event.flashPenalty)}` : ''}
       </div>
       <div style={{
         marginTop: compact ? 6 : 8,
@@ -419,12 +486,52 @@ function ContactBreakPanel() {
             No clean trade is available from current AP, ammo, and line of sight.
           </div>
         )}
-        {bombText && (
-          <div style={{ color: '#ffd166', fontSize: compact ? 8 : 9, fontWeight: 850, letterSpacing: compact ? 0.3 : 0.5, textTransform: 'uppercase' }}>
-            {bombText}
-          </div>
-        )}
       </div>
+    </div>
+  );
+}
+
+function DecisionFactRow({
+  children,
+  color = '#d8dce4',
+  compact,
+  label,
+  testId,
+}: {
+  children: ReactNode;
+  color?: string;
+  compact: boolean;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: compact ? '54px minmax(0, 1fr)' : '68px minmax(0, 1fr)',
+        gap: compact ? 5 : 7,
+        minWidth: 0,
+      }}
+    >
+      <span style={{
+        color: '#756870',
+        fontSize: compact ? 7 : 8,
+        fontWeight: 950,
+        letterSpacing: compact ? 0.4 : 0.6,
+        textTransform: 'uppercase',
+      }}>
+        {label}
+      </span>
+      <span style={{
+        color,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        fontWeight: 800,
+      }}>
+        {children}
+      </span>
     </div>
   );
 }

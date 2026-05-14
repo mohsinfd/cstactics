@@ -114,6 +114,21 @@ function getCombatEventLabel(event: CombatEvent): string {
   return `-${event.damage}`;
 }
 
+function setObjectOpacity(root: THREE.Object3D | null, opacity: number): void {
+  if (!root) return;
+
+  root.traverse((child) => {
+    const material = (child as THREE.Object3D & { material?: THREE.Material | THREE.Material[] }).material;
+    const materials = Array.isArray(material) ? material : material ? [material] : [];
+
+    materials.forEach((mat) => {
+      mat.transparent = true;
+      mat.opacity = opacity;
+      mat.depthWrite = false;
+    });
+  });
+}
+
 function areaCenterWorldX(mapWidth: number, x: number, width: number, ts: number): number {
   return (mapWidth - x - width / 2) * ts;
 }
@@ -1537,6 +1552,39 @@ function CombatTracerOverlay() {
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const muzzleRef = useRef<THREE.Group>(null);
+  const impactRef = useRef<THREE.Group>(null);
+  const damageRef = useRef<THREE.Group>(null);
+  const labelRef = useRef<THREE.Group>(null);
+
+  useFrame(() => {
+    if (!event || !groupRef.current) return;
+
+    const shot = getShotPresentation(event.weaponCategory);
+    const durationMs = shot.markerDurationSeconds * 1000;
+    const elapsedMs = Math.max(0, Date.now() - event.createdAt);
+    const progress = THREE.MathUtils.clamp(elapsedMs / durationMs, 0, 1);
+    const fade = 1 - THREE.MathUtils.smoothstep(progress, 0.16, 1);
+    const pulse = 1 + Math.sin(progress * Math.PI) * shot.impactScale * (event.killed ? 0.22 : event.hit ? 0.15 : 0.09);
+
+    groupRef.current.visible = progress < 1 && fade > 0.02;
+    setObjectOpacity(groupRef.current, 0.92 * fade);
+
+    if (muzzleRef.current) {
+      const muzzlePunch = 1 + Math.max(0, 1 - progress * 2.4) * shot.muzzleScale * (event.type === 'reaction_fire' ? 0.58 : 0.42);
+      muzzleRef.current.scale.setScalar(muzzlePunch);
+    }
+    if (impactRef.current) {
+      impactRef.current.scale.setScalar(pulse);
+    }
+    if (damageRef.current) {
+      damageRef.current.scale.setScalar(1 + Math.sin(progress * Math.PI) * (event.killed ? 0.28 : 0.18));
+    }
+    if (labelRef.current) {
+      labelRef.current.scale.setScalar(1 + Math.sin(progress * Math.PI) * 0.12);
+    }
+  });
 
   if (!event) return null;
 
@@ -1567,7 +1615,7 @@ function CombatTracerOverlay() {
   const tracerCount = event.hit ? shot.tracerCount : 1;
 
   return (
-    <group raycast={() => null}>
+    <group ref={groupRef} raycast={() => null}>
       {Array.from({ length: tracerCount }).map((_, index) => {
         const offset = (index - (tracerCount - 1) / 2) * shot.tracerSpread;
         const tracerStart: LinePoint = [
@@ -1587,45 +1635,55 @@ function CombatTracerOverlay() {
             points={[tracerStart, tracerEnd]}
             color={index === 0 ? color : shot.secondaryColor}
             lineWidth={event.hit ? Math.max(2, shot.tracerWidth - index * 0.6) : 2}
+            transparent
+            opacity={0.92}
           />
         );
       })}
-      <mesh position={start}>
-        <sphereGeometry args={[0.07 + shot.muzzleScale * 0.06, 12, 8]} />
-        <meshBasicMaterial color={color} transparent opacity={0.82} />
-      </mesh>
-      <mesh position={end} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.18, event.hit ? 0.28 + shot.impactScale * 0.16 : 0.3, 28]} />
-        <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} />
-      </mesh>
+      <group ref={muzzleRef} position={start}>
+        <mesh>
+          <sphereGeometry args={[0.07 + shot.muzzleScale * 0.06, 12, 8]} />
+          <meshBasicMaterial color={color} transparent opacity={0.82} depthWrite={false} />
+        </mesh>
+      </group>
+      <group ref={impactRef} position={end} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh>
+          <ringGeometry args={[0.18, event.hit ? 0.28 + shot.impactScale * 0.16 : 0.3, 28]} />
+          <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      </group>
       {event.hit && (
+        <group ref={damageRef} position={[end[0], FLOOR_H + 0.9, end[2]]}>
+          <SafeText
+            position={[0, 0, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            fontSize={0.21}
+            color={event.killed || event.critical ? '#ffffff' : shot.secondaryColor}
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.025}
+            outlineColor="#09090f"
+            font={undefined}
+          >
+            {`-${event.damage} HP`}
+          </SafeText>
+        </group>
+      )}
+      <group ref={labelRef} position={midpoint}>
         <SafeText
-          position={[end[0], FLOOR_H + 0.9, end[2]]}
+          position={[0, 0, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.21}
-          color={event.killed || event.critical ? '#ffffff' : shot.secondaryColor}
+          fontSize={0.2}
+          color={color}
           anchorX="center"
           anchorY="middle"
-          outlineWidth={0.025}
+          outlineWidth={0.03}
           outlineColor="#09090f"
           font={undefined}
         >
-          {`-${event.damage} HP`}
+          {label}
         </SafeText>
-      )}
-      <SafeText
-        position={midpoint}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.2}
-        color={color}
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.03}
-        outlineColor="#09090f"
-        font={undefined}
-      >
-        {label}
-      </SafeText>
+      </group>
     </group>
   );
 }

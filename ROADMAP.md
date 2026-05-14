@@ -137,6 +137,10 @@ move, trigger contact, and freeze into a trade decision. See
   identity, board damage numbers show HP loss, tracer/recoil/audio/HUD styling
   differs by weapon class, and contact breaks get a stronger pulse/readout.
   Implemented.
+- First-pass contact moment polish: Contact Break now leads with a clear
+  tactical decision call, stopped/shooter/responder facts, and stronger
+  reaction-fire audio/VFX that fades as a combat beat instead of lingering as a
+  debug overlay. Implemented.
 - First-pass reusable execute/contact event stream: direct moves and planned
   executes now record ordered utility, movement/swing, contact, shot result, and
   trade/bomb decision events, while Contact Break still renders a compact
@@ -250,7 +254,8 @@ Work:
   kill feed clarity are implemented.
 - Cover penalties and range penalties.
 - Basic VFX: tracer, hit marker, muzzle flash, shooter recoil, target hit shock,
-  death pulse, and weapon-class damage numbers. Implemented as first pass.
+  death pulse, and weapon-class damage numbers. Implemented as first pass;
+  tracer/impact overlays now decay as a short combat beat.
 - Combat action panel for selected units.
 
 Acceptance:

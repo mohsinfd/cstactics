@@ -109,6 +109,11 @@ identity from `src/renderer/unitVisualIdentity.ts`. Remaining safe follow-ups:
   scale, muzzle/recoil strength, combat log weapon chips, contact-break styling,
   and procedural audio weight. This makes AWP shots, rifles, SMG bursts, and
   pistols feel different without changing tactical math.
+- Combat beat decay: tracer overlays, muzzle flashes, impact rings, and damage
+  labels should use the weapon `markerDurationSeconds` and fade/scale away as a
+  single action beat. Contact VFX can punch hard, especially on reaction hits or
+  kills, but it should clear quickly so it does not compete with movement,
+  threat, or utility overlays.
 
 ## Acceptance Checks
 
