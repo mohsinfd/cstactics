@@ -118,6 +118,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Compact/zoom HUD viewport-budget regression is implemented for Banana Drill
   contact, and dense HUD mode now reduces secondary panels so the playfield
   remains readable under browser zoom stress.
+- First-pass tactical cockpit HUD skin is implemented: shared panel chrome,
+  stronger score/roster hierarchy, higher-contrast command/action controls,
+  quieter lab shortcuts, and a compact Contact Break card that stays inside the
+  viewport budget under simulated zoom.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
 - Landmark cover silhouettes and destination risk card. Implemented.
@@ -340,6 +344,9 @@ Goal: move from prototype to polished indie.
 
 Work:
 - Better map materials and landmark props. Landmark prop silhouettes are started.
+- Quieter always-on cover labels and a first-pass tactical cockpit HUD reskin
+  are implemented so screenshots read less like debug scaffolding and more like
+  a deliberate tactics game surface.
 - Camera presets and smoother pan/zoom limits.
 - Sound design for shots, plants, defuses, UI, and phase changes. First-pass
   procedural interaction cues are implemented; authored sample assets and a

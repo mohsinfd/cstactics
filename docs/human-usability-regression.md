@@ -111,6 +111,20 @@ Use viewport-area budgets as guardrails:
   the decision area, but duplicate combat/objective/legend panels should yield
   in dense contact states.
 
+### Visual Quality Contract
+
+Major HUD changes must be checked with screenshots in at least these states:
+default desktop, Banana Drill desktop, Banana Contact Break desktop, compact
+Banana Drill, compact Contact Break, and compact Contact Break under simulated
+browser zoom. Preserve all existing `data-testid` hooks while improving the
+visual layer.
+
+The first glance should communicate a tactical cockpit, not stacked debug
+cards. Core match commands must visually outrank scenario/lab shortcuts, compact
+Contact Break must lead with the decision call even when scrollable, and passive
+map labels should stay quiet enough that units, paths, danger, and contact state
+own the board.
+
 ## Immediate Failure Examples
 
 - Zooming or panning makes `End Turn`, `Run Execute`, or action buttons disappear.

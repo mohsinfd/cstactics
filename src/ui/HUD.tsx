@@ -13,6 +13,7 @@
 import { useGameStore } from '../game/store';
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import './hud.css';
 import type { ExecuteInterruptTimelineItem, ExecuteTimelineEvent, MapData, TileCoord } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview, type ShotPreview } from '../game/combat';
@@ -201,7 +202,7 @@ function tileDistance(a: TileCoord, b: TileCoord): number {
 
 export function HUD() {
   return (
-    <div data-testid="hud-root" style={{
+    <div data-testid="hud-root" className="hud-root" style={{
       position: 'fixed', inset: 0, pointerEvents: 'none',
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
       zIndex: 10,
@@ -281,12 +282,24 @@ function ContactBreakPanel() {
   return (
     <div data-testid="hud-contact-break-panel" style={{
       position: 'absolute',
-      top: dense ? 96 : compact ? 132 : 184,
+      top: dense ? (compact ? 102 : 112) : compact ? 132 : 184,
       left: dense ? 8 : compact ? 10 : '50%',
       transform: dense || compact ? 'none' : 'translateX(-50%)',
-      width: dense ? 'min(180px, calc(50vw - 22px))' : compact ? 'min(236px, calc(50vw - 34px))' : 'min(390px, calc(100vw - 32px))',
+      width: dense
+        ? compact
+          ? 'min(216px, calc(50vw - 12px))'
+          : 'min(360px, calc(100vw - 32px))'
+        : compact
+          ? 'min(236px, calc(50vw - 34px))'
+          : 'min(390px, calc(100vw - 32px))',
       boxSizing: 'border-box',
-      maxHeight: dense ? 'min(22vh, 120px)' : compact ? 'calc(100vh - 330px)' : undefined,
+      maxHeight: dense
+        ? compact
+          ? 108
+          : 'min(38vh, 260px)'
+        : compact
+          ? 'calc(100vh - 330px)'
+          : 'min(44vh, 330px)',
       overflowY: dense || compact ? 'auto' : undefined,
       background: 'rgba(10, 7, 10, 0.94)',
       border: `1px solid ${shot.color}70`,
@@ -853,7 +866,7 @@ function AiStatusPanel() {
   if (!aiStatus) return null;
 
   return (
-    <div style={{
+    <div data-testid="hud-ai-status" style={{
       position: 'absolute',
       top: compact ? 126 : 118,
       left: '50%',
@@ -1086,7 +1099,7 @@ function ExecutePlanner() {
   if (!planningMode && plannedActions.length === 0) return null;
 
   return (
-    <div style={{
+    <div data-testid="hud-execute-planner" style={{
       position: 'absolute',
       top: 132,
       left: 20,
@@ -2490,7 +2503,7 @@ function PhaseAnnouncement() {
   if (dense && interrupt) return null;
 
   return (
-    <div style={{
+    <div data-testid="hud-phase-announcement" style={{
       position: 'absolute', top: dense ? 108 : compact ? 136 : '15%', left: '50%', transform: 'translateX(-50%)',
       textAlign: 'center', opacity: 0.6,
       width: compact ? 'calc(100vw - 24px)' : 'auto',
@@ -2573,7 +2586,7 @@ function TileInfo() {
       : null;
 
   return (
-    <div style={{
+    <div data-testid="hud-tile-info" style={{
       position: 'absolute',
       bottom: 92,
       left: '50%',
@@ -2670,7 +2683,7 @@ function MapLabel() {
   if (compact) return null;
 
   return (
-    <div style={{
+    <div data-testid="hud-map-label" style={{
       position: 'absolute', bottom: 60, right: 20, textAlign: 'right',
     }}>
       <div style={{

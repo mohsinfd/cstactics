@@ -274,17 +274,17 @@ function CoverLayer() {
         return (
           <group key={i}>
             <CoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
-            {/* Cover label */}
             <SafeText
               position={[cx, h + 0.08, cz]}
               rotation={[-Math.PI / 2, 0, Math.PI]}
-              fontSize={0.16}
+              fontSize={0.12}
               color="#dcc77e"
-              fillOpacity={0.34}
+              fillOpacity={0.16}
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.015}
+              outlineWidth={0.01}
               outlineColor="#000000"
+              outlineOpacity={0.28}
               font={undefined}
             >
               {c.label}

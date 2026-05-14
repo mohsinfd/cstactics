@@ -144,6 +144,10 @@ verbs that make those nouns matter.
 - Browser regression now enforces a HUD viewport-footprint budget after Banana
   Drill contact, including simulated compact browser zoom, so controls being
   "visible" cannot mask a board-occluding layout failure.
+- First-pass tactical cockpit HUD reskin: shared glass/steel panel language,
+  stronger scoreboard/roster chrome, more intentional command/action buttons,
+  demoted lab shortcuts, and compact Contact Break sizing that preserves the
+  viewport-footprint budget under simulated zoom.
 - Post-feature human usability regression protocol is documented in
   `docs/human-usability-regression.md`.
 - Main-thread orchestration, specialist-agent ownership, and done-definition
