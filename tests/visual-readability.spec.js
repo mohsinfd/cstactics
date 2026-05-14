@@ -7,6 +7,7 @@ function analyzePng(buffer) {
   const buckets = new Set();
   let nonBlank = 0;
   let brightAction = 0;
+  let spentSlate = 0;
   let ctBlue = 0;
   let tRed = 0;
 
@@ -24,6 +25,7 @@ function analyzePng(buffer) {
 
       if (r + g + b > 24 && r + g + b < 742) nonBlank += 1;
       if ((r > 210 && g > 155 && b < 150) || (r > 215 && g > 215 && b > 185)) brightAction += 1;
+      if (r > 95 && r < 220 && g > 105 && g < 225 && b > 115 && b < 235 && b > r * 1.04) spentSlate += 1;
       if (b > 82 && b > r * 1.15 && b >= g * 0.85 && r < 150) ctBlue += 1;
       if (r > 135 && g < 115 && b < 110 && r > g * 1.25 && r > b * 1.25) tRed += 1;
     }
@@ -37,6 +39,7 @@ function analyzePng(buffer) {
     nonBlank,
     bucketCount: buckets.size,
     brightAction,
+    spentSlate,
     ctBlue,
     tRed,
   };
@@ -90,5 +93,33 @@ test.describe('unit visual readability smoke', () => {
     expect(duel.brightAction, 'Duel Lab shoot mode should show target/shot action pixels').toBeGreaterThan(45);
     expect(duel.ctBlue, 'Duel Lab should include CT blue family pixels').toBeGreaterThan(8);
     expect(duel.tRed, 'Duel Lab should include T red cloth/mark pixels').toBeGreaterThan(4);
+
+    await page.evaluate(() => {
+      const store = window.__CS_TACTICS_STORE__;
+      const state = store?.getState();
+      if (!store || !state || state.selectedUnitId === null) return;
+
+      store.setState({
+        units: state.units.map((unit) => (
+          unit.id === state.selectedUnitId
+            ? { ...unit, ap: 0 }
+            : unit
+        )),
+        movementTiles: [],
+        walkableTiles: [],
+      });
+    });
+    await page.waitForTimeout(250);
+
+    const selectedSpent = await canvasStats(page);
+    expectNonBlankCanvas(selectedSpent, 'selected spent Duel Lab unit');
+    expect(
+      selectedSpent.spentSlate,
+      'selected spent unit should keep visible slate/DONE state pixels'
+    ).toBeGreaterThan(30);
+    expect(
+      selectedSpent.brightAction,
+      'selected spent unit should still keep selected ownership/readability pixels'
+    ).toBeGreaterThan(45);
   });
 });

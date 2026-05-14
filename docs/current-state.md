@@ -91,6 +91,9 @@ verbs that make those nouns matter.
 - Generated unit sprites now use a shared sprite visual profile for team
   palette, headgear marks, armband/chest badge, role glyph placement, and role
   weapon/gear layer intent instead of duplicating canvas-only art direction.
+- Unit tactical state visuals now use a local renderer hierarchy for selected,
+  selected-spent, hovered, shootable target, out-of-range target, spent, live,
+  and inactive units so action state reads ahead of decorative role detail.
 - Dead units now leave a small team/role casualty marker on the tactical board.
 - Durable Contact Break decision panel for reaction-fire interrupts. The store
   now records the execute beat, contact tile, shooter/stopped unit, best
@@ -185,6 +188,9 @@ verbs that make those nouns matter.
   for Banana Drill and Duel Lab, checking nonblank board rendering, CT/T color
   families, and action/target highlight pixels across desktop, narrow laptop,
   and compact HUD viewports.
+- The visual readability smoke also forces a selected 0-AP Duel Lab unit and
+  checks for slate/DONE-state pixels plus selected ownership pixels, guarding
+  against selected-but-unavailable units reading as actionable.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while
   keeping map masks, LOS, route timing, and cover data unchanged.
 

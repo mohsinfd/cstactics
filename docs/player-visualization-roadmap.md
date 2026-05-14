@@ -134,16 +134,25 @@ threat, or utility overlays.
   Banana Drill and Duel Lab canvas screenshots and asserts nonblank board
   rendering, CT/T color-family pixels, and selected/target action pixels across
   the existing browser viewports. It is a coarse guard, not screenshot matching.
+- Unit state hierarchy: `UnitRenderer.tsx` now routes selected, selected-spent,
+  hovered, shootable target, out-of-range target, spent, live, and inactive
+  units through a local state visual profile. Selected gets the strongest
+  ownership ring, shootable targets get red high-priority treatment, out-of-range
+  targets are muted, and selected zero-AP units keep a slate `DONE` read instead
+  of looking actionable.
+- Selected-spent visual guard: the browser visual smoke now forces a Duel Lab
+  selected unit to 0 AP and asserts slate/DONE-state pixels plus selected
+  ownership pixels so selected-but-unavailable readability does not regress.
 
 ## Next Presentation Targets
 
-1. Run a state readability pass for live, selected, targetable, spent,
-   threatened, and casualty units so action state reads faster than decorative
-   role detail.
-2. Add authored-feeling procedural cues for reload, bomb tick, plant/defuse,
+1. Add authored-feeling procedural cues for reload, bomb tick, plant/defuse,
    utility bloom, and footstep surface without overpowering decision panels.
-3. Replace latest-event visual assumptions in remaining board markers/casualty
+2. Replace latest-event visual assumptions in remaining board markers/casualty
    effects as the execute timeline grows beyond one or two combat beats.
+3. Add richer pixel/screenshot checks for casualty, targetable enemy, and
+   selected-spent states once scenarios can force those states without direct
+   store mutation.
 
 ## Acceptance Checks
 

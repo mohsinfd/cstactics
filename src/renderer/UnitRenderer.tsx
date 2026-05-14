@@ -157,6 +157,215 @@ function SafeText(props: ComponentProps<typeof Text>) {
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
+type UnitStateVisualProfile = {
+  color: string;
+  textColor: string;
+  outlineColor: string;
+  ringInner: number;
+  ringOuter: number;
+  ringOpacity: number;
+  bracketRadius: number;
+  bracketLength: number;
+  bracketOpacity: number;
+  facingOpacity: number;
+  spriteOpacity: number;
+  roleOpacity: number;
+  roleTagColor: string;
+  nameColor: string;
+  baseEmissive: string;
+  baseEmissiveIntensity: number;
+  vestEmissive: string;
+  vestEmissiveIntensity: number;
+};
+
+const UNIT_STATE_VISUALS = {
+  selected: {
+    color: '#fff2a8',
+    textColor: '#fff8d6',
+    outlineColor: '#251704',
+    ringInner: 0.6,
+    ringOuter: 0.98,
+    ringOpacity: 0.52,
+    bracketRadius: 0.98,
+    bracketLength: 0.38,
+    bracketOpacity: 1,
+    facingOpacity: 0.82,
+    spriteOpacity: 1,
+    roleOpacity: 0.36,
+    roleTagColor: '#fff8d6',
+    nameColor: '#f7f1d2',
+    baseEmissive: '#fff2a8',
+    baseEmissiveIntensity: 0.82,
+    vestEmissive: '#fff2a8',
+    vestEmissiveIntensity: 0.24,
+  },
+  selectedSpent: {
+    color: '#98a3b3',
+    textColor: '#d3d9e3',
+    outlineColor: '#07090d',
+    ringInner: 0.62,
+    ringOuter: 0.98,
+    ringOpacity: 0.46,
+    bracketRadius: 0.96,
+    bracketLength: 0.3,
+    bracketOpacity: 0.74,
+    facingOpacity: 0.34,
+    spriteOpacity: 0.78,
+    roleOpacity: 0.14,
+    roleTagColor: '#c3cad5',
+    nameColor: '#8b95a3',
+    baseEmissive: '#4d5662',
+    baseEmissiveIntensity: 0.18,
+    vestEmissive: '#4d5662',
+    vestEmissiveIntensity: 0.08,
+  },
+  hover: {
+    color: '#f7f2df',
+    textColor: '#f7f2df',
+    outlineColor: '#09090f',
+    ringInner: 0.66,
+    ringOuter: 0.84,
+    ringOpacity: 0.58,
+    bracketRadius: 0.86,
+    bracketLength: 0.28,
+    bracketOpacity: 0.74,
+    facingOpacity: 0.44,
+    spriteOpacity: 0.98,
+    roleOpacity: 0.44,
+    roleTagColor: '#f7f2df',
+    nameColor: '#d7d4ca',
+    baseEmissive: '#f7f2df',
+    baseEmissiveIntensity: 0.22,
+    vestEmissive: '#f7f2df',
+    vestEmissiveIntensity: 0.13,
+  },
+  targetable: {
+    color: '#ff365c',
+    textColor: '#ffe0e6',
+    outlineColor: '#22030a',
+    ringInner: 0.86,
+    ringOuter: 1.16,
+    ringOpacity: 0.82,
+    bracketRadius: 1.04,
+    bracketLength: 0.42,
+    bracketOpacity: 0.96,
+    facingOpacity: 0.5,
+    spriteOpacity: 0.94,
+    roleOpacity: 0.24,
+    roleTagColor: '#ffd7dd',
+    nameColor: '#d9a6b0',
+    baseEmissive: '#ff365c',
+    baseEmissiveIntensity: 0.38,
+    vestEmissive: '#ff365c',
+    vestEmissiveIntensity: 0.13,
+  },
+  outOfRange: {
+    color: '#8a7a62',
+    textColor: '#d4c19d',
+    outlineColor: '#120d08',
+    ringInner: 0.84,
+    ringOuter: 1.03,
+    ringOpacity: 0.34,
+    bracketRadius: 0.94,
+    bracketLength: 0.3,
+    bracketOpacity: 0.52,
+    facingOpacity: 0.28,
+    spriteOpacity: 0.58,
+    roleOpacity: 0.18,
+    roleTagColor: '#b9a883',
+    nameColor: '#847967',
+    baseEmissive: '#5d5140',
+    baseEmissiveIntensity: 0.08,
+    vestEmissive: '#5d5140',
+    vestEmissiveIntensity: 0.04,
+  },
+  spent: {
+    color: '#8f9baa',
+    textColor: '#c4cbd4',
+    outlineColor: '#07090d',
+    ringInner: 0.68,
+    ringOuter: 0.94,
+    ringOpacity: 0.46,
+    bracketRadius: 0.84,
+    bracketLength: 0.2,
+    bracketOpacity: 0.46,
+    facingOpacity: 0.2,
+    spriteOpacity: 0.72,
+    roleOpacity: 0.16,
+    roleTagColor: '#aeb6c1',
+    nameColor: '#7d8793',
+    baseEmissive: '#48515d',
+    baseEmissiveIntensity: 0.1,
+    vestEmissive: '#48515d',
+    vestEmissiveIntensity: 0.05,
+  },
+  live: {
+    color: '#f6f8fb',
+    textColor: '#f6f8fb',
+    outlineColor: '#07080d',
+    ringInner: 0.62,
+    ringOuter: 0.8,
+    ringOpacity: 0,
+    bracketRadius: 0.84,
+    bracketLength: 0.26,
+    bracketOpacity: 0,
+    facingOpacity: 0,
+    spriteOpacity: 0.98,
+    roleOpacity: 0.42,
+    roleTagColor: '#f6f8fb',
+    nameColor: '#cccccc',
+    baseEmissive: '#000000',
+    baseEmissiveIntensity: 0,
+    vestEmissive: '#000000',
+    vestEmissiveIntensity: 0,
+  },
+  inactive: {
+    color: '#9ca3af',
+    textColor: '#a1a1aa',
+    outlineColor: '#050507',
+    ringInner: 0.62,
+    ringOuter: 0.78,
+    ringOpacity: 0,
+    bracketRadius: 0.84,
+    bracketLength: 0.26,
+    bracketOpacity: 0,
+    facingOpacity: 0,
+    spriteOpacity: 0.58,
+    roleOpacity: 0.12,
+    roleTagColor: '#a3a3a3',
+    nameColor: '#5f636b',
+    baseEmissive: '#000000',
+    baseEmissiveIntensity: 0,
+    vestEmissive: '#000000',
+    vestEmissiveIntensity: 0,
+  },
+} satisfies Record<string, UnitStateVisualProfile>;
+
+function getUnitStateVisualProfile({
+  isSelected,
+  isHovered,
+  isVisibleTarget,
+  isShootableTarget,
+  isSpent,
+  isActiveTeam,
+}: {
+  isSelected: boolean;
+  isHovered: boolean;
+  isVisibleTarget: boolean;
+  isShootableTarget: boolean;
+  isSpent: boolean;
+  isActiveTeam: boolean;
+}): UnitStateVisualProfile {
+  if (isSelected && isSpent) return UNIT_STATE_VISUALS.selectedSpent;
+  if (isSelected) return UNIT_STATE_VISUALS.selected;
+  if (isVisibleTarget) return isShootableTarget
+    ? UNIT_STATE_VISUALS.targetable
+    : UNIT_STATE_VISUALS.outOfRange;
+  if (isHovered) return UNIT_STATE_VISUALS.hover;
+  if (isSpent) return UNIT_STATE_VISUALS.spent;
+  return isActiveTeam ? UNIT_STATE_VISUALS.live : UNIT_STATE_VISUALS.inactive;
+}
+
 function dampAngle(current: number, target: number, lambda: number, delta: number): number {
   const angleDelta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
   return current + angleDelta * (1 - Math.exp(-lambda * delta));
@@ -621,25 +830,26 @@ function RoleVestGlyph({ roleId, accent, scale }: { roleId: RoleId; accent: stri
   );
 }
 
-function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) {
+function RoleSilhouette({ roleId, accent, opacity = 0.42 }: { roleId: RoleId; accent: string; opacity?: number }) {
   const cfg = ROLE_RENDER_CONFIG[roleId];
+  const solidOpacity = Math.min(0.9, opacity + 0.18);
 
   return (
     <group>
       <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.58, 0.68, 36]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.55} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={accent} transparent opacity={opacity} side={THREE.DoubleSide} />
       </mesh>
 
       {cfg.baseShape === 'long' && (
         <>
           <mesh position={[0, 0.09, 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
             <boxGeometry args={[0.16, 0.95, 0.01]} />
-            <meshBasicMaterial color={accent} transparent opacity={0.55} />
+            <meshBasicMaterial color={accent} transparent opacity={opacity} />
           </mesh>
           <mesh position={[0, 0.1, 0.68]}>
             <sphereGeometry args={[0.075, 12, 8]} />
-            <meshBasicMaterial color={accent} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
           </mesh>
         </>
       )}
@@ -648,15 +858,15 @@ function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) 
         <>
           <mesh position={[0, 0.09, 0.44]} rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
             <coneGeometry args={[0.22, 0.45, 3]} />
-            <meshBasicMaterial color={accent} transparent opacity={0.75} side={THREE.DoubleSide} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} side={THREE.DoubleSide} />
           </mesh>
           <mesh position={[-0.22, 0.09, 0.22]} rotation={[-Math.PI / 2, 0, 0.7]}>
             <boxGeometry args={[0.08, 0.34, 0.01]} />
-            <meshBasicMaterial color={accent} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
           </mesh>
           <mesh position={[0.22, 0.09, 0.22]} rotation={[-Math.PI / 2, 0, -0.7]}>
             <boxGeometry args={[0.08, 0.34, 0.01]} />
-            <meshBasicMaterial color={accent} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
           </mesh>
         </>
       )}
@@ -665,11 +875,11 @@ function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) 
         <>
           <mesh position={[0, 0.09, 0.48]} rotation={[-Math.PI / 2, 0, 0]}>
             <boxGeometry args={[0.42, 0.25, 0.01]} />
-            <meshBasicMaterial color={accent} transparent opacity={0.8} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
           </mesh>
           <mesh position={[0, 0.105, 0.49]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.3, 0.14]} />
-            <meshBasicMaterial color="#1b1d24" />
+            <meshBasicMaterial color="#1b1d24" transparent opacity={Math.min(0.9, solidOpacity + 0.08)} />
           </mesh>
         </>
       )}
@@ -679,7 +889,7 @@ function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) 
           {[-0.28, 0, 0.28].map((x) => (
             <mesh key={x} position={[x, 0.1, 0.42]}>
               <boxGeometry args={[0.16, 0.1, 0.18]} />
-              <meshBasicMaterial color={accent} />
+              <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
             </mesh>
           ))}
         </>
@@ -689,11 +899,11 @@ function RoleSilhouette({ roleId, accent }: { roleId: RoleId; accent: string }) 
         <>
           <mesh position={[0, 0.09, 0.08]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.36, 3]} />
-            <meshBasicMaterial color={accent} transparent opacity={0.5} side={THREE.DoubleSide} />
+            <meshBasicMaterial color={accent} transparent opacity={opacity} side={THREE.DoubleSide} />
           </mesh>
           <mesh position={[0, 0.1, 0.54]} rotation={[Math.PI / 2, 0, 0]}>
             <coneGeometry args={[0.08, 0.36, 12]} />
-            <meshBasicMaterial color={accent} />
+            <meshBasicMaterial color={accent} transparent opacity={solidOpacity} />
           </mesh>
         </>
       )}
@@ -904,6 +1114,16 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const isSpent = isActiveTeam && unit.ap <= 0;
   const p = TEAM_RENDER_PALETTES[unit.team];
   const rc = ROLE_RENDER_CONFIG[unit.role.id];
+  const stateVisual = getUnitStateVisualProfile({
+    isSelected,
+    isHovered,
+    isVisibleTarget,
+    isShootableTarget,
+    isSpent,
+    isActiveTeam,
+  });
+  const baseEmissive = stateVisual === UNIT_STATE_VISUALS.live ? p.accent : stateVisual.baseEmissive;
+  const baseEmissiveIntensity = stateVisual === UNIT_STATE_VISUALS.live ? 0.18 : stateVisual.baseEmissiveIntensity;
   const weaponProfile = getWeaponVisualProfile(unit.weapon.category);
   const spriteTexture = useMemo(
     () => createUnitSpriteTexture(unit.team, unit.role.id),
@@ -1101,8 +1321,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const mats = useMemo(() => ({
     vest: new THREE.MeshStandardMaterial({
       color: p.vest, roughness: 0.7, metalness: 0.05,
-      emissive: isSelected || isHovered ? p.accent : '#000000',
-      emissiveIntensity: isSelected ? 0.3 : (isHovered ? 0.16 : 0),
+      emissive: stateVisual.vestEmissive,
+      emissiveIntensity: stateVisual.vestEmissiveIntensity,
     }),
     vestDark: new THREE.MeshStandardMaterial({ color: p.vestDark, roughness: 0.8 }),
     pants: new THREE.MeshStandardMaterial({ color: p.pants, roughness: 0.85 }),
@@ -1115,10 +1335,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       roughness: 0.55,
       metalness: 0.12,
       emissive: rc.accent,
-      emissiveIntensity: isActiveTeam ? 0.18 : 0.03,
+      emissiveIntensity: isActiveTeam && !isVisibleTarget && !isSpent ? 0.14 : 0.03,
     }),
     boot: new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.9 }),
-  }), [p, rc.accent, isSelected, isHovered, isActiveTeam]);
+  }), [p, rc.accent, stateVisual, isActiveTeam, isVisibleTarget, isSpent]);
 
   const s = rc.bodyScale;
   const muzzleAnchorZ = weaponProfile.muzzleOffset + (weaponProfile.suppressorVisible ? 0.11 : 0);
@@ -1155,13 +1375,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           <meshStandardMaterial
             color={p.base}
             roughness={0.8}
-            emissive={isSelected ? rc.accent : (isActiveTeam ? p.accent : '#000000')}
-            emissiveIntensity={isSelected ? 0.75 : (isActiveTeam ? 0.18 : 0)}
+            emissive={baseEmissive}
+            emissiveIntensity={baseEmissiveIntensity}
           />
         </mesh>
 
         <TeamIdentityBase team={unit.team} palette={p} roleAccent={rc.accent} />
-        <RoleSilhouette roleId={unit.role.id} accent={rc.accent} />
+        <RoleSilhouette roleId={unit.role.id} accent={rc.accent} opacity={stateVisual.roleOpacity} />
 
         <sprite
           position={[0, 1.32 * s, 0.04]}
@@ -1171,63 +1391,69 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           <spriteMaterial
             map={spriteTexture}
             transparent
-            opacity={isActiveTeam ? 0.98 : 0.72}
+            opacity={stateVisual.spriteOpacity}
             depthTest={false}
             depthWrite={false}
           />
         </sprite>
 
-        {(isSelected || isHovered) && (
+        {(isSelected || isHovered || isVisibleTarget) && (
           <FacingArc
-            color={isSelected ? rc.accent : '#f7f2df'}
-            opacity={isSelected ? 0.72 : 0.4}
+            color={stateVisual.color}
+            opacity={stateVisual.facingOpacity}
           />
         )}
 
         {(isSelected || isHovered || isVisibleTarget) && (
           <TacticalBaseBrackets
-            color={isVisibleTarget && !isSelected ? (isShootableTarget ? '#ff4e6a' : '#d0b783') : (isSelected ? rc.accent : '#f7f2df')}
-            opacity={isSelected ? 0.94 : 0.66}
-            radius={isVisibleTarget ? 0.93 : 0.84}
-            length={isVisibleTarget ? 0.32 : 0.26}
+            color={stateVisual.color}
+            opacity={stateVisual.bracketOpacity}
+            radius={stateVisual.bracketRadius}
+            length={stateVisual.bracketLength}
           />
         )}
 
         {/* === SELECTION RING === */}
         {isSelected && (
-          <mesh ref={glowRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.64, 0.88, 40]} />
-            <meshBasicMaterial color={rc.accent} transparent opacity={0.3} side={THREE.DoubleSide} />
-          </mesh>
+          <group>
+            <mesh ref={glowRef} position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[stateVisual.ringInner, stateVisual.ringOuter, 48]} />
+              <meshBasicMaterial color={stateVisual.color} transparent opacity={stateVisual.ringOpacity} side={THREE.DoubleSide} />
+            </mesh>
+            <mesh position={[0, 0.073, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+              <ringGeometry args={[1.02, 1.08, 52]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.82} side={THREE.DoubleSide} depthWrite={false} />
+            </mesh>
+          </group>
         )}
 
         {isHovered && !isSelected && (
           <mesh position={[0, 0.055, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.66, 0.82, 40]} />
-            <meshBasicMaterial color="#f7f2df" transparent opacity={0.55} side={THREE.DoubleSide} />
+            <ringGeometry args={[stateVisual.ringInner, stateVisual.ringOuter, 40]} />
+            <meshBasicMaterial color={stateVisual.color} transparent opacity={stateVisual.ringOpacity} side={THREE.DoubleSide} />
           </mesh>
         )}
 
-        {isSpent && !isSelected && (
+        {isSpent && (
           <group>
             <mesh position={[0, 0.061, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-              <ringGeometry args={[0.7, 0.9, 40]} />
-              <meshBasicMaterial color="#465061" transparent opacity={0.48} side={THREE.DoubleSide} />
+              <ringGeometry args={[stateVisual.ringInner, stateVisual.ringOuter, 40]} />
+              <meshBasicMaterial color={stateVisual.color} transparent opacity={stateVisual.ringOpacity} side={THREE.DoubleSide} />
             </mesh>
             <Line
               points={[[-0.48, 0.09, -0.48], [0.48, 0.09, 0.48]]}
-              color="#6f7785"
-              lineWidth={2}
+              color={stateVisual.color}
+              lineWidth={1.8}
             />
             <SafeText
               position={[0, 0.13, 0.72]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.18}
-              color="#b7beca"
+              color={stateVisual.textColor}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.018}
-              outlineColor="#08090d"
+              outlineColor={stateVisual.outlineColor}
               font={undefined}
             >
               DONE
@@ -1238,24 +1464,24 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         {isVisibleTarget && (
           <>
             <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[0.88, 1.08, 48]} />
-              <meshBasicMaterial color={isShootableTarget ? '#ff4e6a' : '#7a6d58'} transparent opacity={isShootableTarget ? 0.72 : 0.42} side={THREE.DoubleSide} />
+              <ringGeometry args={[stateVisual.ringInner, stateVisual.ringOuter, 48]} />
+              <meshBasicMaterial color={stateVisual.color} transparent opacity={stateVisual.ringOpacity} side={THREE.DoubleSide} />
             </mesh>
             {isShootableTarget && (
               <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.22, 24]} />
-                <meshBasicMaterial color="#ff4e6a" transparent opacity={0.18} side={THREE.DoubleSide} />
+                <circleGeometry args={[0.3, 28]} />
+                <meshBasicMaterial color={stateVisual.color} transparent opacity={0.22} side={THREE.DoubleSide} />
               </mesh>
             )}
             <SafeText
               position={[0, 0.13, 0.84]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.22}
-              color={isShootableTarget ? '#ffd7dd' : '#d0b783'}
+              color={stateVisual.textColor}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}
-              outlineColor="#14080d"
+              outlineColor={stateVisual.outlineColor}
               font={undefined}
             >
               {isShootableTarget ? `${shotPreview!.hitChance}%` : 'OOR'}
@@ -1435,7 +1661,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           position={[0, 0.115, -0.68]}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.28}
-          color={isHovered ? rc.accent : '#f6f8fb'}
+          color={stateVisual.roleTagColor}
           anchorX="center"
           anchorY="middle"
           outlineWidth={0.035}
@@ -1450,7 +1676,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           position={[0, 0.115, -0.95]}
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.18}
-          color={isActiveTeam ? '#cccccc' : '#666666'}
+          color={stateVisual.nameColor}
           anchorX="center"
           anchorY="middle"
           outlineWidth={0.015}

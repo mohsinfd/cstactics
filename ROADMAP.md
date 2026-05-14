@@ -150,6 +150,10 @@ move, trigger contact, and freeze into a trade decision. See
   sprite visual profiles for team palette, headgear/chest marks, role glyphs,
   and role weapon/gear layer intent; browser regression includes a coarse canvas
   pixel-readability smoke for Banana Drill and Duel Lab. Implemented.
+- Unit state readability pass: selected, selected-spent, hovered, shootable
+  target, out-of-range target, spent, live, and inactive units now share an
+  explicit renderer visual hierarchy so tactical action state reads before role
+  decoration; visual regression now guards selected 0-AP readability. Implemented.
 - First-pass contact moment polish: Contact Break now leads with a clear
   tactical decision call, stopped/shooter/responder facts, and stronger
   reaction-fire audio/VFX that fades as a combat beat instead of lingering as a
@@ -163,9 +167,8 @@ move, trigger contact, and freeze into a trade decision. See
   continues to own interrupted executes. Implemented.
 - Next: grow the reusable event stream into a production cinematic queue/replay
   system without rewriting combat math.
-- Next visual/audio slice: state readability pass for live, selected,
-  targetable, spent, threatened, and casualty units, plus richer authored-feeling
-  cues for reload, footsteps, utility bloom, bomb ticks, and replay timing.
+- Next visual/audio slice: richer authored-feeling cues for reload, footsteps,
+  utility bloom, bomb ticks, plant/defuse pressure, and multi-beat replay timing.
 
 ### Milestone C: Utility Timing
 
