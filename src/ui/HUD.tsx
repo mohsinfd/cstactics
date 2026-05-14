@@ -625,17 +625,18 @@ function ExecuteTimelinePanel() {
   const currentTimeline = useGameStore((s) => s.currentExecuteTimeline);
   const lastTimeline = useGameStore((s) => s.lastExecuteTimeline);
   const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
 
   if (interrupt) return null;
 
   const timeline = isExecuting
     ? currentTimeline
-    : lastTimeline?.status === 'completed'
+    : lastTimeline?.status === 'completed' && lastTimeline.source === 'planned_execute'
       ? lastTimeline
       : null;
   if (!timeline || timeline.events.length === 0) return null;
 
-  const itemLimit = compact ? 3 : 4;
+  const itemLimit = compact || dense ? 3 : 4;
   const displayableItems = getCompactExecuteTimelineEvents(timeline.events);
   const items = displayableItems.slice(0, itemLimit);
   if (displayableItems.length === 0) return null;
@@ -647,17 +648,20 @@ function ExecuteTimelinePanel() {
   return (
     <div data-testid="hud-execute-timeline-panel" style={{
       position: 'absolute',
-      top: compact ? (timeline.status === 'running' ? 214 : 132) : 132,
-      left: compact ? 10 : '50%',
-      transform: compact ? undefined : 'translateX(-50%)',
-      width: compact ? 'min(246px, calc(100vw - 304px))' : 'min(360px, calc(100vw - 560px))',
-      minWidth: compact ? 214 : 300,
+      top: compact ? 196 : dense ? 128 : 132,
+      left: compact ? 10 : 20,
+      width: compact
+        ? 'min(246px, calc(100vw - 20px))'
+        : dense
+          ? 'min(280px, calc(100vw - 40px))'
+          : 'min(320px, calc(100vw - 40px))',
+      minWidth: compact ? 214 : 260,
       boxSizing: 'border-box',
-      background: 'rgba(7, 9, 13, 0.9)',
+      background: 'rgba(7, 9, 13, 0.84)',
       border: `1px solid ${timeline.status === 'running' ? '#58ff9a66' : '#d8c17055'}`,
       borderLeft: `3px solid ${timeline.status === 'running' ? '#58ff9a' : '#d8c170'}`,
       borderRadius: 6,
-      padding: compact ? '8px 9px' : '9px 11px',
+      padding: compact || dense ? '7px 8px' : '9px 11px',
       pointerEvents: 'none',
       boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
     }}>
@@ -2537,6 +2541,8 @@ function TileInfo() {
   const heldAngles = useGameStore((s) => s.heldAngles);
   const smokes = useGameStore((s) => s.smokes);
   const phase = useGameStore((s) => s.round.phase);
+  const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
 
   if (!hoveredTile) return null;
 
@@ -2593,12 +2599,16 @@ function TileInfo() {
   return (
     <div data-testid="hud-tile-info" style={{
       position: 'absolute',
-      bottom: 92,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      width: 'min(640px, calc(100vw - 36px))',
-      background: 'rgba(8, 8, 12, 0.9)',
-      padding: '8px 12px',
+      top: compact ? 206 : undefined,
+      right: compact ? 10 : 20,
+      bottom: compact ? undefined : dense ? 104 : 178,
+      width: compact
+        ? 'min(260px, calc(100vw - 20px))'
+        : dense
+          ? 'min(280px, calc(100vw - 40px))'
+          : 'min(310px, calc(100vw - 40px))',
+      background: 'rgba(8, 8, 12, 0.86)',
+      padding: compact || dense ? '7px 9px' : '8px 11px',
       borderRadius: 6,
       border: `1px solid ${risk.color}55`,
       boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
@@ -2607,10 +2617,10 @@ function TileInfo() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: compact || dense ? 8 : 12,
       }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: '#d8dce4', fontSize: 11, fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+          <div style={{ color: '#d8dce4', fontSize: compact || dense ? 10 : 11, fontWeight: 900, letterSpacing: compact || dense ? 0.8 : 1.2, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {label}
           </div>
           <div style={{ color: '#5e6573', fontSize: 9, marginTop: 2 }}>
@@ -2619,9 +2629,9 @@ function TileInfo() {
         </div>
         <div style={{
           color: risk.color,
-          fontSize: 10,
+          fontSize: compact || dense ? 9 : 10,
           fontWeight: 950,
-          letterSpacing: 1,
+          letterSpacing: compact || dense ? 0.7 : 1,
           textTransform: 'uppercase',
           whiteSpace: 'nowrap',
         }}>
@@ -2629,7 +2639,7 @@ function TileInfo() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
+      <div style={{ display: 'flex', gap: compact || dense ? 4 : 6, flexWrap: 'wrap', marginTop: compact || dense ? 6 : 7 }}>
         {movementTile && <TileBadge color={apColor} label={`${movementTile.apCost} AP MOVE`} />}
         <TileBadge color={apColor} label={actionEconomy} subdued={!movementTile} />
         <TileBadge color={cover.color} label={`${cover.label} +${cover.value}`} />

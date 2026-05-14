@@ -72,6 +72,17 @@ const CONTACT_CAMERA_BEAT = {
   shakeZoom: 0.035,
 } as const;
 
+const DUEL_LAB_CAMERA = {
+  offsetX: 34,
+  height: 64,
+  offsetZ: -44,
+  zoom: 11.2,
+  compactOffsetX: 42,
+  compactHeight: 72,
+  compactOffsetZ: -54,
+  compactZoom: 9.2,
+} as const;
+
 function getCrispDevicePixelRatio(): number {
   if (typeof window === 'undefined') return 1.5;
   return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
@@ -176,6 +187,7 @@ function PresentationDirector({ cameraRef, controlsRef }: CameraRigRefs) {
 
 export function IsometricScene() {
   const map = useGameStore((s) => s.map);
+  const units = useGameStore((s) => s.units);
   const [rendererDpr, setRendererDpr] = useState(getCrispDevicePixelRatio);
   const cameraRef = useRef<ThreeOrthographicCamera>(null);
   const controlsRef = useRef<MapControlsHandle | null>(null);
@@ -283,6 +295,42 @@ export function IsometricScene() {
   }, []);
 
   useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const isDuelLab = units.length === 2 &&
+      units.some((unit) => unit.id === 0 && unit.position.x === 43 && unit.position.y === 61) &&
+      units.some((unit) => unit.id === 6 && unit.position.x === 43 && unit.position.y === 69);
+    if (!isDuelLab) {
+      return;
+    }
+
+    const livingUnits = units.filter((unit) => unit.alive);
+    const center = livingUnits
+      .map((unit) => tileToWorld(map.width, map.tileSize, unit.position.x, unit.position.y))
+      .reduce((sum, point) => sum.add(point), new THREE.Vector3())
+      .divideScalar(Math.max(1, livingUnits.length));
+    center.z += map.tileSize * 0.8;
+    const useCompactFrame = typeof window !== 'undefined' && window.innerWidth < 760;
+    const offsetX = useCompactFrame ? DUEL_LAB_CAMERA.compactOffsetX : DUEL_LAB_CAMERA.offsetX;
+    const height = useCompactFrame ? DUEL_LAB_CAMERA.compactHeight : DUEL_LAB_CAMERA.height;
+    const offsetZ = useCompactFrame ? DUEL_LAB_CAMERA.compactOffsetZ : DUEL_LAB_CAMERA.offsetZ;
+    const zoom = useCompactFrame ? DUEL_LAB_CAMERA.compactZoom : DUEL_LAB_CAMERA.zoom;
+
+    controls.target.copy(center);
+    camera.position.set(
+      center.x + offsetX,
+      height,
+      center.z + offsetZ
+    );
+    camera.zoom = zoom;
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+    controls.update();
+  }, [map.tileSize, map.width, units]);
+
+  useEffect(() => {
     const applyCameraCommand = (command: CameraCommand) => {
       const camera = cameraRef.current;
       if (!camera) return;
@@ -380,14 +428,14 @@ export function IsometricScene() {
       style={{
         width: '100vw',
         height: '100vh',
-        background: '#202838',
+        background: '#263348',
         touchAction: 'none',
         transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
       onWheel={handleWheel}
     >
-      <color attach="background" args={['#202838']} />
+      <color attach="background" args={['#263348']} />
 
       {/* Camera */}
       <OrthographicCamera
@@ -473,7 +521,7 @@ export function IsometricScene() {
       </Suspense>
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#202838', 520, 820]} />
+      <fog attach="fog" args={['#263348', 520, 820]} />
     </Canvas>
   );
 }

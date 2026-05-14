@@ -90,6 +90,9 @@ For each sequence, assert:
 - The player can return to a known state with `Reset camera` and `Banana Drill`.
 - Banana Drill can queue a watched crossing, run execute, and show the Contact
   Break decision panel without hiding the command bar or trade action.
+- Duel Lab must open as a readable 1v1, hovered tile/risk information must not
+  overlap the selected-unit action deck or command bar, and ordinary direct
+  movement must not leave a completed execute debrief panel over the duel.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 

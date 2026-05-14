@@ -559,11 +559,55 @@ test.describe('human usability regression', () => {
     await expectHudTargetReachableIfEnabled(page, 'hud-action-shoot');
     await expectHudTargetReachableIfEnabled(page, 'hud-visible-target-6');
 
+    const hoverResult = await page.evaluate(() => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+      const state = store.getState();
+      const selected = state.units.find((unit) => unit.id === state.selectedUnitId);
+      const hoverTile = state.movementTiles.find((tile) => (
+        selected &&
+        (tile.x !== selected.position.x || tile.y !== selected.position.y)
+      ));
+      if (!hoverTile) return { ok: false, reason: 'hover tile unavailable' };
+      store.getState().hoverTile(hoverTile);
+      return { ok: true, reason: '', hoverTile };
+    });
+
+    expect(hoverResult.ok, hoverResult.reason).toBe(true);
+    await expect(page.getByTestId('hud-tile-info')).toBeVisible();
+    await expectHudDoesNotOverlap(page, 'hud-tile-info', [
+      'hud-selected-unit-panel',
+      'hud-command-bar',
+    ]);
+    await expectHudViewportBudget(page, 'Duel Lab hovered tile');
+
     await page.getByTestId('hud-action-shoot').click();
     await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().inputMode)).toBe('shoot');
 
     await page.getByTestId('hud-action-move').click();
     await expect.poll(async () => page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().inputMode)).toBe('move');
+
+    const directMoveResult = await page.evaluate(async () => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+      const state = store.getState();
+      const selected = state.units.find((unit) => unit.id === state.selectedUnitId);
+      const moveTarget = state.movementTiles.find((tile) => (
+        selected &&
+        (tile.x !== selected.position.x || tile.y !== selected.position.y)
+      ));
+      if (!moveTarget) return { ok: false, reason: 'move target unavailable' };
+      await store.getState().moveUnit(moveTarget);
+      const nextState = store.getState();
+      return {
+        ok: nextState.lastExecuteTimeline?.source === 'direct_move' &&
+          nextState.lastExecuteTimeline.status === 'completed',
+        reason: `source=${nextState.lastExecuteTimeline?.source ?? 'none'} status=${nextState.lastExecuteTimeline?.status ?? 'none'}`,
+      };
+    });
+
+    expect(directMoveResult.ok, directMoveResult.reason).toBe(true);
+    await expect(page.getByTestId('hud-execute-timeline-panel')).toHaveCount(0);
 
     expect(consoleErrors).toEqual([]);
   });

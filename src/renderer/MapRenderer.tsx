@@ -46,10 +46,10 @@ const TILE_COLORS: Record<string, string> = {
   bombsite_b:  '#c15d58',
   spawn_t:     '#d2a83f',
   spawn_ct:    '#52a6df',
-  wall:        '#3a4658',
+  wall:        '#435064',
   cover_half:  '#dcc676',
   cover_full:  '#ad966b',
-  out_of_bounds: '#263044',
+  out_of_bounds: '#303c52',
 };
 
 const WALL_HEIGHT = 0.95;

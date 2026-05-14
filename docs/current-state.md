@@ -226,6 +226,10 @@ verbs that make those nouns matter.
   contact: reaction-fire interrupts now trigger a short camera push/settle beat
   plus a brighter board-level shot lane, contact ring, muzzle glint, impact
   spark, and proof artifacts under `artifacts/contact-cinematic-slice/`.
+- Duel Lab usability now has a hardening pass: the 1v1 scene opens with a
+  tighter camera frame, direct-move debrief panels no longer linger over the
+  duel, and hovered tile/risk information lives on the right rail instead of
+  crossing the selected-unit action deck.
 
 ## Partially Implemented
 
@@ -245,6 +249,8 @@ verbs that make those nouns matter.
   plus one thin contact presentation beat, but not yet a full cinematic
   queue/replay system with simultaneous combat beats and production interrupt
   sequencing.
+- The HUD is still first-pass, but Duel Lab now has regression coverage for
+  tile-info/action-deck overlap and direct-move debrief clutter.
 - Utility exists as immediate and first-pass queued smoke/flash actions, but not
   yet with true timeline offsets, bounces, molly/HE, or richer counterplay.
 
