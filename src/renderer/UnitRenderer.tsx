@@ -114,7 +114,7 @@ function SafeText(props: ComponentProps<typeof Text>) {
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
 const DEFAULT_CAMERA_READABLE_YAW = 2.45;
-const MINIATURE_ROOT_SCALE = 1.42;
+const MINIATURE_ROOT_SCALE = 1.58;
 const WEAPON_REST_Z = 0.36;
 const WEAPON_PRESENTATION_SCALE = 0.78;
 

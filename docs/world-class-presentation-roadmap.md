@@ -241,6 +241,11 @@ Progress:
   near-white wall caps, light clay landmark props, orthographic non-rotatable
   camera framing, and tactical overlays stacked above the board instead of
   decorative effects replacing them.
+- Whitebox finishing pass tightened the first screenshot: the default camera is
+  closer but still keeps the board legible, the background is a pale neutral
+  studio void, room-boundary walls have stronger plinth/body/cap mass and
+  shadowing, miniatures are larger, and low-opacity team control/facing overlays
+  give the map a stratboard read before any command is selected.
 
 ### Milestone P5: Production Sound
 
@@ -279,4 +284,7 @@ Progress:
 7. Prototype one authored weapon recoil/hit/death sequence in Duel Lab.
 8. Keep the main renderer on the CS2 whitebox stratboard target: clay palette,
    studio lighting, closer orthographic default camera, and strong tactical
-   overlay contrast.
+   overlay contrast. First finishing pass done.
+9. Next: make planned executes look like authored strategy-board arrows and
+   contact beats, then move the reusable event timeline toward production
+   animation/audio sequencing.

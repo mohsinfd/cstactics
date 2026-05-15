@@ -1,8 +1,8 @@
 import type { ColorRepresentation, MeshStandardMaterialParameters } from 'three';
 
 export const palette = {
-  void: '#d6dee3',
-  groundPlane: '#e2e6e7',
+  void: '#e3e5e2',
+  groundPlane: '#e8e8e4',
   floorTop: '#eeede8',
   floorSide: '#d9d9d4',
   floorEdge: '#f8f7f2',
@@ -150,11 +150,11 @@ export const shadows = {
 
 export const camera = {
   defaultPreset: {
-    offsetX: 70,
-    height: 112,
-    offsetZ: -88,
-    targetOffsetZ: 10,
-    zoom: 6.1,
+    offsetX: 58,
+    height: 98,
+    offsetZ: -76,
+    targetOffsetZ: 7,
+    zoom: 6.5,
     minZoom: 4.4,
     maxZoom: 26,
   },

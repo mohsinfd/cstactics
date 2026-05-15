@@ -222,6 +222,11 @@ verbs that make those nouns matter.
   model over a pale studio void, walls use taller white room-boundary masses,
   landmark props are primitive-only silhouettes, and gameplay/map data remains
   unchanged.
+- Whitebox finishing pass: the first-load camera now frames the board closer
+  without hiding spawn miniatures under the HUD, the studio void is neutral
+  instead of blue-dominant, wall plinth/body/cap masses cast readable shadows,
+  tactical miniatures are scaled up, and subtle team control/facing overlays are
+  visible before the player clicks a scenario.
 - First-load board visibility is guarded by an R3F-side camera bootstrap plus a
   browser pixel smoke that checks for light clay board pixels before scenario
   buttons are clicked.

@@ -22,7 +22,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
-import type { CombatEvent, FlashBurst, MapData, Tile, TileCoord } from '../game/types';
+import type { CombatEvent, FlashBurst, MapData, Tile, TileCoord, Unit } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
 import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
@@ -75,9 +75,9 @@ const TILE_COLORS: Record<string, string> = {
   out_of_bounds: ART.palette.void,
 };
 
-const WALL_HEIGHT = ART.heights.wall * 1.62;
-const WALL_CAP_H = Math.max(0.18, ART.heights.wallCap * 1.5);
-const WALL_PLINTH_H = 0.16;
+const WALL_HEIGHT = ART.heights.wall * 2.18;
+const WALL_CAP_H = Math.max(0.22, ART.heights.wallCap * 1.65);
+const WALL_PLINTH_H = 0.2;
 const COVER_HALF_H = ART.heights.coverHalf;
 const COVER_FULL_H = ART.heights.coverFull;
 const FLOOR_H = ART.heights.floor;
@@ -430,6 +430,108 @@ function ArrowHeadLines({
   );
 }
 
+function buildFacingConeGeometry(tileSize: number): THREE.BufferGeometry {
+  const range = tileSize * 3.4;
+  const halfAngle = Math.PI / 8;
+  const segments = 12;
+  const vertices: number[] = [0, 0, 0];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = -halfAngle + halfAngle * 2 * t;
+    vertices.push(
+      Math.sin(angle) * range,
+      0,
+      Math.cos(angle) * range,
+    );
+  }
+
+  for (let i = 1; i <= segments; i++) {
+    indices.push(0, i, i + 1);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function UnitFacingCone({ unit, tileSize, selected }: {
+  unit: Unit;
+  tileSize: number;
+  selected: boolean;
+}) {
+  const geometry = useMemo(
+    () => buildFacingConeGeometry(tileSize),
+    [tileSize],
+  );
+  const [wx, , wz] = tileWorld(unit.position.x, unit.position.y, tileSize);
+  const worldDx = -unit.facing.x;
+  const worldDz = unit.facing.y;
+  const yaw = Math.atan2(worldDx, worldDz);
+  const color = unit.team === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+  return (
+    <mesh
+      geometry={geometry}
+      position={[wx, ART.overlayY.threatBand + 0.012, wz]}
+      rotation={[0, yaw, 0]}
+      renderOrder={ART.overlayOrder.threatBand}
+      raycast={() => null}
+    >
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={selected ? 0.15 : 0.045}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+        depthTest={false}
+      />
+    </mesh>
+  );
+}
+
+function UnitTacticalOverlayLayer() {
+  const units = useGameStore((s) => s.units);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  return (
+    <>
+      {units.filter((unit) => unit.alive).map((unit) => {
+        const [wx, , wz] = tileWorld(unit.position.x, unit.position.y, ts);
+        const selected = unit.id === selectedUnitId;
+        const color = unit.team === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+        return (
+          <group key={`unit-tactical-${unit.id}`}>
+            <mesh
+              position={[wx, ART.overlayY.siteMarker + 0.012, wz]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={ART.overlayOrder.movementBand}
+              raycast={() => null}
+            >
+              <circleGeometry args={[ts * (selected ? 1.45 : 1.08), 32]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={selected ? 0.12 : 0.055}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                depthTest={false}
+              />
+            </mesh>
+            <UnitFacingCone unit={unit} tileSize={ts} selected={selected} />
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 function getCombatEventColor(event: CombatEvent): string {
   const shot = getShotPresentation(event.weaponCategory);
   if (event.critical || event.killed) return shot.color;
@@ -529,11 +631,11 @@ function WallLayer() {
 
   const meshes = useMemo(() => {
     if (wallTiles.length === 0) return null;
-    const bodyHeight = Math.max(0.01, WALL_HEIGHT - WALL_CAP_H);
-    const size = ts * 1.04 - GRID_GAP;
-    const plinthGeo = new THREE.BoxGeometry(size * 1.08, WALL_PLINTH_H, size * 1.08);
+    const bodyHeight = Math.max(0.01, WALL_HEIGHT - WALL_CAP_H - WALL_PLINTH_H);
+    const size = ts * 1.16 - GRID_GAP;
+    const plinthGeo = new THREE.BoxGeometry(size * 1.12, WALL_PLINTH_H, size * 1.12);
     const bodyGeo = new THREE.BoxGeometry(size, bodyHeight, size);
-    const capGeo = new THREE.BoxGeometry(size * 1.02, WALL_CAP_H, size * 1.02);
+    const capGeo = new THREE.BoxGeometry(size * 1.12, WALL_CAP_H, size * 1.12);
     const plinthMat = makeBoxMaterials({
       top: WHITEBOX.wallPlinth,
       side: WHITEBOX.wallDark,
@@ -586,13 +688,13 @@ function WallLayer() {
     });
 
     plinth.instanceMatrix.needsUpdate = true;
-    plinth.castShadow = false;
+    plinth.castShadow = true;
     plinth.receiveShadow = true;
     body.instanceMatrix.needsUpdate = true;
-    body.castShadow = false;
+    body.castShadow = true;
     body.receiveShadow = true;
     cap.instanceMatrix.needsUpdate = true;
-    cap.castShadow = false;
+    cap.castShadow = true;
     cap.receiveShadow = true;
     return { plinth, body, cap };
   }, [wallTiles, ts]);
@@ -2212,6 +2314,7 @@ export function MapRenderer() {
       <PlantedBombMarker />
       <SmokeLayer />
       <FlashLayer />
+      <UnitTacticalOverlayLayer />
       <WalkableHighlight />
       <ThreatenedMovementOverlay />
       <HoveredTileHighlight />
