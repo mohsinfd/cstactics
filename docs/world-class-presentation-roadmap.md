@@ -15,6 +15,11 @@ feasibility test only; React/Three remains the tactical rules prototype until a
 runtime screenshot and interaction check prove that the alternate base is worth
 porting toward.
 
+The original second external-engine spike is S&box. It should use the same
+Banana/B data as Luanti so the comparison is fair: Luanti tests constrained
+voxel/nodebox authoring, while S&box tests whether Source-2-adjacent C# tooling
+gives enough visual lift to justify platform risk.
+
 ## North Star
 
 Counter-Strike slowed into XCOM should feel like this:
@@ -262,6 +267,10 @@ Progress:
   right-click selection, movement range, planned path, and danger/LOS overlays.
   `npm run luanti:validate` now guards the spike data before a Luanti runtime
   screenshot is trusted.
+- S&box Spike B scaffold landed under `spikes/sbox-banana-b-site/` with matching
+  Banana/B data and `docs/sbox-visual-spike.md`. It is intentionally not called
+  runnable yet because S&box is not installed on this machine; the next proof is
+  an actual editor/runtime screenshot, not another theoretical plan.
 
 ### Milestone P5: Production Sound
 
@@ -310,3 +319,6 @@ Progress:
 11. Run the Luanti spike in the actual engine, capture the first-load
    Banana/B screenshot, and decide whether the camera/HUD/readability pass
    deserves a second spike or should be killed as the main visual base.
+12. Run the matching S&box Spike B from the same data and compare screenshot,
+   camera feel, code-generation workflow, and distribution/platform risk
+   against Luanti before choosing a visual-client base.

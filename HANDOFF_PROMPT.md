@@ -23,6 +23,7 @@ First, read:
 4. `ROADMAP.md`
 5. `docs/orchestrator-framework.md`
 6. `docs/luanti-visual-spike.md` if the task touches the visual-client pivot
+7. `docs/sbox-visual-spike.md` if continuing external-engine Spike B
 
 Then check:
 
@@ -45,6 +46,9 @@ Current product thesis:
 - Do not build generic XCOM with CS labels.
 - A contained Luanti visual spike now exists as a dual-track feasibility test.
   It is not a gameplay port; React/Three remains the rules prototype.
+- The original second external-engine spike is S&box. It now has a scaffold and
+  matching Banana/B data, but no verified runtime because S&box was not
+  installed on the current machine.
 
 Current labels:
 
@@ -70,6 +74,9 @@ Next likely work:
 - If continuing the visual-client pivot, validate the Luanti data with
   `npm run luanti:validate`, then run Luanti locally and capture a first-load
   screenshot before arguing for or against a port.
+- If continuing Spike B, validate with `npm run sbox:validate`, then create an
+  S&box empty Game project and implement the same Banana/B slice from
+  `spikes/sbox-banana-b-site/banana_b_site.json`.
 - After major UX/gameplay changes, run `npm run test:browser`.
 
 Important: durable learning must be written back to the matching memory doc so

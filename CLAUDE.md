@@ -94,6 +94,9 @@ the same milestone:
 - Luanti visual-client feasibility, generated whitebox map constraints, and
   kill criteria:
   `docs/luanti-visual-spike.md`
+- S&box visual-client feasibility, Source-2-adjacent platform risk, and Spike B
+  pass/fail criteria:
+  `docs/sbox-visual-spike.md`
 - Broad project truth:
   `docs/current-state.md`
 - Orchestrator process:
@@ -168,6 +171,7 @@ Useful commands:
 - `npm run lint`
 - `npm run map:validate`
 - `npm run luanti:validate`
+- `npm run sbox:validate`
 - `npm run test:browser`
 
 ## Key Files
@@ -186,6 +190,7 @@ Useful commands:
 - `scripts/validate-map.mjs`: map connectivity, routes, cover validation.
 - `scripts/validate-luanti-spike.mjs`: Luanti spike data validation.
 - `spikes/luanti-banana-b-site/`: contained generated Luanti visual spike.
+- `spikes/sbox-banana-b-site/`: contained S&box visual spike scaffold.
 - `tests/human-usability.spec.ts`: mouse/trackpad-style HUD/camera regression.
 
 ## Current Player-Facing Labels

@@ -276,6 +276,14 @@ verbs that make those nouns matter.
   unit overlap, unsupported surfaces/props, out-of-bounds rectangles, props
   inside walls, props without floor support, blocked path/danger tiles, and
   non-contiguous authored paths.
+- The original external-engine Spike B is now captured as an S&box scaffold
+  under `spikes/sbox-banana-b-site/` with matching Banana/B data and
+  `docs/sbox-visual-spike.md`. S&box is not installed on this machine, so the
+  scaffold is not yet a verified runnable `.sbproj`; it is the next runtime
+  gate after Luanti.
+- `npm run sbox:validate` validates the S&box spike data against the same
+  authored map contract as Luanti so the two engine tests compare the same
+  slice instead of drifting into different demos.
 
 ## Partially Implemented
 
@@ -323,6 +331,9 @@ verbs that make those nouns matter.
 - A proven visual-client decision. The Luanti spike exists as a contained
   alternative, but it still needs a real runtime screenshot and camera/HUD
   judgement before becoming anything more than a reference sandbox.
+- A verified S&box runtime slice. The S&box scaffold exists, but needs the
+  editor/runtime installed before any screenshot, C# component, or platform
+  decision can be trusted.
 
 ## Immediate Focus
 
@@ -345,3 +356,7 @@ In parallel, run the Luanti Banana/B visual spike as a kill-criteria test for
 the presentation base. React/Three remains the rules prototype; Luanti is only
 for validating generated whitebox map readability, tactical camera feel, and
 agent-safe visual authoring.
+
+After the Luanti screenshot gate, run the matching S&box Spike B against the
+same `banana_b_site.json` data and compare screenshots, camera feel, authoring
+speed, and platform risk before making a client-base decision.

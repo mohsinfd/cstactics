@@ -26,6 +26,7 @@ Specialist memory docs:
 - Movement/camera/input: `docs/movement-smoothing-roadmap.md`
 - Human usability: `docs/human-usability-regression.md`
 - Luanti visual spike: `docs/luanti-visual-spike.md`
+- S&box visual spike: `docs/sbox-visual-spike.md`
 - Process: `docs/orchestrator-framework.md`
 
 Required checks by area:
@@ -33,6 +34,7 @@ Required checks by area:
 - Code: `npm run build`, `npm run lint`
 - Map/cover/LOS: `npm run map:validate`
 - Luanti spike data: `npm run luanti:validate`
+- S&box spike data: `npm run sbox:validate`
 - HUD/camera/input/major UX: `npm run test:browser`
 
 Do not revert or overwrite work you did not make.

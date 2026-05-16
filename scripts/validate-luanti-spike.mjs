@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
-const dataPath = path.join(
+const defaultDataPath = path.join(
   repoRoot,
   'spikes',
   'luanti-banana-b-site',
@@ -11,6 +11,7 @@ const dataPath = path.join(
   'cstactics_spike',
   'banana_b_site.json'
 );
+const dataPath = process.argv[2] ? path.resolve(repoRoot, process.argv[2]) : defaultDataPath;
 
 const map = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 const errors = [];

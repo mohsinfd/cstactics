@@ -125,6 +125,8 @@ the matching file:
   `docs/human-usability-regression.md`
 - Luanti visual-client feasibility:
   `docs/luanti-visual-spike.md`
+- S&box visual-client feasibility:
+  `docs/sbox-visual-spike.md`
 - Product status:
   `docs/current-state.md`
 - Process/handoff:
@@ -219,6 +221,24 @@ Rules:
 Required checks:
 - `npm run luanti:validate`
 - Real Luanti first-load screenshot before any main-client recommendation
+
+### S&box Visual Spike
+
+Focus:
+- Source-2-adjacent C# workflow, generated Banana/B board fidelity, tactical
+  camera feasibility, and whether the visual lift beats Luanti/Three.js enough
+  to justify platform risk.
+
+Rules:
+- Use the same authored Banana/B data as the Luanti spike.
+- Do not port combat, economy, bomb logic, utility, AI, or the TypeScript game
+  store.
+- Do not call the spike runnable until it has been opened in S&box and verified
+  with a first-load screenshot.
+
+Required checks:
+- `npm run sbox:validate`
+- Real S&box first-load screenshot before any main-client recommendation
 
 ## Agent Prompt Template
 
