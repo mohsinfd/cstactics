@@ -287,6 +287,38 @@ async function expectHudViewportBudget(page: Page, label: string) {
   ).toBeLessThanOrEqual(0.1);
 }
 
+async function expectRosterButtonsReachable(page: Page) {
+  const results = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('[data-testid^="hud-roster-unit-"]')).map((element) => {
+      const button = element as HTMLButtonElement;
+      const rect = button.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const topElement = document.elementFromPoint(centerX, centerY);
+      return {
+        id: button.dataset.testid ?? '',
+        isButton: button.tagName === 'BUTTON',
+        accessibleName: button.getAttribute('aria-label') ?? '',
+        visible: rect.width > 0 && rect.height > 0,
+        inViewport: rect.left >= 0 &&
+          rect.top >= 0 &&
+          rect.right <= window.innerWidth + 1 &&
+          rect.bottom <= window.innerHeight + 1,
+        receivesClick: button.disabled || topElement === button || Boolean(topElement && button.contains(topElement)),
+      };
+    });
+  });
+
+  expect(results.length, 'active roster should expose five unit buttons').toBe(5);
+  for (const result of results) {
+    expect(result.isButton, `${result.id} should be a semantic button`).toBe(true);
+    expect(result.accessibleName, `${result.id} should have an accessible name`).toContain('Select');
+    expect(result.visible, `${result.id} should be visible`).toBe(true);
+    expect(result.inViewport, `${result.id} should stay inside viewport`).toBe(true);
+    expect(result.receivesClick, `${result.id} should not be covered`).toBe(true);
+  }
+}
+
 async function queueBananaDrillContact(page: Page) {
   const result = await page.evaluate(async () => {
     const store = window.__CS_TACTICS_STORE__;
@@ -335,9 +367,12 @@ test.describe('human usability regression', () => {
 
     await page.goto('/');
     await expectHudReachable(page, BASE_HUD_IDS);
+    await expectRosterButtonsReachable(page);
 
     await page.getByTestId('hud-command-contact-drill').click();
     await expectHudReachable(page, [...BASE_HUD_IDS, ...SELECTED_UNIT_IDS]);
+    await expectRosterButtonsReachable(page);
+    await page.getByTestId('hud-roster-unit-0').click({ trial: true });
 
     for (let i = 0; i < 2; i++) {
       await page.getByTestId('hud-camera-zoom-in').click();
@@ -356,6 +391,7 @@ test.describe('human usability regression', () => {
 
     await page.getByTestId('hud-camera-reset-camera').click();
     await expectHudReachable(page, [...BASE_HUD_IDS, ...SELECTED_UNIT_IDS]);
+    await expectRosterButtonsReachable(page);
 
     await page.getByTestId('hud-command-plan').click();
     await expectHudTargetReachableIfEnabled(page, 'hud-action-move');
@@ -364,6 +400,7 @@ test.describe('human usability regression', () => {
     await expectHudTargetReachableIfEnabled(page, 'hud-action-done');
 
     await expectHudReachable(page, BASE_HUD_IDS);
+    await expectRosterButtonsReachable(page);
     expect(consoleErrors).toEqual([]);
   });
 
@@ -404,6 +441,8 @@ test.describe('human usability regression', () => {
     expect(timelineText, 'contact timeline should include the shot beat').toContain('SHOT');
     expect(timelineText, 'contact timeline should include the trade/no-trade call').toMatch(/trade|no clean trade/i);
     expect(timelineText, 'contact timeline should include a move or swing beat').toMatch(/MOVE|SWING/i);
+    await expectHudReachable(page, [...BASE_HUD_IDS, 'hud-contact-break-panel']);
+    await expectRosterButtonsReachable(page);
 
     const timelineState = await page.evaluate(() => {
       const state = window.__CS_TACTICS_STORE__?.getState();

@@ -1421,14 +1421,23 @@ function TeamRoster() {
         const isSel = u.id === selectedId;
         const hasAP = u.ap > 0;
         return (
-          <div
-              key={u.id}
-              onClick={() => selectUnit(u.id)}
-              style={{
-              width: dense ? 42 : compact ? 48 : 56, padding: dense ? '3px 0' : '4px 0', textAlign: 'center', cursor: 'pointer',
+          <button
+            key={u.id}
+            type="button"
+            data-testid={`hud-roster-unit-${u.id}`}
+            aria-label={`Select ${u.team} ${u.role.displayName} ${u.name}${hasAP ? `, ${u.ap} AP` : ', no AP'}`}
+            disabled={!u.alive}
+            onClick={() => selectUnit(u.id)}
+            style={{
+              width: dense ? 42 : compact ? 48 : 56,
+              padding: dense ? '3px 0' : '4px 0',
+              textAlign: 'center',
+              cursor: u.alive ? 'pointer' : 'not-allowed',
+              appearance: 'none',
               background: isSel ? `${teamColor}44` : 'rgba(8,8,12,0.85)',
               border: `1px solid ${isSel ? teamColor : '#333'}`,
               borderRadius: 4,
+              font: 'inherit',
               opacity: u.alive ? (hasAP ? 1 : 0.5) : 0.25,
               transition: 'all 150ms ease',
             }}
@@ -1447,7 +1456,7 @@ function TeamRoster() {
                 }} />
               ))}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

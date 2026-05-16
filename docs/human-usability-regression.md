@@ -41,7 +41,9 @@ clickable without panning the page or searching:
 - `hud-selected-unit-panel`: move, shoot, hold, utility, reload, done.
 
 Stable automation hooks are available through `data-testid` attributes for the
-HUD containers and primary action buttons.
+HUD containers and primary action buttons. Active roster entries should be
+semantic buttons with `hud-roster-unit-{id}` hooks, a `Select ...` accessible
+name, and a center point that remains reachable after camera abuse.
 
 ## Required Human Sequences
 

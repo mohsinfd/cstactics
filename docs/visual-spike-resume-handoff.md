@@ -158,6 +158,20 @@ npm run lint
 npm run build
 ```
 
+May 16, 2026 pull/resume check on this Windows machine:
+
+```powershell
+npm run luanti:validate
+npm run sbox:validate
+```
+
+Both validators still pass with `walkableTiles: 357`, `blockedTiles: 187`,
+five units per side, `dangerTiles: 22`, and no warnings. Luanti/Minetest and
+S&box were not found on PATH, in common Program Files locations, or under the
+local Steam `steamapps/common` folder, so the runtime screenshot gate remains
+blocked until one of those clients is installed or the branch is resumed on a
+machine that already has them.
+
 ## What Not To Do Next
 
 - Do not port combat, economy, bomb logic, AI, or match rules into Luanti/S&box
