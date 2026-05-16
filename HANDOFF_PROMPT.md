@@ -24,6 +24,7 @@ First, read:
 5. `docs/orchestrator-framework.md`
 6. `docs/luanti-visual-spike.md` if the task touches the visual-client pivot
 7. `docs/sbox-visual-spike.md` if continuing external-engine Spike B
+8. `docs/visual-spike-resume-handoff.md` for the current two-spike resume plan
 
 Then check:
 

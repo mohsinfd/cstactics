@@ -27,6 +27,7 @@ Specialist memory docs:
 - Human usability: `docs/human-usability-regression.md`
 - Luanti visual spike: `docs/luanti-visual-spike.md`
 - S&box visual spike: `docs/sbox-visual-spike.md`
+- Visual spike resume handoff: `docs/visual-spike-resume-handoff.md`
 - Process: `docs/orchestrator-framework.md`
 
 Required checks by area:
