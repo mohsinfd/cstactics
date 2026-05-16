@@ -7,6 +7,8 @@ Use this when resuming from another machine with Luanti and/or S&box installed.
 - Branch: `codex/cs2-xcom-roadmap-slice`
 - Draft PR: https://github.com/mohsinfd/cstactics/pull/1
 - Latest pushed commits for this session:
+  - `459acda Harden roster usability after visual spike pull`
+  - `71f14fc Add visual spike resume handoff`
   - `e481f83 Add Luanti visual spike`
   - `cf28943 Scaffold Sbox visual spike`
 
