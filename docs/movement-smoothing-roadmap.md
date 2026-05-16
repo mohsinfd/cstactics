@@ -138,3 +138,9 @@ The helper is intentionally pure and small so it can be imported into
   beat.
 - Remaining friction: this is still a two-band utility/swing contract, not yet a
   production timeline with simultaneous shot, utility, and interrupt ordering.
+- Renderer movement timing now lands closer to the `95ms` store tick instead of
+  easing each tile for roughly twice the resolver cadence. The unit renderer
+  also clamps catch-up duration so a visually delayed miniature does not get
+  progressively slower, and the stride/brace pose has a longer settle window for
+  less tile-shuffle motion. Gameplay state, AP, pathfinding, LOS, and execute
+  resolution remain unchanged.

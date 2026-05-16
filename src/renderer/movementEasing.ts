@@ -7,15 +7,15 @@ export interface MovementTimingConfig {
 }
 
 export const DEFAULT_MOVEMENT_TIMING: MovementTimingConfig = {
-  tileSeconds: 0.19,
-  minSegmentSeconds: 0.12,
-  maxSegmentSeconds: 0.28,
-  cadenceOverlap: 1.35,
-  settleSeconds: 0.05,
+  tileSeconds: 0.115,
+  minSegmentSeconds: 0.08,
+  maxSegmentSeconds: 0.17,
+  cadenceOverlap: 1.06,
+  settleSeconds: 0.11,
 };
 
 export const TACTICAL_MOVEMENT_TICK_MS = 95;
-export const STRIDE_LINEARITY = 0.22;
+export const STRIDE_LINEARITY = 0.34;
 
 export function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;

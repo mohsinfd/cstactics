@@ -123,6 +123,8 @@ the matching file:
   `docs/movement-smoothing-roadmap.md`
 - Human usability:
   `docs/human-usability-regression.md`
+- Luanti visual-client feasibility:
+  `docs/luanti-visual-spike.md`
 - Product status:
   `docs/current-state.md`
 - Process/handoff:
@@ -198,6 +200,25 @@ Focus:
 Required checks:
 - `npm run test:browser`
 - Read-only tester agent report after major milestones
+
+### Luanti Visual Spike
+
+Focus:
+- Data-generated Banana/B whitebox map readability, tactical camera feasibility,
+  unit visibility, and whether constrained voxel/nodebox authoring is safer for
+  agents than continuing the Three.js presentation path.
+
+Rules:
+- Do not port combat, economy, bomb logic, AI, or the TypeScript game store.
+- Keep map edits in
+  `spikes/luanti-banana-b-site/cstactics_spike_game/mods/cstactics_spike/banana_b_site.json`
+  unless a Lua runtime issue is being fixed.
+- Treat React/Three as the tactical rules source of truth until the spike passes
+  a real runtime screenshot and interaction check.
+
+Required checks:
+- `npm run luanti:validate`
+- Real Luanti first-load screenshot before any main-client recommendation
 
 ## Agent Prompt Template
 

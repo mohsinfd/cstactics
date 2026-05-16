@@ -227,6 +227,11 @@ verbs that make those nouns matter.
   instead of blue-dominant, wall plinth/body/cap masses cast readable shadows,
   tactical miniatures are scaled up, and subtle team control/facing overlays are
   visible before the player clicks a scenario.
+- First stratboard miniature replacement pass: live tactical units now use
+  chunkier braced primitive bodies, team-specific CT helmet/armor and T
+  scarf/headwrap geometry, body-mounted role modules, thicker lifted weapon
+  silhouettes, and faster renderer-only movement timing that stays closer to the
+  tile resolver cadence without changing gameplay state.
 - First-load board visibility is guarded by an R3F-side camera bootstrap plus a
   browser pixel smoke that checks for light clay board pixels before scenario
   buttons are clicked.
@@ -262,6 +267,15 @@ verbs that make those nouns matter.
   overlay, path line, and a movable CT gameplay marker. This proves the hybrid
   direction: keep the painted board texture, but drive movement/targeting from
   a separate tile layer.
+- A dual-track Luanti visual spike now exists under
+  `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
+  30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
+  walls, primitive props, five CT markers, five T markers, right-click
+  selection, movement range, path preview, and red danger/LOS floor bands.
+- `npm run luanti:validate` guards the Luanti slice against invalid map data:
+  unit overlap, unsupported surfaces/props, out-of-bounds rectangles, props
+  inside walls, props without floor support, blocked path/danger tiles, and
+  non-contiguous authored paths.
 
 ## Partially Implemented
 
@@ -306,6 +320,9 @@ verbs that make those nouns matter.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.
+- A proven visual-client decision. The Luanti spike exists as a contained
+  alternative, but it still needs a real runtime screenshot and camera/HUD
+  judgement before becoming anything more than a reference sandbox.
 
 ## Immediate Focus
 
@@ -323,3 +340,8 @@ Finish hardening the first contact vertical slice before broadening the game:
 
 This is the first moment where the game can feel like Counter-Strike slowed into
 XCOM-style decisions.
+
+In parallel, run the Luanti Banana/B visual spike as a kill-criteria test for
+the presentation base. React/Three remains the rules prototype; Luanti is only
+for validating generated whitebox map readability, tactical camera feel, and
+agent-safe visual authoring.

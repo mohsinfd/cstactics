@@ -12,6 +12,11 @@ The presentation rebuild track is now captured in
 renderer-independent; the next ceiling break is an authored presentation layer
 for lighting, unit readability, animation timing, camera, HUD, and sound.
 
+A contained dual-track Luanti spike is now part of the presentation research.
+It is not a gameplay port. React/Three remains the rules prototype while
+Luanti tests whether a data-generated voxel/whitebox board gives the project a
+more reliable visual-production base.
+
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do
 not land, every other feature sits on weak ground.
@@ -389,6 +394,11 @@ Work:
 - Player visualization and movement smoothing specialist handoffs are captured
   in `docs/player-visualization-roadmap.md` and
   `docs/movement-smoothing-roadmap.md`.
+- Dual-track Luanti Banana/B visual spike: a generated 30x30 clay/whitebox
+  Banana -> B-site slice now exists under `spikes/luanti-banana-b-site/`, with
+  JSON-authored floors/walls/props/units, basic selection, movement range, path
+  preview, and danger/LOS floor overlays. Use `npm run luanti:validate` before
+  trusting map edits.
 - Onboarding overlay for first-time players.
 - Settings for performance and accessibility.
 
@@ -396,6 +406,8 @@ Acceptance:
 - The game looks intentional in screenshots.
 - Common actions have satisfying audio/visual feedback.
 - Text and controls remain readable on laptop and desktop screens.
+- Any alternate visual client earns its place with a first-load screenshot,
+  tactical camera proof, and data-authoring validation before a port begins.
 
 ## Phase 7: Multiplayer Foundation
 

@@ -175,6 +175,12 @@ threat, or utility overlays.
   default camera for readability, but keep the small rifle primitive on the
   gameplay-facing root so weapon direction still matches mechanical facing.
   Selected units need an obvious ring plus world-space chevron/flag treatment.
+- Stratboard miniature replacement pass: the live board unit is no longer a
+  shared capsule pawn with team-color swaps. `UnitRenderer.tsx` now builds a
+  larger braced primitive miniature with role-specific torso/shoulder/stance
+  proportions, CT hard-helmet/armor-cross geometry, T scarf/headwrap geometry,
+  body-mounted role modules, and thicker lifted weapon profiles. Keep future
+  work moving physical silhouette first, floor glyph/text second.
 
 ## Next Presentation Targets
 

@@ -10,6 +10,7 @@
     "test:browser": "playwright test",
     "map:generate": "node scripts/generate-map-mask.mjs",
     "map:validate": "node scripts/validate-map.mjs",
+    "luanti:validate": "node scripts/validate-luanti-spike.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

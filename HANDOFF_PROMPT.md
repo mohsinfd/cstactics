@@ -22,6 +22,7 @@ First, read:
 3. `docs/current-state.md`
 4. `ROADMAP.md`
 5. `docs/orchestrator-framework.md`
+6. `docs/luanti-visual-spike.md` if the task touches the visual-client pivot
 
 Then check:
 
@@ -42,6 +43,8 @@ Current product thesis:
 - The core gameplay soul is angle ownership, utility timing, trades, bomb
   pressure, and synchronized executes/retakes.
 - Do not build generic XCOM with CS labels.
+- A contained Luanti visual spike now exists as a dual-track feasibility test.
+  It is not a gameplay port; React/Three remains the rules prototype.
 
 Current labels:
 
@@ -64,6 +67,9 @@ Next likely work:
   construction, and cover truth.
 - Continue player visual design through `docs/player-visualization-roadmap.md`.
 - Continue movement/camera smoothness through `docs/movement-smoothing-roadmap.md`.
+- If continuing the visual-client pivot, validate the Luanti data with
+  `npm run luanti:validate`, then run Luanti locally and capture a first-load
+  screenshot before arguing for or against a port.
 - After major UX/gameplay changes, run `npm run test:browser`.
 
 Important: durable learning must be written back to the matching memory doc so

@@ -91,6 +91,9 @@ the same milestone:
   `docs/movement-smoothing-roadmap.md`
 - Testing sequences, human friction, HUD reachability:
   `docs/human-usability-regression.md`
+- Luanti visual-client feasibility, generated whitebox map constraints, and
+  kill criteria:
+  `docs/luanti-visual-spike.md`
 - Broad project truth:
   `docs/current-state.md`
 - Orchestrator process:
@@ -164,6 +167,7 @@ Useful commands:
 - `npm run build`
 - `npm run lint`
 - `npm run map:validate`
+- `npm run luanti:validate`
 - `npm run test:browser`
 
 ## Key Files
@@ -180,6 +184,8 @@ Useful commands:
 - `src/renderer/movementEasing.ts`: movement timing/easing helpers.
 - `src/ui/HUD.tsx`: command bar, roster, selected unit panel, objective panels.
 - `scripts/validate-map.mjs`: map connectivity, routes, cover validation.
+- `scripts/validate-luanti-spike.mjs`: Luanti spike data validation.
+- `spikes/luanti-banana-b-site/`: contained generated Luanti visual spike.
 - `tests/human-usability.spec.ts`: mouse/trackpad-style HUD/camera regression.
 
 ## Current Player-Facing Labels

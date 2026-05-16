@@ -114,9 +114,73 @@ function SafeText(props: ComponentProps<typeof Text>) {
 const TELEPORT_TILE_DISTANCE = 2.4;
 const CLICK_DRAG_THRESHOLD_PX = 4;
 const DEFAULT_CAMERA_READABLE_YAW = 2.45;
-const MINIATURE_ROOT_SCALE = 1.58;
-const WEAPON_REST_Z = 0.36;
-const WEAPON_PRESENTATION_SCALE = 0.78;
+const MINIATURE_ROOT_SCALE = 1.88;
+const WEAPON_REST_Z = 0.5;
+const WEAPON_PRESENTATION_SCALE = 0.94;
+
+type RoleMiniatureProfile = {
+  torsoWidth: number;
+  torsoHeight: number;
+  torsoDepth: number;
+  shoulderWidth: number;
+  shoulderHeight: number;
+  headScale: number;
+  stanceWidth: number;
+  lean: number;
+};
+
+const ROLE_MINIATURE_PROFILES = {
+  awper: {
+    torsoWidth: 0.34,
+    torsoHeight: 0.64,
+    torsoDepth: 0.27,
+    shoulderWidth: 0.48,
+    shoulderHeight: 0.16,
+    headScale: 1.02,
+    stanceWidth: 0.32,
+    lean: -0.03,
+  },
+  entry: {
+    torsoWidth: 0.48,
+    torsoHeight: 0.58,
+    torsoDepth: 0.31,
+    shoulderWidth: 0.66,
+    shoulderHeight: 0.2,
+    headScale: 1.08,
+    stanceWidth: 0.42,
+    lean: 0.08,
+  },
+  igl: {
+    torsoWidth: 0.4,
+    torsoHeight: 0.6,
+    torsoDepth: 0.28,
+    shoulderWidth: 0.56,
+    shoulderHeight: 0.16,
+    headScale: 1,
+    stanceWidth: 0.34,
+    lean: 0.01,
+  },
+  support: {
+    torsoWidth: 0.46,
+    torsoHeight: 0.61,
+    torsoDepth: 0.33,
+    shoulderWidth: 0.62,
+    shoulderHeight: 0.18,
+    headScale: 1.04,
+    stanceWidth: 0.38,
+    lean: 0.03,
+  },
+  lurker: {
+    torsoWidth: 0.3,
+    torsoHeight: 0.54,
+    torsoDepth: 0.25,
+    shoulderWidth: 0.42,
+    shoulderHeight: 0.14,
+    headScale: 0.96,
+    stanceWidth: 0.28,
+    lean: -0.05,
+  },
+} satisfies Record<RoleId, RoleMiniatureProfile>;
 
 type UnitStateVisualProfile = {
   color: string;
@@ -773,6 +837,135 @@ function TeamHeadgear({ team, scale, mats, palette }: {
   );
 }
 
+function TeamBodySilhouette({ team, scale, palette }: {
+  team: Unit['team'];
+  scale: number;
+  palette: TeamPalette;
+}) {
+  if (team === 'CT') {
+    return (
+      <group raycast={() => null}>
+        <mesh position={[0, 0.94 * scale, 0.215 * scale]} castShadow>
+          <boxGeometry args={[0.46 * scale, 0.34 * scale, 0.04 * scale]} />
+          <meshStandardMaterial color="#dbeaff" roughness={0.48} metalness={0.05} emissive={palette.accent} emissiveIntensity={0.04} />
+        </mesh>
+        <mesh position={[0, 1.03 * scale, 0.246 * scale]} castShadow>
+          <boxGeometry args={[0.28 * scale, 0.055 * scale, 0.032 * scale]} />
+          <meshStandardMaterial color="#0d2f72" roughness={0.62} metalness={0.08} />
+        </mesh>
+        {[-0.28, 0.28].map((x) => (
+          <mesh key={x} position={[x * scale, 0.46 * scale, 0.1 * scale]} rotation={[0.18, 0, x > 0 ? -0.08 : 0.08]} castShadow>
+            <boxGeometry args={[0.12 * scale, 0.18 * scale, 0.09 * scale]} />
+            <meshStandardMaterial color="#dbeaff" roughness={0.52} metalness={0.05} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
+  return (
+    <group raycast={() => null}>
+      <mesh position={[0, 0.98 * scale, 0.235 * scale]} rotation={[0, 0, -0.34]} castShadow>
+        <boxGeometry args={[0.5 * scale, 0.085 * scale, 0.05 * scale]} />
+        <meshStandardMaterial color="#ffd2d2" roughness={0.74} emissive="#501016" emissiveIntensity={0.08} />
+      </mesh>
+      <mesh position={[0, 0.86 * scale, 0.245 * scale]} rotation={[0, 0, 0.34]} castShadow>
+        <boxGeometry args={[0.42 * scale, 0.07 * scale, 0.045 * scale]} />
+        <meshStandardMaterial color={palette.headgearDark} roughness={0.82} />
+      </mesh>
+      <mesh position={[0.22 * scale, 1.16 * scale, -0.18 * scale]} rotation={[0.12, 0.24, -0.42]} castShadow>
+        <boxGeometry args={[0.1 * scale, 0.34 * scale, 0.052 * scale]} />
+        <meshStandardMaterial color={palette.headgear} roughness={0.82} />
+      </mesh>
+    </group>
+  );
+}
+
+function RoleBodyModule({ roleId, accent, scale }: {
+  roleId: RoleId;
+  accent: string;
+  scale: number;
+}) {
+  if (roleId === 'awper') {
+    return (
+      <group raycast={() => null}>
+        <mesh position={[0.28 * scale, 1.28 * scale, -0.16 * scale]} rotation={[0.12, 0, -0.18]} castShadow>
+          <boxGeometry args={[0.06 * scale, 0.6 * scale, 0.08 * scale]} />
+          <meshStandardMaterial color={accent} roughness={0.32} metalness={0.25} emissive={accent} emissiveIntensity={0.16} />
+        </mesh>
+        <mesh position={[0.28 * scale, 1.56 * scale, -0.16 * scale]} castShadow>
+          <sphereGeometry args={[0.08 * scale, 10, 6]} />
+          <meshStandardMaterial color="#effbff" roughness={0.28} metalness={0.18} emissive={accent} emissiveIntensity={0.14} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (roleId === 'entry') {
+    return (
+      <group raycast={() => null}>
+        <mesh position={[0, 1.02 * scale, 0.27 * scale]} rotation={[Math.PI / 2, 0, Math.PI / 4]} castShadow>
+          <coneGeometry args={[0.2 * scale, 0.42 * scale, 3]} />
+          <meshStandardMaterial color={accent} roughness={0.48} emissive={accent} emissiveIntensity={0.1} />
+        </mesh>
+        <mesh position={[0, 0.78 * scale, 0.27 * scale]} castShadow>
+          <boxGeometry args={[0.48 * scale, 0.06 * scale, 0.05 * scale]} />
+          <meshStandardMaterial color="#fff0e8" roughness={0.72} emissive={accent} emissiveIntensity={0.06} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (roleId === 'igl') {
+    return (
+      <group raycast={() => null}>
+        <mesh position={[0.28 * scale, 1.18 * scale, -0.12 * scale]} castShadow>
+          <boxGeometry args={[0.13 * scale, 0.42 * scale, 0.08 * scale]} />
+          <meshStandardMaterial color="#171b20" roughness={0.5} metalness={0.12} />
+        </mesh>
+        <mesh position={[0.28 * scale, 1.18 * scale, -0.071 * scale]} castShadow>
+          <planeGeometry args={[0.09 * scale, 0.3 * scale]} />
+          <meshBasicMaterial color={accent} transparent opacity={0.88} depthWrite={false} />
+        </mesh>
+        <mesh position={[-0.24 * scale, 1.43 * scale, -0.16 * scale]} rotation={[0.1, 0, -0.22]} castShadow>
+          <cylinderGeometry args={[0.014 * scale, 0.014 * scale, 0.54 * scale, 5]} />
+          <meshStandardMaterial color="#1a1f27" roughness={0.32} metalness={0.5} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (roleId === 'support') {
+    return (
+      <group raycast={() => null}>
+        {[-0.34, 0.34].map((x) => (
+          <mesh key={x} position={[x * scale, 0.86 * scale, -0.17 * scale]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.09 * scale, 0.09 * scale, 0.38 * scale, 12]} />
+            <meshStandardMaterial color={accent} roughness={0.5} metalness={0.1} emissive={accent} emissiveIntensity={0.08} />
+          </mesh>
+        ))}
+        <mesh position={[0, 1.02 * scale, -0.22 * scale]} castShadow>
+          <boxGeometry args={[0.36 * scale, 0.5 * scale, 0.14 * scale]} />
+          <meshStandardMaterial color="#e7ede8" roughness={0.82} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <group raycast={() => null}>
+      <mesh position={[0, 1.02 * scale, -0.2 * scale]} rotation={[0.08, 0, -0.04]} castShadow>
+        <boxGeometry args={[0.34 * scale, 0.54 * scale, 0.08 * scale]} />
+        <meshStandardMaterial color="#1a1622" roughness={0.92} transparent opacity={0.9} emissive={accent} emissiveIntensity={0.04} />
+      </mesh>
+      <mesh position={[0.24 * scale, 0.82 * scale, 0.22 * scale]} rotation={[0.1, 0.38, -0.22]} castShadow>
+        <boxGeometry args={[0.06 * scale, 0.26 * scale, 0.055 * scale]} />
+        <meshStandardMaterial color={accent} roughness={0.56} emissive={accent} emissiveIntensity={0.12} />
+      </mesh>
+    </group>
+  );
+}
+
 function SelectedCommandMarker({
   color,
   outlineColor,
@@ -818,6 +1011,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const bodyRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
+  const leftArmRef = useRef<THREE.Mesh>(null);
+  const rightArmRef = useRef<THREE.Mesh>(null);
   const weaponRef = useRef<THREE.Group>(null);
   const muzzleFlashRef = useRef<THREE.Group>(null);
   const muzzleMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
@@ -862,6 +1057,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const isSpent = isActiveTeam && unit.ap <= 0;
   const p = TEAM_RENDER_PALETTES[unit.team];
   const rc = ROLE_RENDER_CONFIG[unit.role.id];
+  const rm = ROLE_MINIATURE_PROFILES[unit.role.id];
   const stateVisual = getUnitStateVisualProfile({
     isSelected,
     isHovered,
@@ -934,7 +1130,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         } else {
           movement.from.copy(groupRef.current.position);
           movement.to.copy(targetPosition);
-          movement.duration = getMovementSegmentDurationSeconds(tileDistance);
+          movement.duration = getMovementSegmentDurationSeconds(Math.min(tileDistance, 1.15));
         }
       }
 
@@ -967,7 +1163,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
     }
 
-    const walkPhase = state.clock.elapsedTime * 13;
+    const walkPhase = state.clock.elapsedTime * 16;
     if (bodyRef.current) {
       const rootYaw = groupRef.current?.rotation.y ?? angle;
       bodyRef.current.rotation.y = dampAngle(
@@ -978,13 +1174,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
       bodyRef.current.position.y = THREE.MathUtils.damp(
         bodyRef.current.position.y,
-        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.07,
+        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.085,
         16,
         delta
       );
       bodyRef.current.rotation.x = THREE.MathUtils.damp(
         bodyRef.current.rotation.x,
-        movementIntensity * Math.sin(walkPhase) * 0.045,
+        rm.lean + movementIntensity * (0.08 + Math.sin(walkPhase) * 0.035),
         14,
         delta
       );
@@ -992,7 +1188,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (leftLegRef.current) {
       leftLegRef.current.rotation.x = THREE.MathUtils.damp(
         leftLegRef.current.rotation.x,
-        movementIntensity * Math.sin(walkPhase) * 0.42,
+        -0.06 + movementIntensity * Math.sin(walkPhase) * 0.62,
         18,
         delta
       );
@@ -1000,7 +1196,23 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (rightLegRef.current) {
       rightLegRef.current.rotation.x = THREE.MathUtils.damp(
         rightLegRef.current.rotation.x,
-        movementIntensity * -Math.sin(walkPhase) * 0.42,
+        -0.06 + movementIntensity * -Math.sin(walkPhase) * 0.62,
+        18,
+        delta
+      );
+    }
+    if (leftArmRef.current) {
+      leftArmRef.current.rotation.x = THREE.MathUtils.damp(
+        leftArmRef.current.rotation.x,
+        -0.58 + movementIntensity * -Math.sin(walkPhase) * 0.24,
+        18,
+        delta
+      );
+    }
+    if (rightArmRef.current) {
+      rightArmRef.current.rotation.x = THREE.MathUtils.damp(
+        rightArmRef.current.rotation.x,
+        -0.52 + movementIntensity * Math.sin(walkPhase) * 0.24,
         18,
         delta
       );
@@ -1239,68 +1451,71 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         <group ref={bodyRef}>
         {/* === BOOTS === */}
-        <mesh position={[-0.14 * s, 0.065, 0.02]} castShadow material={mats.boot}>
-          <boxGeometry args={[0.19 * s, 0.1, 0.22 * s]} />
+        <mesh position={[-rm.stanceWidth * s, 0.075, 0.1 * s]} rotation={[0, 0.18, -0.08]} castShadow material={mats.boot}>
+          <boxGeometry args={[0.28 * s, 0.11, 0.34 * s]} />
         </mesh>
-        <mesh position={[0.14 * s, 0.065, 0.02]} castShadow material={mats.boot}>
-          <boxGeometry args={[0.19 * s, 0.1, 0.22 * s]} />
+        <mesh position={[rm.stanceWidth * s, 0.075, -0.04 * s]} rotation={[0, -0.18, 0.08]} castShadow material={mats.boot}>
+          <boxGeometry args={[0.28 * s, 0.11, 0.34 * s]} />
         </mesh>
 
         {/* === LEGS === */}
-        <mesh ref={leftLegRef} position={[-0.13 * s, 0.34 * s, 0]} castShadow material={mats.pants}>
-          <cylinderGeometry args={[0.085 * s, 0.095 * s, 0.52 * s, 8]} />
+        <mesh ref={leftLegRef} position={[-rm.stanceWidth * 0.72 * s, 0.36 * s, 0.04 * s]} rotation={[0.08, 0, -0.1]} castShadow material={mats.pants}>
+          <boxGeometry args={[0.16 * s, 0.56 * s, 0.18 * s]} />
         </mesh>
-        <mesh ref={rightLegRef} position={[0.13 * s, 0.34 * s, 0]} castShadow material={mats.pants}>
-          <cylinderGeometry args={[0.085 * s, 0.095 * s, 0.52 * s, 8]} />
-        </mesh>
-
-        {/* === TORSO (vest) === */}
-        <mesh position={[0, 0.83 * s, 0]} castShadow material={mats.vest}>
-          <capsuleGeometry args={[0.22 * s, 0.48 * s, 5, 10]} />
+        <mesh ref={rightLegRef} position={[rm.stanceWidth * 0.72 * s, 0.36 * s, -0.02 * s]} rotation={[-0.04, 0, 0.1]} castShadow material={mats.pants}>
+          <boxGeometry args={[0.16 * s, 0.56 * s, 0.18 * s]} />
         </mesh>
 
-        {/* === VEST PLATE (front) === */}
-        <mesh position={[0, 0.86 * s, 0.22 * s]} castShadow material={mats.roleAccent}>
-          <boxGeometry args={[0.34 * s, 0.1 * s, 0.06 * s]} />
+        {/* === TORSO / STRATBOARD BUST === */}
+        <mesh position={[0, 0.72 * s, -0.02 * s]} rotation={[0, 0, 0.03]} castShadow material={mats.vestDark}>
+          <boxGeometry args={[rm.torsoWidth * 0.86 * s, 0.26 * s, rm.torsoDepth * 0.88 * s]} />
         </mesh>
+        <mesh position={[0, 1.0 * s, 0.03 * s]} rotation={[0.04, 0, 0]} castShadow material={mats.vest}>
+          <boxGeometry args={[rm.torsoWidth * s, rm.torsoHeight * s, rm.torsoDepth * s]} />
+        </mesh>
+
+        {/* === CHEST PLATE / TEAM GEOMETRY === */}
+        <mesh position={[0, 1.02 * s, (rm.torsoDepth * 0.5 + 0.035) * s]} castShadow material={mats.roleAccent}>
+          <boxGeometry args={[rm.torsoWidth * 0.58 * s, 0.12 * s, 0.055 * s]} />
+        </mesh>
+        <TeamBodySilhouette team={unit.team} scale={s} palette={p} />
         <RoleVestGlyph roleId={unit.role.id} accent={rc.accent} scale={s} />
-
+        <RoleBodyModule roleId={unit.role.id} accent={rc.accent} scale={s} />
         <RoleGear roleId={unit.role.id} accent={rc.accent} scale={s} />
 
         {/* === TEAM MARKING === */}
         {unit.team === 'CT' ? (
-          <mesh position={[0, 0.95 * s, -0.2 * s]} castShadow>
-            <boxGeometry args={[0.4 * s, 0.17 * s, 0.055 * s]} />
+          <mesh position={[0, 0.98 * s, -0.19 * s]} castShadow>
+            <boxGeometry args={[0.48 * s, 0.2 * s, 0.07 * s]} />
             <meshStandardMaterial color="#e9eef7" roughness={0.48} emissive="#224c84" emissiveIntensity={0.08} />
           </mesh>
         ) : (
-          <mesh position={[0, 0.96 * s, 0.24 * s]} castShadow>
-            <boxGeometry args={[0.4 * s, 0.08 * s, 0.055 * s]} />
+          <mesh position={[0, 0.98 * s, 0.28 * s]} rotation={[0, 0, -0.18]} castShadow>
+            <boxGeometry args={[0.48 * s, 0.095 * s, 0.065 * s]} />
             <meshStandardMaterial color="#ffd4d0" roughness={0.72} emissive="#4b0907" emissiveIntensity={0.08} />
           </mesh>
         )}
         <TeamChestBadge team={unit.team} scale={s} roleAccent={rc.accent} />
 
         {/* === TEAM ARMBAND (left upper arm) === */}
-        <mesh position={[-0.32 * s, 0.95 * s, 0]} material={mats.armband}>
-          <cylinderGeometry args={[0.088 * s, 0.088 * s, 0.07 * s, 8]} />
+        <mesh position={[-(rm.shoulderWidth * 0.54) * s, 0.95 * s, 0.16 * s]} rotation={[0.1, 0, 0.28]} material={mats.armband}>
+          <boxGeometry args={[0.08 * s, 0.18 * s, 0.08 * s]} />
         </mesh>
 
         {/* === SHOULDERS + ARMS === */}
-        <mesh position={[-0.29 * s, 1.02 * s, 0]} castShadow material={mats.vest}>
-          <sphereGeometry args={[0.105 * s, 8, 5]} />
+        <mesh position={[-(rm.shoulderWidth * 0.5) * s, 1.16 * s, 0.02 * s]} rotation={[0, 0, -0.18]} castShadow material={mats.vest}>
+          <boxGeometry args={[0.22 * s, rm.shoulderHeight * s, 0.23 * s]} />
         </mesh>
-        <mesh position={[0.29 * s, 1.02 * s, 0]} castShadow material={mats.vest}>
-          <sphereGeometry args={[0.105 * s, 8, 5]} />
+        <mesh position={[(rm.shoulderWidth * 0.5) * s, 1.16 * s, 0.02 * s]} rotation={[0, 0, 0.18]} castShadow material={mats.vest}>
+          <boxGeometry args={[0.22 * s, rm.shoulderHeight * s, 0.23 * s]} />
         </mesh>
 
-        {/* Left arm (weapon hand) */}
-        <mesh position={[-0.31 * s, 0.78 * s, 0.08 * s]} castShadow material={mats.vestDark}>
-          <cylinderGeometry args={[0.065 * s, 0.065 * s, 0.42 * s, 6]} />
+        {/* Braced arms, readable from the default camera. */}
+        <mesh ref={leftArmRef} position={[-(rm.shoulderWidth * 0.48) * s, 0.92 * s, 0.2 * s]} rotation={[-0.58, 0.08, -0.32]} castShadow material={mats.vestDark}>
+          <boxGeometry args={[0.12 * s, 0.42 * s, 0.11 * s]} />
         </mesh>
-        {/* Right arm */}
-        <mesh position={[0.31 * s, 0.78 * s, 0.06 * s]} castShadow material={mats.vestDark}>
-          <cylinderGeometry args={[0.065 * s, 0.065 * s, 0.42 * s, 6]} />
+        <mesh ref={rightArmRef} position={[(rm.shoulderWidth * 0.48) * s, 0.92 * s, 0.2 * s]} rotation={[-0.52, -0.08, 0.32]} castShadow material={mats.vestDark}>
+          <boxGeometry args={[0.12 * s, 0.42 * s, 0.11 * s]} />
         </mesh>
 
         {/* === IGL ANTENNA === */}
@@ -1324,7 +1539,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         {/* === HEAD === */}
         <mesh position={[0, 1.25 * s, 0]} castShadow material={mats.skin}>
-          <sphereGeometry args={[0.15 * s, 10, 7]} />
+          <sphereGeometry args={[0.16 * s * rm.headScale, 10, 7]} />
         </mesh>
 
         {/* === HELMET / HEADGEAR === */}
@@ -1380,11 +1595,18 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         {/* Rifle stays on the gameplay-facing root while the body is biased to the camera. */}
         <group
           ref={weaponRef}
-          position={[0, 0.86 * s, WEAPON_REST_Z]}
+          position={[0, 1.02 * s, WEAPON_REST_Z]}
           scale={[WEAPON_PRESENTATION_SCALE, WEAPON_PRESENTATION_SCALE, WEAPON_PRESENTATION_SCALE]}
         >
           <mesh rotation={[Math.PI * 0.03, 0, 0]} castShadow material={mats.weapon}>
             <boxGeometry args={[weaponProfile.bodyWidth, weaponProfile.bodyHeight, weaponProfile.bodyLength]} />
+          </mesh>
+          <mesh position={[0, weaponProfile.bodyHeight * 0.62, weaponProfile.bodyLength * 0.08]} castShadow>
+            <boxGeometry args={[weaponProfile.bodyWidth * 0.55, 0.018, weaponProfile.bodyLength * 0.58]} />
+            <meshStandardMaterial color={rc.accent} roughness={0.36} metalness={0.12} emissive={rc.accent} emissiveIntensity={0.08} />
+          </mesh>
+          <mesh position={[0, -weaponProfile.bodyHeight * 0.62, weaponProfile.bodyLength * 0.18]} castShadow material={mats.weapon}>
+            <boxGeometry args={[weaponProfile.bodyWidth * 0.72, 0.055, weaponProfile.bodyLength * 0.18]} />
           </mesh>
           {weaponProfile.stockScale > 0 && (
             <mesh position={[0, 0, -weaponProfile.bodyLength * 0.45]} castShadow material={mats.weapon}>
@@ -1402,6 +1624,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               <meshStandardMaterial color="#090909" roughness={0.25} metalness={0.7} />
             </mesh>
           )}
+          <mesh position={[0, 0, muzzleAnchorZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[weaponProfile.barrelRadius * 1.35, weaponProfile.barrelRadius, 0.055, 8]} />
+            <meshStandardMaterial color="#050505" roughness={0.22} metalness={0.82} />
+          </mesh>
           {weaponProfile.scopeVisible && (
             <>
               <mesh position={[0, 0.06, 0.15]} castShadow>

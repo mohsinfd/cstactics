@@ -9,6 +9,12 @@ CS2 stratboard-style 3D whitebox tactics map: a clean white/clay tactical level
 model with simplified red/blue miniatures, readable architecture, and strong
 tactical overlays for movement, sightlines, control zones, and executes.
 
+Because the current Three.js presentation has repeatedly hit a visual ceiling,
+the roadmap now includes a dual-track Luanti spike. Luanti is a visual-client
+feasibility test only; React/Three remains the tactical rules prototype until a
+runtime screenshot and interaction check prove that the alternate base is worth
+porting toward.
+
 ## North Star
 
 Counter-Strike slowed into XCOM should feel like this:
@@ -246,6 +252,16 @@ Progress:
   studio void, room-boundary walls have stronger plinth/body/cap mass and
   shadowing, miniatures are larger, and low-opacity team control/facing overlays
   give the map a stratboard read before any command is selected.
+- First true unit-presentation replacement pass landed: tactical units now use
+  chunkier braced stratboard miniature geometry, team-specific CT/T physical
+  silhouettes, larger body-mounted role modules, thicker weapon silhouettes, and
+  renderer-only movement timing tuned closer to the resolver cadence.
+- Dual-track Luanti visual spike scaffold landed under
+  `spikes/luanti-banana-b-site/`: a JSON-generated 30x30 Banana -> B-site
+  clay/whitebox board with walls, primitive props, red/blue unit markers,
+  right-click selection, movement range, planned path, and danger/LOS overlays.
+  `npm run luanti:validate` now guards the spike data before a Luanti runtime
+  screenshot is trusted.
 
 ### Milestone P5: Production Sound
 
@@ -288,3 +304,9 @@ Progress:
 9. Next: make planned executes look like authored strategy-board arrows and
    contact beats, then move the reusable event timeline toward production
    animation/audio sequencing.
+10. Next unit slice: replace procedural primitive miniatures with either an
+   authored low-poly rig prototype or generated directional sprite sheet, but do
+   not return to small shared humanoid pawns.
+11. Run the Luanti spike in the actual engine, capture the first-load
+   Banana/B screenshot, and decide whether the camera/HUD/readability pass
+   deserves a second spike or should be killed as the main visual base.
