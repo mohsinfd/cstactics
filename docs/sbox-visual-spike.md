@@ -14,9 +14,17 @@ the current React/Three renderer.
 
 ## Current Status
 
-S&box is not installed on the current machine, so this repo cannot yet include a
-verified runnable S&box project. The spike is scaffolded as a first-class
-handoff instead:
+S&box is available on the current Windows machine through the public source
+build:
+
+- Source checkout:
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`
+- `Bootstrap.bat` completed successfully after installing `.NET 10 SDK`.
+- `game\sbox-dev.exe` launched and left a visible launcher window titled
+  `Welcome to the s&box editor`.
+
+This repo still does not include a verified runnable CS Tactics S&box project.
+The spike is scaffolded as a first-class handoff:
 
 - `spikes/sbox-banana-b-site/banana_b_site.json`
 - `spikes/sbox-banana-b-site/README.md`
@@ -25,6 +33,10 @@ handoff instead:
 The S&box data intentionally mirrors the Luanti spike data so the comparison is
 fair: same 30x30 Banana/B slice, same units, same props, same path, same
 danger/LOS overlay.
+
+Next proof step: create the first S&box project/addon from
+`spikes/sbox-banana-b-site/banana_b_site.json`, generate the Banana/B board,
+and capture the same first-load/selection/movement screenshots as Luanti.
 
 ## Product Question
 

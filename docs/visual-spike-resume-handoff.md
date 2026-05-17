@@ -108,10 +108,15 @@ Expected current result matches Luanti:
 
 Current status:
 
-- S&box was not installed on the current machine.
-- No runnable `.sbproj` has been generated or verified yet.
-- The scaffold is a handoff so the next machine can create the S&box project
-  from the same authored Banana/B data as Luanti.
+- S&box source build is now installed at
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`.
+- `Bootstrap.bat` completed successfully after installing `.NET 10 SDK`
+  through winget.
+- `game\sbox-dev.exe` launched and left a visible launcher window titled
+  `Welcome to the s&box editor`.
+- No runnable CS Tactics `.sbproj` has been generated or verified yet. The next
+  step is still to create the S&box spike project from the same authored
+  Banana/B data as Luanti.
 
 Implementation target:
 
@@ -174,6 +179,19 @@ local Steam `steamapps/common` folder, so the runtime screenshot gate remains
 blocked until one of those clients is installed or the branch is resumed on a
 machine that already has them.
 
+May 17, 2026 runtime setup update on this Windows machine:
+
+- Luanti 5.16.1 was opened by the user and its profile path resolved to
+  `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest`.
+- The Luanti spike game was copied to
+  `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\games\cstactics_spike_game`.
+  Restart Luanti and choose `CS2 Tactics Luanti Spike` on the `Start Game` tab.
+- S&box source was cloned to
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, bootstrapped successfully,
+  and launched with `game\sbox-dev.exe`.
+- The S&box runtime/editor is available now, but the CS Tactics Spike B project
+  still needs to be created before a Banana/B screenshot can be captured.
+
 ## What Not To Do Next
 
 - Do not port combat, economy, bomb logic, AI, or match rules into Luanti/S&box
@@ -191,8 +209,8 @@ On the next machine:
 2. Run `npm install` if needed.
 3. Run `npm run luanti:validate` and `npm run sbox:validate`.
 4. Run the Luanti spike and capture screenshots.
-5. If S&box is installed, create the S&box project from the scaffold and capture
-   the same Banana/B screenshots.
+5. Create the S&box project from the scaffold and capture the same Banana/B
+   screenshots.
 6. Compare Luanti vs S&box vs current React/Three, then choose the next visual
    milestone.
 

@@ -268,9 +268,11 @@ Progress:
   `npm run luanti:validate` now guards the spike data before a Luanti runtime
   screenshot is trusted.
 - S&box Spike B scaffold landed under `spikes/sbox-banana-b-site/` with matching
-  Banana/B data and `docs/sbox-visual-spike.md`. It is intentionally not called
-  runnable yet because S&box is not installed on this machine; the next proof is
-  an actual editor/runtime screenshot, not another theoretical plan.
+  Banana/B data and `docs/sbox-visual-spike.md`. S&box source is now cloned and
+  bootstrapped at `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, and
+  `game\sbox-dev.exe` launches to the editor welcome window. It is still not
+  called runnable as a CS Tactics spike until a project/addon is generated from
+  the Banana/B JSON and produces an actual screenshot.
 
 ### Milestone P5: Production Sound
 

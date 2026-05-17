@@ -278,9 +278,11 @@ verbs that make those nouns matter.
   non-contiguous authored paths.
 - The original external-engine Spike B is now captured as an S&box scaffold
   under `spikes/sbox-banana-b-site/` with matching Banana/B data and
-  `docs/sbox-visual-spike.md`. S&box is not installed on this machine, so the
-  scaffold is not yet a verified runnable `.sbproj`; it is the next runtime
-  gate after Luanti.
+  `docs/sbox-visual-spike.md`. S&box source is now installed and bootstrapped
+  at `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, and `game\sbox-dev.exe`
+  launched to the editor welcome window. The scaffold is still not yet a
+  verified runnable CS Tactics `.sbproj`; creating that project is the next
+  runtime gate after the Luanti screenshot check.
 - `npm run sbox:validate` validates the S&box spike data against the same
   authored map contract as Luanti so the two engine tests compare the same
   slice instead of drifting into different demos.
@@ -332,8 +334,8 @@ verbs that make those nouns matter.
   alternative, but it still needs a real runtime screenshot and camera/HUD
   judgement before becoming anything more than a reference sandbox.
 - A verified S&box runtime slice. The S&box scaffold exists, but needs the
-  editor/runtime installed before any screenshot, C# component, or platform
-  decision can be trusted.
+  CS Tactics project/addon created from the bootstrapped source editor before
+  any screenshot, C# component, or platform decision can be trusted.
 
 ## Immediate Focus
 

@@ -48,8 +48,10 @@ Current product thesis:
 - A contained Luanti visual spike now exists as a dual-track feasibility test.
   It is not a gameplay port; React/Three remains the rules prototype.
 - The original second external-engine spike is S&box. It now has a scaffold and
-  matching Banana/B data, but no verified runtime because S&box was not
-  installed on the current machine.
+  matching Banana/B data. S&box source is now cloned and bootstrapped at
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, and `game\sbox-dev.exe`
+  launches to the editor welcome window. No CS Tactics `.sbproj` is verified
+  yet.
 
 Current labels:
 
@@ -76,7 +78,7 @@ Next likely work:
   `npm run luanti:validate`, then run Luanti locally and capture a first-load
   screenshot before arguing for or against a port.
 - If continuing Spike B, validate with `npm run sbox:validate`, then create an
-  S&box empty Game project and implement the same Banana/B slice from
+  S&box empty Game project/addon and implement the same Banana/B slice from
   `spikes/sbox-banana-b-site/banana_b_site.json`.
 - After major UX/gameplay changes, run `npm run test:browser`.
 
