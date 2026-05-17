@@ -8,10 +8,16 @@ Spike B tests whether S&box can deliver a more modern Source-2-adjacent
 tactical board without pulling the project back into a full art-production
 trap.
 
+Verdict on May 17, 2026: S&box is also killed as the main visual-client
+candidate. The Play Mode proof works mechanically, but the result does not
+deliver meaningful visual lift over the current Three.js prototype. It is not
+worth accepting S&box platform/editor risk for a board that still reads as bad
+as the existing browser route.
+
 The goal is not to port CS2 Tactics yet. The goal is to run the same Banana ->
 B-site slice in S&box and decide whether its camera, lighting, primitives,
 materials, interaction feel, and C# workflow produce a better visual-client base
-than the current React/Three renderer.
+than the current React/Three renderer. The answer is no for the current spike.
 
 ## Current Status
 
@@ -72,14 +78,14 @@ The current S&box proof now supports visible-cursor play in Play Mode:
 - read the current state from the on-screen debug text.
 
 Luanti has been killed as the main visual-client candidate after the fixed
-overhead test still felt wrong at the mouse/camera/control level. S&box survives
-only as the next candidate to test; it is not the winner until the launch flow,
-visual quality, camera feel, and platform risk beat React/Three against the
-reference target at `public/concepts/isometric-duel-target.png`.
+overhead test still felt wrong at the mouse/camera/control level. S&box is also
+killed as the main-client candidate because the playable proof did not create a
+meaningful visual jump toward the reference target at
+`public/concepts/isometric-duel-target.png`.
 
 ## Product Question
 
-S&box only wins if it proves all of this quickly:
+S&box would only have won if it proved all of this quickly:
 
 - a first playable screenshot looks significantly better than the current
   Three.js board and moves toward the reference image target;
@@ -88,6 +94,9 @@ S&box only wins if it proves all of this quickly:
 - selection, movement preview, path overlays, LOS/danger cones, and unit markers
   are easier or more polished than in Three.js;
 - iteration is fast enough for agents to modify safely.
+
+It did not meet the first bar. Keep this spike as reference evidence and do not
+start a S&box port without an explicit new product decision.
 
 ## Hard Constraints
 
@@ -128,8 +137,8 @@ component split originally proposed:
 Keep these components independent from the React/Three store. The S&box spike
 only needs enough local state to prove presentation and interaction feel.
 
-Future S&box work can split the generator into separate camera, marker, overlay,
-and input components if Spike B survives the visual-client decision.
+Future S&box work should be reference-only unless the product direction changes.
+Do not split the generator or build a deeper S&box client from this proof.
 
 ## How To Test
 
@@ -169,13 +178,13 @@ proof screenshots before asking for a product judgment.
 
 ## Validation
 
-Run before opening the S&box project:
+Run only when touching archived S&box spike data:
 
 ```powershell
 npm run sbox:validate
 ```
 
-This uses the same visual-spike map contract as Luanti:
+This uses the same archived visual-spike map contract as Luanti:
 
 - 30x30 slice;
 - supported floor/prop types;
@@ -198,6 +207,7 @@ Kill S&box as the main visual-client route if:
   React/Three and does not move toward
   `public/concepts/isometric-duel-target.png`.
 
-If killed, keep the spike as reference for lighting, primitive proportions, and
-Source-2-style tactical staging.
+This kill criterion was met on May 17, 2026. Keep the spike only as reference
+for what was tried and why the browser presentation rebuild remains the active
+path.
 

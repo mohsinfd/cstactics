@@ -298,6 +298,10 @@ verbs that make those nouns matter.
   `Moved T_ENT to (16, 6)` and captured
   `spikes/sbox-banana-b-site/sbox-playable.png` plus
   `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+- Product verdict on May 17, 2026: S&box is killed as the main visual-client
+  candidate too. The playable proof works, but it does not create enough visual
+  lift over the current Three.js/browser route to justify S&box platform/editor
+  risk.
 - `npm run sbox:validate` validates the S&box spike data against the same
   authored map contract as Luanti so the two engine tests compare the same
   slice instead of drifting into different demos.
@@ -345,11 +349,11 @@ verbs that make those nouns matter.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.
-- A proven visual-client decision. Luanti has failed the main-client interaction
-  bar; S&box now has a basic playable proof, but it still needs a focused
-  launch/play flow, stronger visual lift toward
-  `public/concepts/isometric-duel-target.png`, and platform-risk validation
-  before it can displace the React/Three prototype.
+- A production-quality presentation layer. Both external-engine spikes have
+  failed the main-client gate: Luanti failed mouse/camera/control feel, and
+  S&box failed to produce enough visual lift. The active path returns to the
+  browser prototype and should build from the `/duel-2-5d` concept-image bridge
+  toward `public/concepts/isometric-duel-target.png`.
 
 ## Immediate Focus
 
@@ -369,7 +373,8 @@ This is the first moment where the game can feel like Counter-Strike slowed into
 XCOM-style decisions.
 
 In parallel, continue the visual-client decision from evidence, not hope.
-Luanti is retired as the main-client candidate and should only be touched for
-reference/data validation. S&box is the surviving external-engine candidate, but
-the next proof must compare its playable movement/camera/visual quality against
-the React/Three route and the isometric reference target before any port begins.
+Luanti and S&box are both retired as main-client candidates and should only be
+touched for reference/data validation. The next visual milestone should stay in
+the browser route and turn the `/duel-2-5d` concept-image bridge into a real
+playable presentation slice that approaches
+`public/concepts/isometric-duel-target.png`.

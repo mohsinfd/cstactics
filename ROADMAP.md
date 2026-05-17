@@ -18,12 +18,19 @@ port. React/Three remains the rules prototype; Luanti proved data-generated
 whitebox boards can exist, then failed the May 17, 2026 mouse/camera/control
 bar for playable-client use.
 
-The original Spike B from the external-engine plan is S&box. It uses the same
+The original Spike B from the external-engine plan was S&box. It used the same
 Banana/B data as the archived Luanti spike to test whether Source-2-adjacent C#
-tooling provides enough visual lift to justify platform risk. A first S&box
-Play-Mode proof now exists under
-`spikes/sbox-banana-b-site/cstactics_spike/`, including left-click selection,
-hover path preview, click-to-move, and moved-unit screenshots.
+tooling provided enough visual lift to justify platform risk. A first S&box
+Play-Mode proof exists under `spikes/sbox-banana-b-site/cstactics_spike/`,
+including left-click selection, hover path preview, click-to-move, and
+moved-unit screenshots. It is now killed as a main-client candidate because the
+visual result is not enough better than Three.js to justify the switch.
+
+The active presentation path is back in the browser route: use the
+`/duel-2-5d` concept-image bridge and
+`public/concepts/isometric-duel-target.png` as the visual target, then replace
+prototype map/unit rendering with a playable presentation slice that actually
+meets that bar.
 
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do
@@ -415,7 +422,9 @@ Work:
 - S&box Spike B runtime proof: matching Banana/B data, repo-backed S&box addon,
   Play-Mode screenshot, first click-to-move proof, and pass/fail criteria now live under
   `spikes/sbox-banana-b-site/` and `docs/sbox-visual-spike.md`. Use
-  `npm run sbox:validate` before opening the S&box editor.
+  `npm run sbox:validate` before touching its archived data. S&box is killed as
+  a main-client path because it did not create enough visual lift over the
+  browser prototype.
 - Onboarding overlay for first-time players.
 - Settings for performance and accessibility.
 

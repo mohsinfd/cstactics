@@ -15,14 +15,16 @@ has now failed the May 17, 2026 mouse/camera/control bar for main-client use;
 keep it only as a reference/data sandbox. React/Three remains the tactical rules
 prototype until another base proves it is worth porting toward.
 
-The original second external-engine spike is S&box. It uses the same Banana/B
-data as the archived Luanti spike so the comparison stays fair: Luanti tested
-constrained voxel/nodebox authoring, while S&box tests whether
-Source-2-adjacent C# tooling gives enough visual lift to justify platform risk.
-A first S&box Play-Mode
-proof is captured in `spikes/sbox-banana-b-site/sbox-playmode.png`, and a first
-playable movement proof is captured in
-`spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+The original second external-engine spike was S&box. It used the same Banana/B
+data as the archived Luanti spike so the comparison stayed fair: Luanti tested
+constrained voxel/nodebox authoring, while S&box tested whether
+Source-2-adjacent C# tooling gave enough visual lift to justify platform risk.
+A first S&box Play-Mode proof is captured in
+`spikes/sbox-banana-b-site/sbox-playmode.png`, and a first playable movement
+proof is captured in `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+S&box is now killed as the main-client candidate because the visual result is
+not enough better than Three.js/browser to justify the platform and editor
+cost.
 
 ## North Star
 
@@ -288,6 +290,9 @@ Progress:
   path preview, click-to-move, `N` next-unit, and `R` reset. Runtime proof logged
   `Moved T_ENT to (16, 6)` and produced
   `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+- S&box product verdict landed on May 17, 2026: killed as the main visual
+  client. It works mechanically, but the screenshot is not a meaningful visual
+  jump over the existing browser prototype.
 
 ### Milestone P5: Production Sound
 
@@ -335,7 +340,7 @@ Progress:
    not return to small shared humanoid pawns.
 11. Do not continue Luanti main-client testing; use it only for reference/data
    validation if a future task touches the archived spike.
-12. Compare the S&box playable proof against current React/Three and
-   `public/concepts/isometric-duel-target.png`; the next external-client task is
-   either S&box visual lift plus a cleaner launch/play flow or a return to the
-   React/Three presentation rebuild.
+12. Stop external-engine proving unless a new product decision explicitly
+   reopens it. The next visual task is the browser presentation rebuild:
+   convert the `/duel-2-5d` concept-image bridge into a playable slice that
+   moves toward `public/concepts/isometric-duel-target.png`.

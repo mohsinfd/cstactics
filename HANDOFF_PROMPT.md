@@ -52,16 +52,20 @@ Current product thesis:
   and proof screenshot, but mouse/camera/right-click feel still failed the
   product bar:
   `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
-- The original second external-engine spike is S&box. It now has matching
-  Banana/B data plus a repo-backed runnable addon at
+- The original second external-engine spike was S&box. It has matching Banana/B
+  data plus a repo-backed runnable addon at
   `spikes/sbox-banana-b-site/cstactics_spike/`. S&box source is cloned and
   bootstrapped at `C:\Users\Mohsin Dingankar\Downloads\sbox-public`; the local
   source build is patched to app id `480`, and Play Mode generated the board in
-  offline editor mode. It now has visible-cursor left-click selection, hover
-  path preview, click-to-move movement, `N` next-unit, and `R` reset. Screenshot
+  offline editor mode. It has visible-cursor left-click selection, hover path
+  preview, click-to-move movement, `N` next-unit, and `R` reset. Screenshot
   proof:
   `spikes/sbox-banana-b-site/sbox-playmode.png`
   `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+- S&box is also killed as the main visual-client candidate because the playable
+  proof does not look materially better than the current browser/Three.js route.
+  Do not continue external-engine proving unless the product decision is
+  explicitly reopened.
 
 Current labels:
 
@@ -84,15 +88,12 @@ Next likely work:
   construction, and cover truth.
 - Continue player visual design through `docs/player-visualization-roadmap.md`.
 - Continue movement/camera smoothness through `docs/movement-smoothing-roadmap.md`.
-- If continuing the visual-client pivot, do not continue Luanti main-client
-  testing. Run `npm run luanti:validate` only when touching its archived
-  reference data.
-- If continuing Spike B, validate with `npm run sbox:validate`, copy
-  `spikes/sbox-banana-b-site/cstactics_spike` into
-  `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`,
-  launch `sbox-dev.exe -project ...\cstactics_spike.sbproj`, dismiss the
-  first-run welcome modal if needed, then press `F5`, select a unit, move it,
-  and capture proof before asking for product feedback.
+- If continuing the visual-client pivot, do not continue Luanti or S&box
+  main-client testing. Run `npm run luanti:validate` or `npm run sbox:validate`
+  only when touching archived spike data.
+- Next visual work should stay in the browser route: use `/duel-2-5d` and
+  `public/concepts/isometric-duel-target.png` as the target bridge, then make a
+  playable slice that actually looks materially closer to that reference.
 - After major UX/gameplay changes, run `npm run test:browser`.
 
 Important: durable learning must be written back to the matching memory doc so

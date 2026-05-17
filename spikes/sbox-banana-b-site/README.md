@@ -8,6 +8,12 @@ This is Spike B from the original two-engine comparison:
 The purpose is to test whether S&box gives enough visual lift to justify its
 platform and workflow risk. This is not a gameplay port.
 
+Status on May 17, 2026: failed as the main visual-client candidate. The playable
+proof works mechanically, but the screenshot does not create enough visual lift
+over the current Three.js/browser route to justify S&box editor/platform risk.
+Keep this folder as reference evidence unless a future task explicitly reopens
+the S&box decision.
+
 ## Current State
 
 This folder now contains the shared Banana -> B-site spike data plus a runnable
@@ -118,4 +124,7 @@ for this local visual proof.
 Kill S&box as a main-client candidate if the camera, editor workflow,
 programmatic generation, or platform constraints make iteration slower than the
 visual gain is worth.
+
+That kill gate has been hit for the current proof: the visual gain is not worth
+the switch.
 

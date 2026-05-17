@@ -226,21 +226,23 @@ Required checks:
 ### S&box Visual Spike
 
 Focus:
-- Source-2-adjacent C# workflow, generated Banana/B board fidelity, tactical
-  camera feasibility, and whether the visual lift plus playability beats the
-  React/Three path enough to justify platform risk.
+- Archived Source-2-adjacent C# workflow and generated Banana/B board evidence.
+  S&box failed the May 17, 2026 visual-lift gate for main-client use; the
+  playable proof works mechanically but is not enough better than the browser
+  prototype to justify platform/editor risk.
 
 Rules:
-- Use the same authored Banana/B data as the Luanti spike.
+- Use the same authored Banana/B data as the Luanti spike if touching archived
+  data.
 - Do not port combat, economy, bomb logic, utility, AI, or the TypeScript game
   store.
-- Do not call the spike playable until it has been opened in S&box, entered
-  Play Mode, and verified with selection/movement proof.
+- Do not restart S&box as a main-client candidate without an explicit new
+  product decision.
 
 Required checks:
-- `npm run sbox:validate`
-- Real S&box Play Mode screenshot and a movement-proof screenshot before any
-  main-client recommendation
+- `npm run sbox:validate` when touching archived S&box data
+- No further S&box main-client screenshot gate is required after the May 17
+  failed visual-lift verdict
 
 ## Agent Prompt Template
 

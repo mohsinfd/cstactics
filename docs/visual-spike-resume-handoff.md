@@ -21,12 +21,14 @@ evidence gate:
 
 1. **Spike A: Luanti** is killed as the main visual-client candidate after the
    May 17, 2026 mouse/camera/control test.
-2. **Spike B: S&box** survives as the Source-2-adjacent C# candidate with a
-   first playable selection/movement proof, but it has not won the client
-   decision.
+2. **Spike B: S&box** is also killed as the main visual-client candidate. It
+   has a first playable selection/movement proof, but the visual result is not
+   enough better than Three.js/browser to justify the platform/editor cost.
 
 React/Three remains the gameplay rules prototype. Neither spike should port the
-full game unless its visual/client viability is proven.
+full game. The active path returns to a browser presentation rebuild around the
+`/duel-2-5d` concept-image bridge and
+`public/concepts/isometric-duel-target.png`.
 
 ## Spike A: Luanti
 
@@ -86,7 +88,7 @@ Validate data:
 npm run sbox:validate
 ```
 
-Expected current result matches Luanti:
+Archived S&box data still mirrors the Luanti reference data:
 
 - `ok: true`
 - `size: 30x30`
@@ -120,6 +122,9 @@ Current status:
 - Playable proof screenshots captured at:
   `spikes/sbox-banana-b-site/sbox-playable.png`
   and `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+- Product verdict on May 17, 2026: S&box is killed as the main visual-client
+  candidate. It works mechanically, but it does not create enough visual lift
+  over the current browser prototype.
 
 Implementation target:
 
@@ -133,12 +138,10 @@ Implementation target:
 
 Decision gate:
 
-- S&box only wins if playable screenshot, camera feel, and launch flow are
-  clearly better than staying in React/Three while remaining data-generated and
-  agent-editable.
-- Kill S&box if programmatic generation is awkward, editor workflow is too
-  manual, platform risk is too high, or the screenshot does not justify the
-  complexity.
+- The S&box decision is closed for the current proof: do not continue S&box as a
+  main-client candidate.
+- Keep S&box only as reference evidence unless an explicit new product decision
+  reopens external-engine work.
 
 ## Checks Already Run This Session
 
@@ -238,6 +241,8 @@ May 17, 2026 runtime setup update on this Windows machine:
 - Playable screenshots:
   `spikes/sbox-banana-b-site/sbox-playable.png`
   and `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+- User/product review after the playable proof: S&box is as bad as the current
+  Three.js route visually, so it fails the visual-lift gate.
 
 ## What Not To Do Next
 
@@ -254,15 +259,11 @@ On the next machine:
 
 1. Pull `codex/cs2-xcom-roadmap-slice`.
 2. Run `npm install` if needed.
-3. Run `npm run sbox:validate`; run `npm run luanti:validate` only if touching
-   the archived Luanti data/reference spike.
-4. Do not continue Luanti main-client testing. It failed the May 17 interaction
-   bar.
-5. Run the S&box addon from `spikes/sbox-banana-b-site/cstactics_spike`, enter
-   Play Mode, prove unit selection and movement, and capture fresh screenshots
-   if the code changed.
-6. Compare S&box playable proof vs current React/Three and
-   `public/concepts/isometric-duel-target.png`, then choose whether the next
-   milestone is S&box visual lift/standalone launch or a React/Three
-   presentation rebuild.
+3. Do not continue Luanti or S&box main-client testing. Run
+   `npm run luanti:validate` or `npm run sbox:validate` only if touching their
+   archived spike data.
+4. Continue the browser presentation rebuild from `/duel-2-5d` and
+   `public/concepts/isometric-duel-target.png`.
+5. The next proof should be a playable browser slice that looks materially
+   closer to the reference image, not another external-engine setup pass.
 
