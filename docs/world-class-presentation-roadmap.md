@@ -10,16 +10,19 @@ model with simplified red/blue miniatures, readable architecture, and strong
 tactical overlays for movement, sightlines, control zones, and executes.
 
 Because the current Three.js presentation has repeatedly hit a visual ceiling,
-the roadmap now includes a dual-track Luanti spike. Luanti is a visual-client
-feasibility test only; React/Three remains the tactical rules prototype until a
-runtime screenshot and interaction check prove that the alternate base is worth
-porting toward.
+the roadmap included a Luanti spike as a visual-client feasibility test. Luanti
+has now failed the May 17, 2026 mouse/camera/control bar for main-client use;
+keep it only as a reference/data sandbox. React/Three remains the tactical rules
+prototype until another base proves it is worth porting toward.
 
 The original second external-engine spike is S&box. It uses the same Banana/B
-data as Luanti so the comparison is fair: Luanti tests constrained
-voxel/nodebox authoring, while S&box tests whether Source-2-adjacent C# tooling
-gives enough visual lift to justify platform risk. A first S&box Play-Mode
-proof is now captured in `spikes/sbox-banana-b-site/sbox-playmode.png`.
+data as the archived Luanti spike so the comparison stays fair: Luanti tested
+constrained voxel/nodebox authoring, while S&box tests whether
+Source-2-adjacent C# tooling gives enough visual lift to justify platform risk.
+A first S&box Play-Mode
+proof is captured in `spikes/sbox-banana-b-site/sbox-playmode.png`, and a first
+playable movement proof is captured in
+`spikes/sbox-banana-b-site/sbox-playable-moved.png`.
 
 ## North Star
 
@@ -272,12 +275,19 @@ Progress:
   the spike now opens into a fixed overhead observer camera with survival HUD
   chrome hidden, a neutral tabletop/sky, and screenshot proof at
   `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
+- Luanti product verdict landed on May 17, 2026: killed as the main visual
+  client. The overhead proof passed mechanically, but mouse/camera/right-click
+  feel is unacceptable for a playable tactical client.
 - S&box Spike B runtime proof landed under `spikes/sbox-banana-b-site/` with
   matching Banana/B data, a repo-backed `cstactics_spike` addon, and
   `docs/sbox-visual-spike.md`. S&box source is cloned and bootstrapped at
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`; after a local app-id `480`
   patch, Play Mode generated the Banana/B board and produced
   `spikes/sbox-banana-b-site/sbox-playmode.png`.
+- S&box playable proof now supports visible-cursor left-click selection, hover
+  path preview, click-to-move, `N` next-unit, and `R` reset. Runtime proof logged
+  `Moved T_ENT to (16, 6)` and produced
+  `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
 
 ### Milestone P5: Production Sound
 
@@ -323,10 +333,9 @@ Progress:
 10. Next unit slice: replace procedural primitive miniatures with either an
    authored low-poly rig prototype or generated directional sprite sheet, but do
    not return to small shared humanoid pawns.
-11. Judge Luanti against the fixed overhead runtime screenshot plus
-   selected/path/moved-unit interaction proof; improve only if the
-   camera/readability can be made competitive quickly.
-12. Extend the matching S&box Spike B only far enough to compare screenshot,
-   camera feel, interaction basics, code-generation workflow, and
-   distribution/platform risk against Luanti before choosing a visual-client
-   base.
+11. Do not continue Luanti main-client testing; use it only for reference/data
+   validation if a future task touches the archived spike.
+12. Compare the S&box playable proof against current React/Three and
+   `public/concepts/isometric-duel-target.png`; the next external-client task is
+   either S&box visual lift plus a cleaner launch/play flow or a return to the
+   React/Three presentation rebuild.

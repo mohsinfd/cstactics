@@ -4,6 +4,11 @@ This is a contained Luanti/Minetest-style spike for the dual-track visual plan.
 It does not port the React/Three gameplay. It proves whether a code-generated
 voxel/whitebox tactical board can carry the visual direction better.
 
+Status on May 17, 2026: failed as the main visual-client candidate. The data
+and overhead screenshot remain useful reference artifacts, but the mouse/camera
+interaction feels wrong enough that users should not be asked to keep testing
+Luanti as a candidate for the playable client.
+
 ## What It Builds
 
 - A 30x30 Banana -> B-site slice generated from `banana_b_site.json`.
@@ -46,6 +51,10 @@ local server. Dismissing the prompt is enough for local visual testing.
 The player is spawned above the board in a fixed tactical observer view. This
 is not intended to be a final camera solution; it is a kill-criteria check for
 whether Luanti can support tactical readability and click interaction.
+
+That kill-criteria check has failed for the main-client path. Keep this spike
+only as a map-authoring/reference sandbox unless a future task explicitly asks
+for Luanti data work.
 
 ## Validate
 

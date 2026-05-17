@@ -2,15 +2,16 @@
 
 ## Purpose
 
-This is Spike B from the original external-engine comparison. Spike A is the
-Luanti voxel/whitebox route. Spike B tests whether S&box can deliver a more
-modern Source-2-adjacent tactical board without pulling the project back into a
-full art-production trap.
+This is Spike B from the original external-engine comparison. Spike A, the
+Luanti voxel/whitebox route, has now failed the main-client interaction bar.
+Spike B tests whether S&box can deliver a more modern Source-2-adjacent
+tactical board without pulling the project back into a full art-production
+trap.
 
 The goal is not to port CS2 Tactics yet. The goal is to run the same Banana ->
 B-site slice in S&box and decide whether its camera, lighting, primitives,
-materials, and C# workflow produce a better visual-client base than Luanti or
-the current React/Three renderer.
+materials, interaction feel, and C# workflow produce a better visual-client base
+than the current React/Three renderer.
 
 ## Current Status
 
@@ -36,6 +37,8 @@ Repo-backed spike files:
 - `spikes/sbox-banana-b-site/cstactics_spike/Code/SpikeMapGenerator.cs`
 - `spikes/sbox-banana-b-site/cstactics_spike/Assets/scenes/cstactics_spike.scene`
 - `spikes/sbox-banana-b-site/sbox-playmode.png`
+- `spikes/sbox-banana-b-site/sbox-playable.png`
+- `spikes/sbox-banana-b-site/sbox-playable-moved.png`
 - `npm run sbox:validate`
 
 The S&box data intentionally mirrors the Luanti spike data so the comparison is
@@ -52,22 +55,34 @@ Runtime proof on May 17, 2026:
   `Cstactics Spike - s&box editor - offline`
 - play-mode log:
   `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
-- screenshot:
+- movement proof log:
+  `CS2 Tactics S&box Spike: Moved T_ENT to (16, 6).`
+- screenshots:
   `spikes/sbox-banana-b-site/sbox-playmode.png`
+  `spikes/sbox-banana-b-site/sbox-playable.png`
+  `spikes/sbox-banana-b-site/sbox-playable-moved.png`
 
-The first S&box screenshot remains the higher-fidelity angled whitebox proof,
-but Luanti's broken native first-person/HUD view has since been fixed with an
-overhead tactical camera and proof at
-`spikes/luanti-banana-b-site/luanti-runtime-overhead.png`. The next comparison
-should judge S&box against that fixed Luanti baseline, not against the bad first
-runtime attempt.
+The current S&box proof now supports visible-cursor play in Play Mode:
+
+- left-click a unit to select it;
+- hover reachable tiles for a blue path preview;
+- left-click a reachable tile to move the selected unit;
+- press `N` to select the next unit;
+- press `R` to reset units;
+- read the current state from the on-screen debug text.
+
+Luanti has been killed as the main visual-client candidate after the fixed
+overhead test still felt wrong at the mouse/camera/control level. S&box survives
+only as the next candidate to test; it is not the winner until the launch flow,
+visual quality, camera feel, and platform risk beat React/Three against the
+reference target at `public/concepts/isometric-duel-target.png`.
 
 ## Product Question
 
 S&box only wins if it proves all of this quickly:
 
-- a first screenshot looks significantly better than Luanti and the current
-  Three.js board;
+- a first playable screenshot looks significantly better than the current
+  Three.js board and moves toward the reference image target;
 - the camera can be locked into a tactical, non-FPS-feeling view;
 - generated map geometry from data is straightforward;
 - selection, movement preview, path overlays, LOS/danger cones, and unit markers
@@ -87,7 +102,7 @@ S&box only wins if it proves all of this quickly:
 
 ## Runtime Target
 
-The first S&box implementation should create:
+The current S&box implementation creates:
 
 - off-white floor slabs;
 - taller wall blocks with subtle gray side/cap contrast;
@@ -95,11 +110,11 @@ The first S&box implementation should create:
   crates, and B marker;
 - five red T markers and five blue CT markers;
 - an orthographic or tactical locked camera, if available;
-- click or ray-select unit markers;
+- click/ray-select unit markers;
 - movement range overlay;
-- authored blue path overlay;
+- hover path preview;
 - red danger/LOS overlay;
-- optional one-step unit movement.
+- click-to-move unit movement.
 
 ## Runnable Project Shape
 
@@ -141,6 +156,17 @@ Start-Process `
 Dismiss the first-run welcome modal if it appears, then press `F5` or use
 `Game -> Play`.
 
+In Play Mode:
+
+- left-click a red/blue unit marker to select it;
+- hover cyan reachable tiles to preview the blue path;
+- left-click a cyan reachable tile to move;
+- press `N` for next unit;
+- press `R` to reset.
+
+The agent, not the user, should launch the editor, enter Play Mode, and capture
+proof screenshots before asking for a product judgment.
+
 ## Validation
 
 Run before opening the S&box project:
@@ -168,7 +194,9 @@ Kill S&box as the main visual-client route if:
 - the camera defaults fight tactical board play;
 - agent iteration requires too much manual editor work;
 - platform/distribution constraints are too risky for the MVP;
-- the screenshot does not produce a clear visual lift over Luanti/Three.js.
+- the playable screenshot does not produce a clear visual lift over current
+  React/Three and does not move toward
+  `public/concepts/isometric-duel-target.png`.
 
 If killed, keep the spike as reference for lighting, primitive proportions, and
 Source-2-style tactical staging.

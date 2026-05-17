@@ -277,6 +277,10 @@ verbs that make those nouns matter.
   overhead observer camera, hides Luanti survival HUD chrome, uses a neutral
   tabletop/sky, equips a long-range selector, and has proof screenshot
   `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
+- Product verdict on May 17, 2026: Luanti is killed as the main visual-client
+  candidate. The generated board and validation data remain useful reference
+  artifacts, but mouse/camera/right-click feel is unacceptable for the playable
+  client path.
 - `npm run luanti:validate` guards the Luanti slice against invalid map data:
   unit overlap, unsupported surfaces/props, out-of-bounds rectangles, props
   inside walls, props without floor support, blocked path/danger tiles, and
@@ -288,6 +292,12 @@ verbs that make those nouns matter.
   `local.cstactics_spike` in offline editor mode and Play Mode generated the
   Banana/B board; proof screenshot:
   `spikes/sbox-banana-b-site/sbox-playmode.png`.
+- S&box now has first playable interaction proof: visible cursor, left-click
+  unit selection, cyan movement range, hover path preview, click-to-move, `N`
+  next-unit, `R` reset, and on-screen status text. Runtime proof logged
+  `Moved T_ENT to (16, 6)` and captured
+  `spikes/sbox-banana-b-site/sbox-playable.png` plus
+  `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
 - `npm run sbox:validate` validates the S&box spike data against the same
   authored map contract as Luanti so the two engine tests compare the same
   slice instead of drifting into different demos.
@@ -335,14 +345,11 @@ verbs that make those nouns matter.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.
-- A proven visual-client decision. Luanti and S&box now both have runtime
-  screenshots, but neither should win from screenshot theory alone; Luanti still
-  needs selected/path/moved-unit interaction proof, and S&box still needs
-  click/raycast movement parity before becoming anything more than a reference
-  sandbox.
-- S&box interaction parity. The first S&box runtime slice generates the board,
-  props, unit markers, path, danger overlays, and locked camera, but it does not
-  yet implement click/raycast selection or movement inside S&box.
+- A proven visual-client decision. Luanti has failed the main-client interaction
+  bar; S&box now has a basic playable proof, but it still needs a focused
+  launch/play flow, stronger visual lift toward
+  `public/concepts/isometric-duel-target.png`, and platform-risk validation
+  before it can displace the React/Three prototype.
 
 ## Immediate Focus
 
@@ -361,11 +368,8 @@ Finish hardening the first contact vertical slice before broadening the game:
 This is the first moment where the game can feel like Counter-Strike slowed into
 XCOM-style decisions.
 
-In parallel, run the Luanti Banana/B visual spike as a kill-criteria test for
-the presentation base. React/Three remains the rules prototype; Luanti is only
-for validating generated whitebox map readability, tactical camera feel, and
-agent-safe visual authoring.
-
-Run the matching S&box Spike B against the same `banana_b_site.json` data and
-compare screenshots, camera feel, authoring speed, and platform risk against
-the Luanti attempt before making a client-base decision.
+In parallel, continue the visual-client decision from evidence, not hope.
+Luanti is retired as the main-client candidate and should only be touched for
+reference/data validation. S&box is the surviving external-engine candidate, but
+the next proof must compare its playable movement/camera/visual quality against
+the React/Three route and the isometric reference target before any port begins.

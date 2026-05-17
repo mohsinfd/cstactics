@@ -206,39 +206,41 @@ Required checks:
 ### Luanti Visual Spike
 
 Focus:
-- Data-generated Banana/B whitebox map readability, tactical camera feasibility,
-  unit visibility, and whether constrained voxel/nodebox authoring is safer for
-  agents than continuing the Three.js presentation path.
+- Archived/reference data-generated Banana/B whitebox map readability. Luanti
+  failed the May 17, 2026 mouse/camera/control bar for main visual-client use,
+  so do not restart it as a candidate without an explicit new product decision.
 
 Rules:
 - Do not port combat, economy, bomb logic, AI, or the TypeScript game store.
 - Keep map edits in
   `spikes/luanti-banana-b-site/cstactics_spike_game/mods/cstactics_spike/banana_b_site.json`
   unless a Lua runtime issue is being fixed.
-- Treat React/Three as the tactical rules source of truth until the spike passes
-  a real runtime screenshot and interaction check.
+- Treat React/Three as the tactical rules source of truth. Luanti may remain a
+  map-authoring/reference sandbox only.
 
 Required checks:
-- `npm run luanti:validate`
-- Real Luanti first-load screenshot before any main-client recommendation
+- `npm run luanti:validate` when touching Luanti data or Lua
+- No further Luanti main-client screenshot gate is required after the May 17
+  failed interaction verdict
 
 ### S&box Visual Spike
 
 Focus:
 - Source-2-adjacent C# workflow, generated Banana/B board fidelity, tactical
-  camera feasibility, and whether the visual lift beats Luanti/Three.js enough
-  to justify platform risk.
+  camera feasibility, and whether the visual lift plus playability beats the
+  React/Three path enough to justify platform risk.
 
 Rules:
 - Use the same authored Banana/B data as the Luanti spike.
 - Do not port combat, economy, bomb logic, utility, AI, or the TypeScript game
   store.
-- Do not call the spike runnable until it has been opened in S&box and verified
-  with a first-load screenshot.
+- Do not call the spike playable until it has been opened in S&box, entered
+  Play Mode, and verified with selection/movement proof.
 
 Required checks:
 - `npm run sbox:validate`
-- Real S&box first-load screenshot before any main-client recommendation
+- Real S&box Play Mode screenshot and a movement-proof screenshot before any
+  main-client recommendation
 
 ## Agent Prompt Template
 

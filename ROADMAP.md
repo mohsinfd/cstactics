@@ -12,15 +12,18 @@ The presentation rebuild track is now captured in
 renderer-independent; the next ceiling break is an authored presentation layer
 for lighting, unit readability, animation timing, camera, HUD, and sound.
 
-A contained dual-track Luanti spike is now part of the presentation research.
-It is not a gameplay port. React/Three remains the rules prototype while
-Luanti tests whether a data-generated voxel/whitebox board gives the project a
-more reliable visual-production base.
+A contained Luanti spike remains in the presentation research as a reference
+artifact, but it is no longer a main-client candidate. It is not a gameplay
+port. React/Three remains the rules prototype; Luanti proved data-generated
+whitebox boards can exist, then failed the May 17, 2026 mouse/camera/control
+bar for playable-client use.
 
 The original Spike B from the external-engine plan is S&box. It uses the same
-Banana/B data as Luanti to test whether Source-2-adjacent C# tooling provides
-enough visual lift to justify platform risk. A first S&box Play-Mode proof now
-exists under `spikes/sbox-banana-b-site/cstactics_spike/`.
+Banana/B data as the archived Luanti spike to test whether Source-2-adjacent C#
+tooling provides enough visual lift to justify platform risk. A first S&box
+Play-Mode proof now exists under
+`spikes/sbox-banana-b-site/cstactics_spike/`, including left-click selection,
+hover path preview, click-to-move, and moved-unit screenshots.
 
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do
@@ -403,13 +406,14 @@ Work:
   Banana -> B-site slice now exists under `spikes/luanti-banana-b-site/`, with
   JSON-authored floors/walls/props/units, basic selection, movement range, path
   preview, and danger/LOS floor overlays. Use `npm run luanti:validate` before
-  trusting map edits.
+  trusting map edits. Luanti is killed as the main visual-client path after the
+  May 17 mouse/camera/control test; keep it only as a reference/data sandbox.
 - Luanti runtime overhead proof: after the first attempt opened into default
   sky/first-person HUD view, the spike now forces a fixed overhead observer
   camera, hides survival HUD chrome, and captures proof at
   `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
 - S&box Spike B runtime proof: matching Banana/B data, repo-backed S&box addon,
-  Play-Mode screenshot, and pass/fail criteria now live under
+  Play-Mode screenshot, first click-to-move proof, and pass/fail criteria now live under
   `spikes/sbox-banana-b-site/` and `docs/sbox-visual-spike.md`. Use
   `npm run sbox:validate` before opening the S&box editor.
 - Onboarding overlay for first-time players.

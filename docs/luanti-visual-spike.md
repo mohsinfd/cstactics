@@ -8,6 +8,12 @@ a generated voxel/whitebox tactical board can solve the current visual
 production problem faster than continuing to hand-roll every presentation layer
 in Three.js.
 
+Verdict on May 17, 2026: Luanti is killed as the main visual-client candidate.
+The fixed overhead screenshot proved the board can be generated, but the native
+mouse/camera interaction still feels like fighting a sandbox engine instead of
+testing a CS2 tactics client. Do not ask users to continue Luanti playtesting
+as a main-client candidate.
+
 The product question is narrow:
 
 - Can a code-generated Banana -> B-site slice read like an intentional tactical
@@ -16,6 +22,9 @@ The product question is narrow:
   readable at a tactical camera distance?
 - Can future agents safely add walls, floors, and props by editing data instead
   of inventing art direction?
+
+The answer for the main-client decision is no: the data-generation path is
+useful, but the interaction feel is not acceptable for the product bar.
 
 ## Current Spike Artifact
 
@@ -92,8 +101,8 @@ Data/authoring:
 
 - Passed: map is generated from `banana_b_site.json`.
 - Passed: adding a wall/prop/floor is a data edit plus validation.
-- Pending: add one new room/cover prop in Luanti and confirm a second agent can
-  do it safely without touching Lua.
+- Optional reference-only task: add one new room/cover prop in Luanti and
+  confirm a second agent can do it safely without touching Lua.
 
 Visual:
 
@@ -101,8 +110,11 @@ Visual:
 - Passed in runtime on May 17, 2026: the first-load Luanti view is now a fixed
   overhead tactical board instead of a first-person sandbox view. Proof:
   `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
-- Pending: tune nodebox proportions, walls, unit scale, and floor bands only
-  after judging the Luanti screenshot beside S&box and React/Three.
+- Failed for main-client use on May 17, 2026: even after the overhead-camera
+  fix, the runtime presentation remains far below the reference image target
+  at `public/concepts/isometric-duel-target.png`.
+- Optional only: tune nodebox proportions, walls, unit scale, and floor bands if
+  Luanti is being used as a map-authoring/reference sandbox.
 
 Interaction:
 
@@ -111,9 +123,9 @@ Interaction:
 - Passed in runtime on May 17, 2026: Luanti joins directly into the fixed
   overhead observer view, hides survival HUD chrome, and can recover the camera
   with `/cs_spike_view`.
-- Pending in runtime: capture selected-unit, path-preview, and moved-unit
-  screenshots from the overhead view before calling Luanti interaction parity
-  done.
+- Failed for main-client use on May 17, 2026: mouse/camera/right-click control
+  feel is unacceptable for a tactical client test. More selected/path/moved
+  screenshots are not required before making the Luanti decision.
 
 ## Kill Criteria
 
@@ -131,13 +143,14 @@ sandbox if it helps reason about whitebox geometry.
 
 ## Next Specialist Task
 
-Use the May 17 runtime screenshot as the baseline, then capture selected-unit,
-path-preview, and moved-unit screenshots from the same overhead view. Answer:
+Do not continue Luanti as a main visual-client candidate. If a future task
+touches this folder, keep it scoped to map data/reference experiments and run
+`npm run luanti:validate`.
+
+If Luanti is used only as a reference sandbox, answer:
 
 - Does Banana -> B-site read without labels?
 - Are five CT and five T units visible from the default tactical inspection
   angle?
-- Does right-click selection/movement feel plausible?
-- Does the default camera fight the tactical use case?
 - What exact data/nodebox changes would make the next screenshot meaningfully
   better?

@@ -18,6 +18,8 @@ local S&box addon/project:
 - `cstactics_spike/Code/SpikeMapGenerator.cs`
 - `cstactics_spike/Assets/scenes/cstactics_spike.scene`
 - `sbox-playmode.png`
+- `sbox-playable.png`
+- `sbox-playable-moved.png`
 
 The data is validated by:
 
@@ -35,8 +37,12 @@ Runtime proof captured on May 17, 2026:
   `Cstactics Spike - s&box editor - offline`
 - Play-mode log line:
   `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
-- Screenshot:
+- Movement proof log line:
+  `CS2 Tactics S&box Spike: Moved T_ENT to (16, 6).`
+- Screenshots:
   `spikes/sbox-banana-b-site/sbox-playmode.png`
+  `spikes/sbox-banana-b-site/sbox-playable.png`
+  `spikes/sbox-banana-b-site/sbox-playable-moved.png`
 
 ## Setup
 
@@ -65,6 +71,18 @@ Start-Process `
 4. If the first-run welcome modal appears, dismiss it.
 5. Press `F5` or use `Game -> Play`.
 
+In Play Mode:
+
+- left-click a red/blue unit marker to select it;
+- hover a cyan reachable tile to preview a blue path;
+- left-click a cyan reachable tile to move;
+- press `N` for the next unit;
+- press `R` to reset units.
+
+Do not make the user infer the editor flow. The agent should copy the addon,
+launch S&box, enter Play Mode, prove movement, and capture screenshots before
+asking for feedback.
+
 The public source checkout used for this proof was patched locally from app id
 `590830` to Steam's dev/test app id `480`, with
 `game\steam_appid.txt = 480`, because this machine did not have S&box installed
@@ -79,16 +97,19 @@ for this local visual proof.
 - five red T unit markers;
 - five blue CT unit markers;
 - movement range, planned path, and danger/LOS overlays;
+- left-click unit selection, hover path preview, and click-to-move movement;
 - locked orthographic tactical camera;
 - data-generated board from `Assets/data/banana_b_site.json`.
 
 ## Acceptance
 
-- First screenshot is materially better than the current React/Three board and
-  at least competitive with Luanti.
+- Playable screenshot is materially better than the current React/Three board
+  and moves toward `public/concepts/isometric-duel-target.png`.
 - Banana -> B-site reads without labels.
 - Units are readable from the default camera.
 - The camera feels tactical, not first-person.
+- A user can test basic selection and movement without knowing S&box editor
+  internals.
 - A wall/cover edit is a data/code edit, not manual scene dressing.
 - The implementation does not port combat, economy, bomb logic, utility, or AI.
 

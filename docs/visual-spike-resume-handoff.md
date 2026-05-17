@@ -7,23 +7,26 @@ Use this when resuming from another machine with Luanti and/or S&box installed.
 - Branch: `codex/cs2-xcom-roadmap-slice`
 - Draft PR: https://github.com/mohsinfd/cstactics/pull/1
 - Latest pushed commits for this session:
-  - `459acda Harden roster usability after visual spike pull`
-  - `71f14fc Add visual spike resume handoff`
-  - `e481f83 Add Luanti visual spike`
-  - `cf28943 Scaffold Sbox visual spike`
+  - `9eef08a Fix Luanti visual spike overhead view`
+  - `42374ec Add runnable Sbox visual spike proof`
+  - `ba4f42d Update visual spike runtime setup handoff`
+  - `6025cba Update visual spike handoff tip commits`
 
 ## Why This Exists
 
 The current React/Three renderer has useful gameplay systems, but the visual
 quality is not acceptable as the long-term presentation base. The active
-decision is now a two-spike external-client comparison:
+decision has moved from a two-spike external-client comparison to a narrower
+evidence gate:
 
-1. **Spike A: Luanti** for constrained voxel/nodebox whitebox map generation.
-2. **Spike B: S&box** for Source-2-adjacent C# tooling and a potentially higher
-   fidelity tactical board.
+1. **Spike A: Luanti** is killed as the main visual-client candidate after the
+   May 17, 2026 mouse/camera/control test.
+2. **Spike B: S&box** survives as the Source-2-adjacent C# candidate with a
+   first playable selection/movement proof, but it has not won the client
+   decision.
 
 React/Three remains the gameplay rules prototype. Neither spike should port the
-full game until its visual/client viability is proven.
+full game unless its visual/client viability is proven.
 
 ## Spike A: Luanti
 
@@ -51,44 +54,17 @@ Expected current result:
 - `dangerTiles: 22`
 - `warnings: []`
 
-How to test:
+Verdict:
 
-1. Install Luanti.
-2. Open Luanti once.
-3. Open the Luanti user data directory.
-4. Copy `spikes/luanti-banana-b-site/cstactics_spike_game` into the Luanti
-   `games/` folder.
-5. Restart Luanti.
-6. Select `CS2 Tactics Luanti Spike`.
-7. Create a new singleplayer world from the `Start Game` tab, or launch the
-   existing test world directly on this machine:
-
-   ```powershell
-   & 'C:\Users\Mohsin Dingankar\AppData\Local\luanti\5.16.1\bin\luanti.exe' --go --world 'C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\worlds\CS2 spoike' --gameid cstactics_spike --name Tester
-   ```
-
-8. Use:
-   - right-click red/blue unit nodes to select;
-   - right-click cyan floor tiles to move;
-   - `/cs_spike_view` to restore the fixed overhead view;
-   - `/cs_spike_reset` to rebuild the board;
-   - `/cs_spike_help` for controls.
-
-What to capture:
-
-- first-load screenshot, already captured on May 17, 2026 at
-  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`;
-- selected unit screenshot;
-- movement-range/path screenshot;
-- one moved unit screenshot.
-
-Decision gate:
-
-- If the screenshot reads like intentional tactical whitebox, improve Luanti
-  nodeboxes/camera/overlays.
-- If it reads like generic block chaos or the camera fights tactical play, kill
-  Luanti as the main visual client and keep it only as a map-authoring/reference
-  sandbox.
+- First-load screenshot was captured on May 17, 2026 at
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
+- The overhead camera/HUD fix passed mechanically, but the mouse/camera and
+  right-click interaction still felt wrong enough to kill Luanti as the main
+  visual-client candidate.
+- Do not capture more Luanti selected/path/moved screenshots for the
+  main-client decision.
+- Keep Luanti only as a map-authoring/reference sandbox if a future task needs
+  its data-generation experiment. In that case, run `npm run luanti:validate`.
 
 ## Spike B: S&box
 
@@ -101,6 +77,8 @@ Primary files:
 - `spikes/sbox-banana-b-site/cstactics_spike/Code/SpikeMapGenerator.cs`
 - `spikes/sbox-banana-b-site/cstactics_spike/Assets/scenes/cstactics_spike.scene`
 - `spikes/sbox-banana-b-site/sbox-playmode.png`
+- `spikes/sbox-banana-b-site/sbox-playable.png`
+- `spikes/sbox-banana-b-site/sbox-playable-moved.png`
 
 Validate data:
 
@@ -135,8 +113,13 @@ Current status:
 - Pressing `F5` after dismissing the first-run welcome modal starts Play Mode.
 - Verified play-mode log:
   `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
+- Verified movement log:
+  `CS2 Tactics S&box Spike: Moved T_ENT to (16, 6).`
 - Screenshot captured at:
   `spikes/sbox-banana-b-site/sbox-playmode.png`.
+- Playable proof screenshots captured at:
+  `spikes/sbox-banana-b-site/sbox-playable.png`
+  and `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
 
 Implementation target:
 
@@ -144,13 +127,15 @@ Implementation target:
   off-white floor slabs, taller walls, primitive props, five red T units, five
   blue CT units, movement range, planned path, danger/LOS overlays, and a locked
   orthographic tactical camera.
-- Not implemented yet: click/raycast selection and one-step movement inside
-  S&box.
+- Implemented first playable pass: visible cursor, left-click unit selection,
+  cyan movement range, hover path preview, click-to-move, `N` next-unit, `R`
+  reset, and on-screen status text.
 
 Decision gate:
 
-- S&box only wins if a first screenshot and camera feel are clearly better than
-  Luanti/React while remaining data-generated and agent-editable.
+- S&box only wins if playable screenshot, camera feel, and launch flow are
+  clearly better than staying in React/Three while remaining data-generated and
+  agent-editable.
 - Kill S&box if programmatic generation is awkward, editor workflow is too
   manual, platform risk is too high, or the screenshot does not justify the
   complexity.
@@ -184,6 +169,24 @@ npm run lint
 npm run build
 ```
 
+Passed after the S&box playable interaction patch:
+
+```powershell
+npm run sbox:validate
+npm run luanti:validate
+npm run lint
+npm run build
+git diff --check
+```
+
+Runtime proof after the same patch:
+
+- S&box Play Mode displayed the instruction overlay and cyan reachable tiles.
+- A clicked reachable tile moved `T_ENT` to `(16, 6)`.
+- Screenshots captured:
+  `spikes/sbox-banana-b-site/sbox-playable.png`
+  and `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
+
 May 16, 2026 pull/resume check on this Windows machine:
 
 ```powershell
@@ -204,9 +207,7 @@ May 17, 2026 runtime setup update on this Windows machine:
   `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest`.
 - The Luanti spike game was copied to
   `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\games\cstactics_spike_game`.
-  Restart Luanti and choose `CS2 Tactics Luanti Spike` on the `Start Game` tab,
-  or launch the existing test world directly with `--go --world ... --gameid
-  cstactics_spike --name Tester`.
+  This is now reference-only; do not restart Luanti as a main-client candidate.
 - The first runtime attempt exposed the default Luanti failure mode: sky view,
   hearts/hotbar, and first-person camera, despite the board being generated.
 - The Luanti spike was fixed to force a 36-unit-high overhead observer view,
@@ -232,6 +233,11 @@ May 17, 2026 runtime setup update on this Windows machine:
   `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
 - Screenshot proof:
   `spikes/sbox-banana-b-site/sbox-playmode.png`.
+- After clicking a reachable tile, Play Mode logged:
+  `CS2 Tactics S&box Spike: Moved T_ENT to (16, 6).`
+- Playable screenshots:
+  `spikes/sbox-banana-b-site/sbox-playable.png`
+  and `spikes/sbox-banana-b-site/sbox-playable-moved.png`.
 
 ## What Not To Do Next
 
@@ -248,12 +254,15 @@ On the next machine:
 
 1. Pull `codex/cs2-xcom-roadmap-slice`.
 2. Run `npm install` if needed.
-3. Run `npm run luanti:validate` and `npm run sbox:validate`.
-4. Run the Luanti spike from the fixed overhead view and capture selected-unit,
-   path-preview, and moved-unit screenshots.
-5. Run the S&box addon from `spikes/sbox-banana-b-site/cstactics_spike` and
-   capture the same Banana/B screenshots after dismissing the welcome modal and
-   pressing `F5`.
-6. Compare Luanti vs S&box vs current React/Three, then choose the next visual
-   milestone.
+3. Run `npm run sbox:validate`; run `npm run luanti:validate` only if touching
+   the archived Luanti data/reference spike.
+4. Do not continue Luanti main-client testing. It failed the May 17 interaction
+   bar.
+5. Run the S&box addon from `spikes/sbox-banana-b-site/cstactics_spike`, enter
+   Play Mode, prove unit selection and movement, and capture fresh screenshots
+   if the code changed.
+6. Compare S&box playable proof vs current React/Three and
+   `public/concepts/isometric-duel-target.png`, then choose whether the next
+   milestone is S&box visual lift/standalone launch or a React/Three
+   presentation rebuild.
 
