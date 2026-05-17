@@ -272,6 +272,11 @@ verbs that make those nouns matter.
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
   walls, primitive props, five CT markers, five T markers, right-click
   selection, movement range, path preview, and red danger/LOS floor bands.
+- On May 17, 2026, the Luanti spike was fixed after a bad runtime attempt that
+  opened into native sky/first-person HUD view. It now launches into a fixed
+  overhead observer camera, hides Luanti survival HUD chrome, uses a neutral
+  tabletop/sky, equips a long-range selector, and has proof screenshot
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
 - `npm run luanti:validate` guards the Luanti slice against invalid map data:
   unit overlap, unsupported surfaces/props, out-of-bounds rectangles, props
   inside walls, props without floor support, blocked path/danger tiles, and
@@ -330,10 +335,11 @@ verbs that make those nouns matter.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.
-- A proven visual-client decision. Luanti now has a real runtime attempt, but
-  its first view was not yet readable enough; S&box has a stronger first
-  Play-Mode screenshot, but still needs the same interaction/camera judgement
-  before becoming anything more than a reference sandbox.
+- A proven visual-client decision. Luanti and S&box now both have runtime
+  screenshots, but neither should win from screenshot theory alone; Luanti still
+  needs selected/path/moved-unit interaction proof, and S&box still needs
+  click/raycast movement parity before becoming anything more than a reference
+  sandbox.
 - S&box interaction parity. The first S&box runtime slice generates the board,
   props, unit markers, path, danger overlays, and locked camera, but it does not
   yet implement click/raycast selection or movement inside S&box.

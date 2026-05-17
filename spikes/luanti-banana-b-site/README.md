@@ -10,9 +10,11 @@ voxel/whitebox tactical board can carry the visual direction better.
 - Warm clay floor, taller whitebox walls, B-site surface, crates, barrels,
   sandbags, fountain, coffins, oranges, and simple team markers.
 - Five T units and five CT units as readable red/blue nodebox miniatures.
+- A fixed overhead observer view with Luanti's survival HUD chrome hidden.
 - Right-click a unit to select it.
 - Right-click a highlighted move tile to preview a blue path and move the unit.
 - Red danger/LOS floor band is generated from data.
+- Runtime proof screenshot: `luanti-runtime-overhead.png`.
 
 ## Run In Luanti
 
@@ -21,11 +23,28 @@ voxel/whitebox tactical board can carry the visual direction better.
    Luanti `games/` folder.
 3. Start Luanti, choose the `CS2 Tactics Luanti Spike` game, create a new world,
    and enter singleplayer.
-4. Use `/cs_spike_reset` if you need to regenerate the board.
-5. Use `/cs_spike_help` for interaction notes.
+4. Use `/cs_spike_view` if the camera is moved and you need the clean overhead
+   view again.
+5. Use `/cs_spike_reset` if you need to regenerate the board.
+6. Use `/cs_spike_help` for interaction notes.
 
-The player is spawned above the board for a tactical inspection angle. This is
-not intended to be a final camera solution; it is a kill-criteria check for
+On this Windows test machine the installed game folder is:
+
+```powershell
+C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\games\cstactics_spike_game
+```
+
+The existing test world can be launched directly without using the menu:
+
+```powershell
+& 'C:\Users\Mohsin Dingankar\AppData\Local\luanti\5.16.1\bin\luanti.exe' --go --world 'C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\worlds\CS2 spoike' --gameid cstactics_spike --name Tester
+```
+
+Luanti may show a Windows Firewall prompt because local singleplayer starts a
+local server. Dismissing the prompt is enough for local visual testing.
+
+The player is spawned above the board in a fixed tactical observer view. This
+is not intended to be a final camera solution; it is a kill-criteria check for
 whether Luanti can support tactical readability and click interaction.
 
 ## Validate

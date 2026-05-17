@@ -60,16 +60,24 @@ How to test:
    `games/` folder.
 5. Restart Luanti.
 6. Select `CS2 Tactics Luanti Spike`.
-7. Create a new singleplayer world.
+7. Create a new singleplayer world from the `Start Game` tab, or launch the
+   existing test world directly on this machine:
+
+   ```powershell
+   & 'C:\Users\Mohsin Dingankar\AppData\Local\luanti\5.16.1\bin\luanti.exe' --go --world 'C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\worlds\CS2 spoike' --gameid cstactics_spike --name Tester
+   ```
+
 8. Use:
    - right-click red/blue unit nodes to select;
    - right-click cyan floor tiles to move;
+   - `/cs_spike_view` to restore the fixed overhead view;
    - `/cs_spike_reset` to rebuild the board;
    - `/cs_spike_help` for controls.
 
 What to capture:
 
-- first-load screenshot;
+- first-load screenshot, already captured on May 17, 2026 at
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`;
 - selected unit screenshot;
 - movement-range/path screenshot;
 - one moved unit screenshot.
@@ -196,7 +204,18 @@ May 17, 2026 runtime setup update on this Windows machine:
   `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest`.
 - The Luanti spike game was copied to
   `C:\Users\Mohsin Dingankar\AppData\Roaming\Minetest\games\cstactics_spike_game`.
-  Restart Luanti and choose `CS2 Tactics Luanti Spike` on the `Start Game` tab.
+  Restart Luanti and choose `CS2 Tactics Luanti Spike` on the `Start Game` tab,
+  or launch the existing test world directly with `--go --world ... --gameid
+  cstactics_spike --name Tester`.
+- The first runtime attempt exposed the default Luanti failure mode: sky view,
+  hearts/hotbar, and first-person camera, despite the board being generated.
+- The Luanti spike was fixed to force a 36-unit-high overhead observer view,
+  hide the survival HUD chrome, equip a long-range selector, add a neutral
+  tabletop/sky, and provide `/cs_spike_view` plus `/cs_spike_free`.
+- The fixed Luanti runtime screenshot is:
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
+- Windows Firewall can display a prompt because Luanti singleplayer starts a
+  local server. Dismissing it is enough for local visual testing.
 - S&box source was cloned to
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, bootstrapped successfully,
   and launched with `game\sbox-dev.exe`.
@@ -230,7 +249,8 @@ On the next machine:
 1. Pull `codex/cs2-xcom-roadmap-slice`.
 2. Run `npm install` if needed.
 3. Run `npm run luanti:validate` and `npm run sbox:validate`.
-4. Run the Luanti spike and capture screenshots.
+4. Run the Luanti spike from the fixed overhead view and capture selected-unit,
+   path-preview, and moved-unit screenshots.
 5. Run the S&box addon from `spikes/sbox-banana-b-site/cstactics_spike` and
    capture the same Banana/B screenshots after dismissing the welcome modal and
    pressing `F5`.

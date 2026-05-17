@@ -404,6 +404,10 @@ Work:
   JSON-authored floors/walls/props/units, basic selection, movement range, path
   preview, and danger/LOS floor overlays. Use `npm run luanti:validate` before
   trusting map edits.
+- Luanti runtime overhead proof: after the first attempt opened into default
+  sky/first-person HUD view, the spike now forces a fixed overhead observer
+  camera, hides survival HUD chrome, and captures proof at
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
 - S&box Spike B runtime proof: matching Banana/B data, repo-backed S&box addon,
   Play-Mode screenshot, and pass/fail criteria now live under
   `spikes/sbox-banana-b-site/` and `docs/sbox-visual-spike.md`. Use

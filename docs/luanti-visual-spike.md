@@ -26,6 +26,7 @@ Files:
 - `spikes/luanti-banana-b-site/cstactics_spike_game/mods/cstactics_spike/mod.conf`
 - `spikes/luanti-banana-b-site/cstactics_spike_game/mods/cstactics_spike/init.lua`
 - `spikes/luanti-banana-b-site/cstactics_spike_game/mods/cstactics_spike/banana_b_site.json`
+- `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`
 - `scripts/validate-luanti-spike.mjs`
 
 The spike currently generates:
@@ -40,7 +41,14 @@ The spike currently generates:
 - cyan movement range, blue planned path, and red authored danger/LOS floor
   band;
 - a simple delayed unit move after choosing a highlighted movement tile;
-- `/cs_spike_reset` and `/cs_spike_help` chat commands.
+- a fixed overhead observer view with the native hotbar, hearts, minimap, and
+  wielded item hidden;
+- a neutral tabletop/sky setup so first load shows the board instead of the
+  default Luanti sky;
+- a long-range selector tool so right-click raycasts work from the overhead
+  camera;
+- `/cs_spike_view`, `/cs_spike_free`, `/cs_spike_reset`, and `/cs_spike_help`
+  chat commands.
 
 ## Source Of Truth Rule
 
@@ -90,17 +98,22 @@ Data/authoring:
 Visual:
 
 - Passed in code: constrained clay/whitebox palette and primitive props exist.
-- Pending in runtime: capture a real Luanti screenshot and judge whether it
-  reads as an intentional tactical board instead of blocky chaos.
-- Pending in runtime: tune nodebox proportions, walls, and floor bands after
-  seeing the actual engine lighting/camera.
+- Passed in runtime on May 17, 2026: the first-load Luanti view is now a fixed
+  overhead tactical board instead of a first-person sandbox view. Proof:
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
+- Pending: tune nodebox proportions, walls, unit scale, and floor bands only
+  after judging the Luanti screenshot beside S&box and React/Three.
 
 Interaction:
 
 - Passed in code: right-click selection, movement range, path preview, delayed
   move, and danger overlay exist.
-- Pending in runtime: confirm camera/HUD interaction can feel tactical rather
-  than first-person or sandbox-native.
+- Passed in runtime on May 17, 2026: Luanti joins directly into the fixed
+  overhead observer view, hides survival HUD chrome, and can recover the camera
+  with `/cs_spike_view`.
+- Pending in runtime: capture selected-unit, path-preview, and moved-unit
+  screenshots from the overhead view before calling Luanti interaction parity
+  done.
 
 ## Kill Criteria
 
@@ -118,8 +131,8 @@ sandbox if it helps reason about whitebox geometry.
 
 ## Next Specialist Task
 
-Run Luanti locally with this game installed, capture a first-load screenshot,
-and answer:
+Use the May 17 runtime screenshot as the baseline, then capture selected-unit,
+path-preview, and moved-unit screenshots from the same overhead view. Answer:
 
 - Does Banana -> B-site read without labels?
 - Are five CT and five T units visible from the default tactical inspection

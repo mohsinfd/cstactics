@@ -268,6 +268,10 @@ Progress:
   right-click selection, movement range, planned path, and danger/LOS overlays.
   `npm run luanti:validate` now guards the spike data before a Luanti runtime
   screenshot is trusted.
+- Luanti runtime proof landed after fixing the bad native first-person view:
+  the spike now opens into a fixed overhead observer camera with survival HUD
+  chrome hidden, a neutral tabletop/sky, and screenshot proof at
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
 - S&box Spike B runtime proof landed under `spikes/sbox-banana-b-site/` with
   matching Banana/B data, a repo-backed `cstactics_spike` addon, and
   `docs/sbox-visual-spike.md`. S&box source is cloned and bootstrapped at
@@ -319,8 +323,9 @@ Progress:
 10. Next unit slice: replace procedural primitive miniatures with either an
    authored low-poly rig prototype or generated directional sprite sheet, but do
    not return to small shared humanoid pawns.
-11. Judge the Luanti runtime attempt against its first visible result; improve
-   only if the camera/readability can be made competitive quickly.
+11. Judge Luanti against the fixed overhead runtime screenshot plus
+   selected/path/moved-unit interaction proof; improve only if the
+   camera/readability can be made competitive quickly.
 12. Extend the matching S&box Spike B only far enough to compare screenshot,
    camera feel, interaction basics, code-generation workflow, and
    distribution/platform risk against Luanti before choosing a visual-client

@@ -55,10 +55,12 @@ Runtime proof on May 17, 2026:
 - screenshot:
   `spikes/sbox-banana-b-site/sbox-playmode.png`
 
-The first S&box screenshot is clearly more readable than the current Luanti
-runtime view: the board appears as an angled clay/gray whitebox with readable
-walls, props, red/blue units, blue path tiles, red danger tiles, and a locked
-tactical camera.
+The first S&box screenshot remains the higher-fidelity angled whitebox proof,
+but Luanti's broken native first-person/HUD view has since been fixed with an
+overhead tactical camera and proof at
+`spikes/luanti-banana-b-site/luanti-runtime-overhead.png`. The next comparison
+should judge S&box against that fixed Luanti baseline, not against the bad first
+runtime attempt.
 
 ## Product Question
 

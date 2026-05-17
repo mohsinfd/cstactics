@@ -46,7 +46,10 @@ Current product thesis:
   pressure, and synchronized executes/retakes.
 - Do not build generic XCOM with CS labels.
 - A contained Luanti visual spike now exists as a dual-track feasibility test.
-  It is not a gameplay port; React/Three remains the rules prototype.
+  It is not a gameplay port; React/Three remains the rules prototype. On
+  May 17, 2026 its bad native first-person/HUD runtime view was fixed with a
+  forced overhead observer camera and proof screenshot:
+  `spikes/luanti-banana-b-site/luanti-runtime-overhead.png`.
 - The original second external-engine spike is S&box. It now has matching
   Banana/B data plus a repo-backed runnable addon at
   `spikes/sbox-banana-b-site/cstactics_spike/`. S&box source is cloned and
@@ -77,8 +80,9 @@ Next likely work:
 - Continue player visual design through `docs/player-visualization-roadmap.md`.
 - Continue movement/camera smoothness through `docs/movement-smoothing-roadmap.md`.
 - If continuing the visual-client pivot, validate the Luanti data with
-  `npm run luanti:validate`, then run Luanti locally and capture a first-load
-  screenshot before arguing for or against a port.
+  `npm run luanti:validate`, then run Luanti locally from the fixed overhead
+  view and capture selected-unit/path/moved-unit screenshots before arguing for
+  or against a port.
 - If continuing Spike B, validate with `npm run sbox:validate`, copy
   `spikes/sbox-banana-b-site/cstactics_spike` into
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`,

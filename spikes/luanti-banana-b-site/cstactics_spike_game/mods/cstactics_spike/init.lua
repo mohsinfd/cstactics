@@ -13,6 +13,13 @@ end
 local MAP = read_json(DATA_PATH)
 local ORIGIN = MAP.origin or { x = -15, y = 5, z = -15 }
 local MOVE_POINTS = MAP.tactical.movePoints or 6
+local OBSERVER = {
+  tile_x = math.floor(MAP.size.width / 2),
+  tile_z = math.floor(MAP.size.depth / 2),
+  height = 36,
+  yaw = 0,
+  pitch = math.rad(84),
+}
 local state = {
   selected = nil,
   units = {},
@@ -162,6 +169,7 @@ local function render_tactical()
   if state.selected then
     local selected_pos = state.unit_positions[state.selected]
     if selected_pos then
+      set_floor(selected_pos.x, selected_pos.z, full("selected_floor"))
       state.move_keys = compute_range(selected_pos, MOVE_POINTS)
       for k in pairs(state.move_keys) do
         local tile = tile_from_key(k)
@@ -243,15 +251,28 @@ local function register_floor_node(name, color, description)
   core.register_node(full(name), {
     description = description,
     tiles = { tex(color) },
+    paramtype = "light",
+    sunlight_propagates = true,
+    light_source = 6,
     groups = { oddly_breakable_by_hand = 3, cstactics_floor = 1 },
     on_rightclick = on_floor_rightclick,
   })
 end
 
+core.register_node(full("tabletop"), {
+  description = "Neutral Tabletop",
+  tiles = { tex("#B8BBB2") },
+  paramtype = "light",
+  sunlight_propagates = true,
+  light_source = 4,
+  groups = { oddly_breakable_by_hand = 3 },
+})
+
 register_floor_node("floor", "#EEECE6", "Clay Floor")
 register_floor_node("site_b_floor", "#E8DFB9", "B Site Floor")
 register_floor_node("spawn_t_floor", "#E7D2D0", "T Setup Floor")
 register_floor_node("spawn_ct_floor", "#DCE8F1", "CT Setup Floor")
+register_floor_node("selected_floor", "#F6DF45", "Selected Unit")
 register_floor_node("move_floor", "#8EEBFF", "Move Range")
 register_floor_node("path_floor", "#2A7CFF", "Planned Path")
 register_floor_node("danger_floor", "#F06C5E", "Danger / LOS")
@@ -259,12 +280,18 @@ register_floor_node("danger_floor", "#F06C5E", "Danger / LOS")
 core.register_node(full("wall"), {
   description = "Whitebox Wall",
   tiles = { tex("#D5D3CA") },
+  paramtype = "light",
+  sunlight_propagates = true,
+  light_source = 3,
   groups = { cracky = 3 },
 })
 
 core.register_node(full("wall_cap"), {
   description = "Whitebox Wall Cap",
   tiles = { tex("#F5F3EC") },
+  paramtype = "light",
+  sunlight_propagates = true,
+  light_source = 4,
   groups = { cracky = 3 },
 })
 
@@ -274,11 +301,20 @@ local function register_box_node(name, color, description, boxes)
     drawtype = "nodebox",
     paramtype = "light",
     tiles = { tex(color) },
+    sunlight_propagates = true,
+    light_source = 4,
     node_box = { type = "fixed", fixed = boxes },
     selection_box = { type = "fixed", fixed = boxes },
     groups = { cracky = 3 },
   })
 end
+
+core.register_tool(full("selector"), {
+  description = "CS2 Tactics Long-Range Selector",
+  inventory_image = tex("#FFFFFF00"),
+  wield_image = tex("#FFFFFF00"),
+  range = 128,
+})
 
 register_box_node("crate", "#B7B0A3", "Clay Crate", {
   { -0.45, -0.5, -0.45, 0.45, 0.42, 0.45 },
@@ -357,11 +393,17 @@ local function place_spike_map()
   clear_table(state.blocked)
   clear_table(state.move_keys)
 
-  for x = -2, MAP.size.width + 2 do
-    for z = -2, MAP.size.depth + 2 do
-      for y = 0, 6 do
+  for x = -4, MAP.size.width + 4 do
+    for z = -4, MAP.size.depth + 4 do
+      for y = 0, 8 do
         core.set_node(pos_for(x, y, z), { name = "air" })
       end
+    end
+  end
+
+  for x = -4, MAP.size.width + 4 do
+    for z = -4, MAP.size.depth + 4 do
+      core.set_node(pos_for(x, 0, z), { name = full("tabletop") })
     end
   end
 
@@ -408,27 +450,131 @@ local function place_spike_map()
   select_unit(MAP.tactical.selectedUnit)
 end
 
+local function safe_call(method, target, value)
+  if target and target[method] then
+    pcall(function()
+      target[method](target, value)
+    end)
+  end
+end
+
+local function apply_observer_view(player, quiet)
+  local pos = pos_for(OBSERVER.tile_x, OBSERVER.height, OBSERVER.tile_z)
+  player:set_pos(pos)
+  player:set_look_horizontal(OBSERVER.yaw)
+  player:set_look_vertical(OBSERVER.pitch)
+  player:set_physics_override({
+    speed = 0,
+    jump = 0,
+    gravity = 0,
+    sneak = false,
+  })
+  player:hud_set_flags({
+    hotbar = false,
+    healthbar = false,
+    breathbar = false,
+    wielditem = false,
+    minimap = false,
+    minimap_radar = false,
+    crosshair = true,
+  })
+
+  safe_call("set_fov", player, 82)
+  safe_call("set_clouds", player, { density = 0 })
+  safe_call("set_sun", player, { visible = false })
+  safe_call("set_moon", player, { visible = false })
+  safe_call("set_stars", player, { visible = false })
+  if player.set_sky then
+    pcall(function()
+      player:set_sky({
+        type = "plain",
+        base_color = "#D6D8D1",
+        clouds = false,
+      })
+    end)
+  end
+
+  local inv = player:get_inventory()
+  if inv then
+    inv:set_size("main", 1)
+    inv:set_stack("main", 1, full("selector"))
+    if player.set_wield_index then
+      player:set_wield_index(1)
+    end
+  end
+
+  if not quiet then
+    core.chat_send_player(player:get_player_name(), "CS2 Tactics Luanti spike view reset. Aim the crosshair and right-click a unit or cyan tile.")
+  end
+end
+
+local function apply_free_view(player)
+  player:set_physics_override({
+    speed = 1,
+    jump = 1,
+    gravity = 1,
+    sneak = true,
+  })
+  player:hud_set_flags({
+    hotbar = true,
+    healthbar = true,
+    breathbar = true,
+    wielditem = true,
+    minimap = true,
+    minimap_radar = true,
+    crosshair = true,
+  })
+  safe_call("set_fov", player, 0)
+  core.chat_send_player(player:get_player_name(), "Free Luanti camera restored. Use /cs_spike_view to return to the tactical overhead view.")
+end
+
 core.register_chatcommand("cs_spike_reset", {
   description = "Regenerate the CS2 Tactics Banana/B-site visual spike.",
   func = function(name)
     place_spike_map()
+    local player = core.get_player_by_name(name)
+    if player then
+      apply_observer_view(player, true)
+    end
     return true, "CS2 Tactics Luanti spike regenerated."
+  end,
+})
+
+core.register_chatcommand("cs_spike_view", {
+  description = "Reset to the clean tactical overhead view.",
+  func = function(name)
+    local player = core.get_player_by_name(name)
+    if player then
+      apply_observer_view(player)
+      return true, "Tactical overhead view restored."
+    end
+    return false, "Player not found."
+  end,
+})
+
+core.register_chatcommand("cs_spike_free", {
+  description = "Restore normal Luanti movement and HUD for debugging.",
+  func = function(name)
+    local player = core.get_player_by_name(name)
+    if player then
+      apply_free_view(player)
+      return true, "Free camera restored."
+    end
+    return false, "Player not found."
   end,
 })
 
 core.register_chatcommand("cs_spike_help", {
   description = "Show CS2 Tactics Luanti spike controls.",
   func = function(name)
-    return true, "Right-click red/blue unit nodes to select. Right-click cyan move floor to preview a path and move. Red floor shows authored danger/LOS. /cs_spike_reset rebuilds the board."
+    return true, "Default view is a fixed overhead tactical camera. Aim the crosshair and right-click red/blue units to select; right-click cyan tiles to move. Yellow marks selected, blue marks path, red marks danger/LOS. /cs_spike_view restores the clean view. /cs_spike_reset rebuilds the board."
   end,
 })
 
 core.register_on_joinplayer(function(player)
   core.after(0.25, function()
-    player:set_pos(pos_for(15, 24, -8))
-    player:set_look_horizontal(0)
-    player:set_look_vertical(math.rad(58))
-    core.chat_send_player(player:get_player_name(), "CS2 Tactics Luanti spike: right-click a unit, then a cyan move tile. Use /cs_spike_help.")
+    apply_observer_view(player, true)
+    core.chat_send_player(player:get_player_name(), "CS2 Tactics Luanti spike: fixed overhead view loaded. Right-click a unit, then a cyan move tile. Use /cs_spike_help.")
   end)
 end)
 
