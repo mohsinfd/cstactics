@@ -276,13 +276,13 @@ verbs that make those nouns matter.
   unit overlap, unsupported surfaces/props, out-of-bounds rectangles, props
   inside walls, props without floor support, blocked path/danger tiles, and
   non-contiguous authored paths.
-- The original external-engine Spike B is now captured as an S&box scaffold
-  under `spikes/sbox-banana-b-site/` with matching Banana/B data and
-  `docs/sbox-visual-spike.md`. S&box source is now installed and bootstrapped
-  at `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, and `game\sbox-dev.exe`
-  launched to the editor welcome window. The scaffold is still not yet a
-  verified runnable CS Tactics `.sbproj`; creating that project is the next
-  runtime gate after the Luanti screenshot check.
+- The original external-engine Spike B now has a runnable S&box source-build
+  proof under `spikes/sbox-banana-b-site/cstactics_spike/` with matching
+  Banana/B data and `docs/sbox-visual-spike.md`. On May 17, 2026, the local
+  S&box checkout at `C:\Users\Mohsin Dingankar\Downloads\sbox-public` launched
+  `local.cstactics_spike` in offline editor mode and Play Mode generated the
+  Banana/B board; proof screenshot:
+  `spikes/sbox-banana-b-site/sbox-playmode.png`.
 - `npm run sbox:validate` validates the S&box spike data against the same
   authored map contract as Luanti so the two engine tests compare the same
   slice instead of drifting into different demos.
@@ -330,12 +330,13 @@ verbs that make those nouns matter.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.
-- A proven visual-client decision. The Luanti spike exists as a contained
-  alternative, but it still needs a real runtime screenshot and camera/HUD
-  judgement before becoming anything more than a reference sandbox.
-- A verified S&box runtime slice. The S&box scaffold exists, but needs the
-  CS Tactics project/addon created from the bootstrapped source editor before
-  any screenshot, C# component, or platform decision can be trusted.
+- A proven visual-client decision. Luanti now has a real runtime attempt, but
+  its first view was not yet readable enough; S&box has a stronger first
+  Play-Mode screenshot, but still needs the same interaction/camera judgement
+  before becoming anything more than a reference sandbox.
+- S&box interaction parity. The first S&box runtime slice generates the board,
+  props, unit markers, path, danger overlays, and locked camera, but it does not
+  yet implement click/raycast selection or movement inside S&box.
 
 ## Immediate Focus
 
@@ -359,6 +360,6 @@ the presentation base. React/Three remains the rules prototype; Luanti is only
 for validating generated whitebox map readability, tactical camera feel, and
 agent-safe visual authoring.
 
-After the Luanti screenshot gate, run the matching S&box Spike B against the
-same `banana_b_site.json` data and compare screenshots, camera feel, authoring
-speed, and platform risk before making a client-base decision.
+Run the matching S&box Spike B against the same `banana_b_site.json` data and
+compare screenshots, camera feel, authoring speed, and platform risk against
+the Luanti attempt before making a client-base decision.

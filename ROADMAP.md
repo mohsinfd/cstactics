@@ -19,7 +19,8 @@ more reliable visual-production base.
 
 The original Spike B from the external-engine plan is S&box. It uses the same
 Banana/B data as Luanti to test whether Source-2-adjacent C# tooling provides
-enough visual lift to justify platform risk.
+enough visual lift to justify platform risk. A first S&box Play-Mode proof now
+exists under `spikes/sbox-banana-b-site/cstactics_spike/`.
 
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do
@@ -403,8 +404,9 @@ Work:
   JSON-authored floors/walls/props/units, basic selection, movement range, path
   preview, and danger/LOS floor overlays. Use `npm run luanti:validate` before
   trusting map edits.
-- S&box Spike B scaffold: matching Banana/B data and pass/fail criteria now
-  live under `spikes/sbox-banana-b-site/` and `docs/sbox-visual-spike.md`. Use
+- S&box Spike B runtime proof: matching Banana/B data, repo-backed S&box addon,
+  Play-Mode screenshot, and pass/fail criteria now live under
+  `spikes/sbox-banana-b-site/` and `docs/sbox-visual-spike.md`. Use
   `npm run sbox:validate` before opening the S&box editor.
 - Onboarding overlay for first-time players.
 - Settings for performance and accessibility.

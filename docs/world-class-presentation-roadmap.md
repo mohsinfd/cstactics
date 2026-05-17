@@ -15,10 +15,11 @@ feasibility test only; React/Three remains the tactical rules prototype until a
 runtime screenshot and interaction check prove that the alternate base is worth
 porting toward.
 
-The original second external-engine spike is S&box. It should use the same
-Banana/B data as Luanti so the comparison is fair: Luanti tests constrained
+The original second external-engine spike is S&box. It uses the same Banana/B
+data as Luanti so the comparison is fair: Luanti tests constrained
 voxel/nodebox authoring, while S&box tests whether Source-2-adjacent C# tooling
-gives enough visual lift to justify platform risk.
+gives enough visual lift to justify platform risk. A first S&box Play-Mode
+proof is now captured in `spikes/sbox-banana-b-site/sbox-playmode.png`.
 
 ## North Star
 
@@ -267,12 +268,12 @@ Progress:
   right-click selection, movement range, planned path, and danger/LOS overlays.
   `npm run luanti:validate` now guards the spike data before a Luanti runtime
   screenshot is trusted.
-- S&box Spike B scaffold landed under `spikes/sbox-banana-b-site/` with matching
-  Banana/B data and `docs/sbox-visual-spike.md`. S&box source is now cloned and
-  bootstrapped at `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, and
-  `game\sbox-dev.exe` launches to the editor welcome window. It is still not
-  called runnable as a CS Tactics spike until a project/addon is generated from
-  the Banana/B JSON and produces an actual screenshot.
+- S&box Spike B runtime proof landed under `spikes/sbox-banana-b-site/` with
+  matching Banana/B data, a repo-backed `cstactics_spike` addon, and
+  `docs/sbox-visual-spike.md`. S&box source is cloned and bootstrapped at
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`; after a local app-id `480`
+  patch, Play Mode generated the Banana/B board and produced
+  `spikes/sbox-banana-b-site/sbox-playmode.png`.
 
 ### Milestone P5: Production Sound
 
@@ -318,9 +319,9 @@ Progress:
 10. Next unit slice: replace procedural primitive miniatures with either an
    authored low-poly rig prototype or generated directional sprite sheet, but do
    not return to small shared humanoid pawns.
-11. Run the Luanti spike in the actual engine, capture the first-load
-   Banana/B screenshot, and decide whether the camera/HUD/readability pass
-   deserves a second spike or should be killed as the main visual base.
-12. Run the matching S&box Spike B from the same data and compare screenshot,
-   camera feel, code-generation workflow, and distribution/platform risk
-   against Luanti before choosing a visual-client base.
+11. Judge the Luanti runtime attempt against its first visible result; improve
+   only if the camera/readability can be made competitive quickly.
+12. Extend the matching S&box Spike B only far enough to compare screenshot,
+   camera feel, interaction basics, code-generation workflow, and
+   distribution/platform risk against Luanti before choosing a visual-client
+   base.

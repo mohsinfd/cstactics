@@ -10,9 +10,14 @@ platform and workflow risk. This is not a gameplay port.
 
 ## Current State
 
-This folder currently contains the shared Banana -> B-site spike data:
+This folder now contains the shared Banana -> B-site spike data plus a runnable
+local S&box addon/project:
 
 - `banana_b_site.json`
+- `cstactics_spike/cstactics_spike.sbproj`
+- `cstactics_spike/Code/SpikeMapGenerator.cs`
+- `cstactics_spike/Assets/scenes/cstactics_spike.scene`
+- `sbox-playmode.png`
 
 The data is validated by:
 
@@ -20,25 +25,62 @@ The data is validated by:
 npm run sbox:validate
 ```
 
-S&box is not installed on the current machine, so no runnable `.sbproj` has been
-generated or verified yet.
+Runtime proof captured on May 17, 2026:
 
-## Setup Target
+- S&box public source checkout:
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public`
+- Local installed addon:
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`
+- Editor window title after launch:
+  `Cstactics Spike - s&box editor - offline`
+- Play-mode log line:
+  `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
+- Screenshot:
+  `spikes/sbox-banana-b-site/sbox-playmode.png`
 
-When S&box is available:
+## Setup
 
-1. Install/open S&box and the S&box editor.
-2. Create a new empty Game project.
-3. Copy or reference `banana_b_site.json` inside the project.
-4. Add a `SpikeMapGenerator` component that reads the JSON and instantiates:
-   - off-white floor slabs;
-   - taller clay/gray wall blocks;
-   - primitive props for car/crates/logs/sandbags/fountain/coffins/oranges;
-   - five red T unit markers;
-   - five blue CT unit markers;
-   - movement range, planned path, and danger/LOS overlays.
-5. Add a locked tactical camera.
-6. Add click/raycast selection and optional one-step movement.
+1. Ensure the S&box public source build exists at
+   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`.
+2. Copy this repo project folder into the S&box addon folder:
+
+```powershell
+Copy-Item -Recurse -Force `
+  "spikes\sbox-banana-b-site\cstactics_spike" `
+  "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike"
+```
+
+3. Launch the addon directly:
+
+```powershell
+Start-Process `
+  -FilePath "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\sbox-dev.exe" `
+  -WorkingDirectory "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game" `
+  -ArgumentList @(
+    "-project",
+    "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike\cstactics_spike.sbproj"
+  )
+```
+
+4. If the first-run welcome modal appears, dismiss it.
+5. Press `F5` or use `Game -> Play`.
+
+The public source checkout used for this proof was patched locally from app id
+`590830` to Steam's dev/test app id `480`, with
+`game\steam_appid.txt = 480`, because this machine did not have S&box installed
+as a Steam library app. The editor starts in offline mode; that is acceptable
+for this local visual proof.
+
+## Implemented Spike Surface
+
+- off-white floor slabs;
+- taller gray wall blocks;
+- primitive props for car/crates/logs/sandbags/fountain/coffins/oranges;
+- five red T unit markers;
+- five blue CT unit markers;
+- movement range, planned path, and danger/LOS overlays;
+- locked orthographic tactical camera;
+- data-generated board from `Assets/data/banana_b_site.json`.
 
 ## Acceptance
 

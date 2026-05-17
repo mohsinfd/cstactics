@@ -14,29 +14,51 @@ the current React/Three renderer.
 
 ## Current Status
 
-S&box is available on the current Windows machine through the public source
-build:
+S&box Spike B now has a runnable local source-build proof on this Windows
+machine:
 
 - Source checkout:
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`
 - `Bootstrap.bat` completed successfully after installing `.NET 10 SDK`.
-- `game\sbox-dev.exe` launched and left a visible launcher window titled
-  `Welcome to the s&box editor`.
+- Public-source Steam bootstrap was patched locally to app id `480`:
+  `engine\Sandbox.Engine\Application.cs` and `game\steam_appid.txt`.
+- This avoids the `SteamAPI_Init not yet successful` / `Steam Not Found`
+  blocker on machines where the Steam account does not have S&box installed as
+  app id `590830`.
+- The editor starts in offline mode because the backend account lookup rejects
+  the dev/test app id; that is acceptable for local visual-spike testing.
 
-This repo still does not include a verified runnable CS Tactics S&box project.
-The spike is scaffolded as a first-class handoff:
+Repo-backed spike files:
 
-- `spikes/sbox-banana-b-site/banana_b_site.json`
 - `spikes/sbox-banana-b-site/README.md`
+- `spikes/sbox-banana-b-site/banana_b_site.json`
+- `spikes/sbox-banana-b-site/cstactics_spike/cstactics_spike.sbproj`
+- `spikes/sbox-banana-b-site/cstactics_spike/Code/SpikeMapGenerator.cs`
+- `spikes/sbox-banana-b-site/cstactics_spike/Assets/scenes/cstactics_spike.scene`
+- `spikes/sbox-banana-b-site/sbox-playmode.png`
 - `npm run sbox:validate`
 
 The S&box data intentionally mirrors the Luanti spike data so the comparison is
 fair: same 30x30 Banana/B slice, same units, same props, same path, same
 danger/LOS overlay.
 
-Next proof step: create the first S&box project/addon from
-`spikes/sbox-banana-b-site/banana_b_site.json`, generate the Banana/B board,
-and capture the same first-load/selection/movement screenshots as Luanti.
+Runtime proof on May 17, 2026:
+
+- local addon path:
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`
+- launch command target:
+  `game\sbox-dev.exe -project game\addons\cstactics_spike\cstactics_spike.sbproj`
+- editor title:
+  `Cstactics Spike - s&box editor - offline`
+- play-mode log:
+  `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
+- screenshot:
+  `spikes/sbox-banana-b-site/sbox-playmode.png`
+
+The first S&box screenshot is clearly more readable than the current Luanti
+runtime view: the board appears as an angled clay/gray whitebox with readable
+walls, props, red/blue units, blue path tiles, red danger tiles, and a locked
+tactical camera.
 
 ## Product Question
 
@@ -77,19 +99,45 @@ The first S&box implementation should create:
 - red danger/LOS overlay;
 - optional one-step unit movement.
 
-## Suggested Component Shape
+## Runnable Project Shape
 
-Create an empty S&box game project from the editor, then implement additive
-components along these lines:
+The first runnable project uses one compact component rather than the full
+component split originally proposed:
 
-- `SpikeMapGenerator`: loads the JSON data and instantiates board geometry.
-- `SpikeTacticalCamera`: owns the locked tactical view and any camera tuning.
-- `SpikeUnitMarker`: represents CT/T unit markers and selection state.
-- `SpikeOverlayRenderer`: movement range, planned path, and danger/LOS overlays.
-- `SpikeInputController`: click/raycast selection and move-preview behavior.
+- `SpikeMapGenerator`: loads `Assets/data/banana_b_site.json`, instantiates
+  floor slabs, walls, props, unit markers, movement/path/danger overlays, and
+  locks the camera.
 
 Keep these components independent from the React/Three store. The S&box spike
 only needs enough local state to prove presentation and interaction feel.
+
+Future S&box work can split the generator into separate camera, marker, overlay,
+and input components if Spike B survives the visual-client decision.
+
+## How To Test
+
+Copy the repo-backed addon into the S&box source checkout:
+
+```powershell
+Copy-Item -Recurse -Force `
+  "spikes\sbox-banana-b-site\cstactics_spike" `
+  "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike"
+```
+
+Then launch:
+
+```powershell
+Start-Process `
+  -FilePath "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\sbox-dev.exe" `
+  -WorkingDirectory "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game" `
+  -ArgumentList @(
+    "-project",
+    "C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike\cstactics_spike.sbproj"
+  )
+```
+
+Dismiss the first-run welcome modal if it appears, then press `F5` or use
+`Game -> Play`.
 
 ## Validation
 

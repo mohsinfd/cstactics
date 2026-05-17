@@ -89,6 +89,10 @@ Primary files:
 - `docs/sbox-visual-spike.md`
 - `spikes/sbox-banana-b-site/README.md`
 - `spikes/sbox-banana-b-site/banana_b_site.json`
+- `spikes/sbox-banana-b-site/cstactics_spike/cstactics_spike.sbproj`
+- `spikes/sbox-banana-b-site/cstactics_spike/Code/SpikeMapGenerator.cs`
+- `spikes/sbox-banana-b-site/cstactics_spike/Assets/scenes/cstactics_spike.scene`
+- `spikes/sbox-banana-b-site/sbox-playmode.png`
 
 Validate data:
 
@@ -112,21 +116,28 @@ Current status:
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`.
 - `Bootstrap.bat` completed successfully after installing `.NET 10 SDK`
   through winget.
-- `game\sbox-dev.exe` launched and left a visible launcher window titled
-  `Welcome to the s&box editor`.
-- No runnable CS Tactics `.sbproj` has been generated or verified yet. The next
-  step is still to create the S&box spike project from the same authored
-  Banana/B data as Luanti.
+- A runnable local CS Tactics addon exists in the S&box checkout at
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`.
+- The repo-backed copy lives at
+  `spikes/sbox-banana-b-site/cstactics_spike`.
+- The public source build was patched locally to Steam app id `480`
+  (`engine\Sandbox.Engine\Application.cs` and `game\steam_appid.txt`) because
+  this machine does not have S&box installed as app id `590830`.
+- `SteamAPI_Init` now succeeds, and the editor runs in offline mode.
+- Pressing `F5` after dismissing the first-run welcome modal starts Play Mode.
+- Verified play-mode log:
+  `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
+- Screenshot captured at:
+  `spikes/sbox-banana-b-site/sbox-playmode.png`.
 
 Implementation target:
 
-- Create an empty S&box Game project.
-- Load `spikes/sbox-banana-b-site/banana_b_site.json`.
-- Generate off-white floor slabs, taller walls, primitive props, five red T
-  units, five blue CT units, movement range, planned path, and danger/LOS
-  overlays.
-- Add a locked tactical camera.
-- Add click/raycast selection and optional one-step movement.
+- Implemented first pass: load `Assets/data/banana_b_site.json`, generate
+  off-white floor slabs, taller walls, primitive props, five red T units, five
+  blue CT units, movement range, planned path, danger/LOS overlays, and a locked
+  orthographic tactical camera.
+- Not implemented yet: click/raycast selection and one-step movement inside
+  S&box.
 
 Decision gate:
 
@@ -189,8 +200,19 @@ May 17, 2026 runtime setup update on this Windows machine:
 - S&box source was cloned to
   `C:\Users\Mohsin Dingankar\Downloads\sbox-public`, bootstrapped successfully,
   and launched with `game\sbox-dev.exe`.
-- The S&box runtime/editor is available now, but the CS Tactics Spike B project
-  still needs to be created before a Banana/B screenshot can be captured.
+- A local S&box addon was created at
+  `C:\Users\Mohsin Dingankar\Downloads\sbox-public\game\addons\cstactics_spike`
+  and copied back into this repo under
+  `spikes/sbox-banana-b-site/cstactics_spike`.
+- Initial `Steam Not Found` was fixed by patching the public source build to
+  app id `480` and writing `game\steam_appid.txt = 480`.
+- S&box compiles and mounts `local.cstactics_spike`; backend account lookup
+  returns `406`, so the editor runs in offline mode.
+- The first-run welcome modal blocks `F5` until dismissed.
+- After `F5`, Play Mode generated the Banana/B board and logged:
+  `CS2 Tactics S&box Spike: generated Banana to B Site Whitebox Slice (30x30) with 10 units.`
+- Screenshot proof:
+  `spikes/sbox-banana-b-site/sbox-playmode.png`.
 
 ## What Not To Do Next
 
@@ -209,8 +231,9 @@ On the next machine:
 2. Run `npm install` if needed.
 3. Run `npm run luanti:validate` and `npm run sbox:validate`.
 4. Run the Luanti spike and capture screenshots.
-5. Create the S&box project from the scaffold and capture the same Banana/B
-   screenshots.
+5. Run the S&box addon from `spikes/sbox-banana-b-site/cstactics_spike` and
+   capture the same Banana/B screenshots after dismissing the welcome modal and
+   pressing `F5`.
 6. Compare Luanti vs S&box vs current React/Three, then choose the next visual
    milestone.
 
