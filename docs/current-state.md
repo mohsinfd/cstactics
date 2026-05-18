@@ -294,6 +294,10 @@ verbs that make those nouns matter.
   actors start on the lower Banana side, two T defenders hold the upper B-site
   side, CT entry moves into contact, the entry is marked down, the second CT can
   take a 64% trade shot, and the T anchor receives the casualty marker.
+- The `/duel-2-5d` concept frame now has an ultrawide/embedded-viewport fit
+  guard: normal viewports stay centered, but very wide host viewports anchor the
+  board into the visible left pane so the image does not appear cut off with a
+  large blank area on the left.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller

@@ -926,6 +926,23 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   await expect(page.getByTestId('board-duel-target')).toBeEnabled();
 });
 
+test('2.5D board remains visible in an ultrawide embedded viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-human', '2.5D proof is a desktop presentation slice for now.');
+
+  await page.setViewportSize({ width: 2560, height: 874 });
+  await page.goto('/duel-2-5d');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT entry ready');
+
+  const frameBox = await page.locator('.concept-frame').boundingBox();
+  expect(frameBox, 'concept board should render').not.toBeNull();
+  expect(frameBox?.x, 'concept board should not be centered into an offscreen host area').toBeLessThanOrEqual(24);
+  expect(frameBox?.y, 'concept board should keep top viewport margin').toBeGreaterThanOrEqual(0);
+  expect(
+    (frameBox?.x ?? 0) + (frameBox?.width ?? 0),
+    'concept board should fit inside the viewport width'
+  ).toBeLessThanOrEqual(2560);
+});
+
 test('2.5D board authoring mode can place an editable cover block', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-human', '2.5D authoring proof is a desktop presentation slice for now.');
 

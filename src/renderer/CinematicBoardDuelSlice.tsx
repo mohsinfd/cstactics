@@ -482,9 +482,12 @@ export function CinematicBoardDuelSlice() {
 
         .concept-frame {
           position: absolute;
+          --frame-margin: 16px;
+          --frame-gutter: 32px;
+          --frame-width: min(calc(100vw - var(--frame-gutter)), calc((100vh - var(--frame-gutter)) * var(--board-aspect)));
           left: 50%;
           top: 50%;
-          width: min(100vw, calc(100vh * var(--board-aspect)));
+          width: var(--frame-width);
           aspect-ratio: var(--board-aspect);
           transform: translate(-50%, -50%);
           background-image: var(--board-image);
@@ -492,6 +495,13 @@ export function CinematicBoardDuelSlice() {
           background-position: center;
           background-repeat: no-repeat;
           filter: saturate(1.02) contrast(1.01);
+        }
+
+        @media (min-aspect-ratio: 2 / 1) {
+          .concept-frame {
+            left: var(--frame-margin);
+            transform: translateY(-50%);
+          }
         }
 
         .concept-frame::after {
@@ -1203,10 +1213,26 @@ export function CinematicBoardDuelSlice() {
           58% { transform: translate(calc(-50% + 6px), calc(-50% - 3px)) scale(1.012); }
         }
 
+        @media (min-aspect-ratio: 2 / 1) {
+          @keyframes camera-hit {
+            0%, 100% { transform: translateY(-50%) scale(1); filter: saturate(1.02) contrast(1.01); }
+            36% { transform: translate(-7px, calc(-50% + 4px)) scale(1.01); filter: saturate(1.24) contrast(1.06); }
+            58% { transform: translate(6px, calc(-50% - 3px)) scale(1.012); }
+          }
+        }
+
         @keyframes invalid-shake {
           0%, 100% { transform: translate(-50%, -50%); }
           35% { transform: translate(calc(-50% - 7px), -50%); }
           70% { transform: translate(calc(-50% + 6px), -50%); }
+        }
+
+        @media (min-aspect-ratio: 2 / 1) {
+          @keyframes invalid-shake {
+            0%, 100% { transform: translateY(-50%); }
+            35% { transform: translate(-7px, -50%); }
+            70% { transform: translate(6px, -50%); }
+          }
         }
 
         @keyframes feedback-pop {
