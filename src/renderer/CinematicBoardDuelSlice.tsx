@@ -97,8 +97,9 @@ export function CinematicBoardDuelSlice() {
   const [authoringBlocks, setAuthoringBlocks] = useState<BoardAuthoringBlock[]>(board.scene.authoringBlocks);
   const [authorDrag, setAuthorDrag] = useState<AuthorDrag | null>(null);
   const [selectedAuthorItem, setSelectedAuthorItem] = useState<string>('none');
+  const [downIds, setDownIds] = useState<string[]>([]);
   const [events, setEvents] = useState<Board2d5Event[]>([
-    createBoard2d5Event('select', 'CT anchor selected.', {
+    createBoard2d5Event('select', 'CT entry selected.', {
       actorId: selectedActor.id,
       toNodeId: initialNodeId,
     }),
@@ -132,9 +133,15 @@ export function CinematicBoardDuelSlice() {
     },
   }), [authoringBlocks, board, editedMaskAnchors, editedNodeAnchors, editedOccluderAnchors, editedTargetAnchors]);
   const target = runtimeBoard.targets.find((candidate) => candidate.id === board.initial.targetId) ?? baseTarget;
-  const isBusy = phase === 'moving' || phase === 'firing' || phase === 'impact';
-  const isAlive = phase !== 'down';
+  const isBusy = phase === 'moving' ||
+    phase === 'firing' ||
+    phase === 'impact' ||
+    phase === 'trading' ||
+    phase === 'trade-impact';
+  const isRoundComplete = phase === 'down';
   const ctNode = getBoardNode(runtimeBoard, ctNodeId) ?? runtimeBoard.nodes[0];
+  const traderActor = runtimeBoard.actors.find((actor) => actor.id === 'ct-trader') ?? runtimeBoard.actors[1];
+  const traderNode = traderActor ? getBoardNode(runtimeBoard, traderActor.nodeId) : null;
   const reachableNodeIds = useMemo(
     () => getReachableNodeIds(runtimeBoard, ctNodeId, runtimeBoard.initial.moveRange),
     [ctNodeId, runtimeBoard]
@@ -147,7 +154,13 @@ export function CinematicBoardDuelSlice() {
   useEffect(() => {
     if (phase === 'moving') {
       const timer = window.setTimeout(() => {
-        setPhase('ready');
+        pushEvent(createBoard2d5Event('contact', 'T anchor fires first contact.', {
+          actorId: selectedActor.id,
+          targetId: target.id,
+          fromNodeId: ctNodeId,
+        }));
+        setDownIds((current) => Array.from(new Set([...current, selectedActor.id])));
+        setPhase('contact');
         setMode('idle');
       }, BOARD_DUEL_TIMING.moveMs);
       return () => window.clearTimeout(timer);
@@ -178,6 +191,32 @@ export function CinematicBoardDuelSlice() {
       return () => window.clearTimeout(timer);
     }
 
+    if (phase === 'trading') {
+      const timer = window.setTimeout(() => {
+        pushEvent(createBoard2d5Event('hit', 'Trade hit confirmed.', {
+          actorId: traderActor?.id,
+          targetId: target.id,
+          fromNodeId: traderActor?.nodeId,
+        }));
+        setPhase('trade-impact');
+      }, BOARD_DUEL_TIMING.tradeImpactMs);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (phase === 'trade-impact') {
+      const timer = window.setTimeout(() => {
+        pushEvent(createBoard2d5Event('kill', 'CT anchor traded.', {
+          actorId: traderActor?.id,
+          targetId: target.id,
+          fromNodeId: traderActor?.nodeId,
+        }));
+        setDownIds((current) => Array.from(new Set([...current, target.id])));
+        setPhase('down');
+        setMode('idle');
+      }, BOARD_DUEL_TIMING.tradeSettleMs);
+      return () => window.clearTimeout(timer);
+    }
+
     if (phase === 'invalid') {
       const timer = window.setTimeout(
         () => setPhase(mode === 'shoot' ? 'aiming' : mode === 'move' ? 'move-select' : 'ready'),
@@ -187,7 +226,7 @@ export function CinematicBoardDuelSlice() {
     }
 
     return undefined;
-  }, [ctNodeId, mode, phase, pushEvent, selectedActor.id, target.id]);
+  }, [ctNodeId, mode, phase, pushEvent, selectedActor.id, target.id, traderActor?.id, traderActor?.nodeId]);
 
   const className = useMemo(() => [
     'board-duel',
@@ -198,7 +237,7 @@ export function CinematicBoardDuelSlice() {
   ].filter(Boolean).join(' '), [ctNodeId, initialNodeId, isAuthoring, mode, phase]);
 
   const beginMove = () => {
-    if (!isAlive || isBusy) return;
+    if (phase !== 'ready' || isBusy) return;
     pushEvent(createBoard2d5Event('move_preview', 'Movement preview opened.', {
       actorId: selectedActor.id,
       fromNodeId: ctNodeId,
@@ -208,7 +247,7 @@ export function CinematicBoardDuelSlice() {
   };
 
   const commitMove = (nodeId: string) => {
-    if (!isAlive || isBusy || mode !== 'move' || !reachableNodeIds.includes(nodeId)) {
+    if (isRoundComplete || isBusy || mode !== 'move' || !reachableNodeIds.includes(nodeId)) {
       pushEvent(createBoard2d5Event('invalid', 'Invalid move command.', {
         actorId: selectedActor.id,
         fromNodeId: ctNodeId,
@@ -241,21 +280,19 @@ export function CinematicBoardDuelSlice() {
     setPhase('moving');
   };
 
-  const beginShoot = () => {
-    if (!isAlive || isBusy) return;
-    window.setTimeout(() => {
-      pushEvent(createBoard2d5Event('aim_started', 'Target lock acquired.', {
-        actorId: selectedActor.id,
-        targetId: target.id,
-        fromNodeId: ctNodeId,
-      }));
-    }, BOARD_DUEL_TIMING.aimRaiseMs);
+  const beginTrade = () => {
+    if (phase !== 'contact' || isBusy || !traderActor) return;
+    pushEvent(createBoard2d5Event('trade_started', 'Trade shot committed.', {
+      actorId: traderActor.id,
+      targetId: target.id,
+      fromNodeId: traderActor.nodeId,
+    }));
     setMode('shoot');
-    setPhase('aiming');
+    setPhase('trading');
   };
 
   const fireShot = () => {
-    if (!isAlive || isBusy) return;
+    if (isRoundComplete || isBusy) return;
 
     if (mode !== 'shoot') {
       pushEvent(createBoard2d5Event('invalid', 'Invalid shot command.', {
@@ -276,7 +313,7 @@ export function CinematicBoardDuelSlice() {
   };
 
   const rejectBoardClick = () => {
-    if (!isAlive || isBusy || mode === 'idle') return;
+    if (isRoundComplete || isBusy || mode === 'idle') return;
     pushEvent(createBoard2d5Event('invalid', 'Invalid board command.', {
       actorId: selectedActor.id,
       targetId: mode === 'shoot' ? target.id : undefined,
@@ -296,6 +333,7 @@ export function CinematicBoardDuelSlice() {
     setCtNodeId(initialNodeId);
     setHoverNodeId(null);
     setPathNodeIds([initialNodeId]);
+    setDownIds([]);
   };
 
   const handleNodeClick = (nodeId: string) => {
@@ -315,16 +353,16 @@ export function CinematicBoardDuelSlice() {
     }
   };
 
-  const tokenStyle = {
-    '--unit-x': `${ctNode.anchor.x}%`,
-    '--unit-y': `${ctNode.anchor.y}%`,
-  } as CSSProperties;
-
+  const shotLine = phase === 'contact' || phase === 'firing' || phase === 'impact'
+    ? { from: target.anchor, to: ctNode.anchor }
+    : phase === 'trading' || phase === 'trade-impact' || phase === 'down'
+      ? { from: traderNode?.anchor ?? ctNode.anchor, to: target.anchor }
+      : { from: ctNode.anchor, to: target.anchor };
   const aimLineStyle = {
-    '--aim-x1': `${ctNode.anchor.x}%`,
-    '--aim-y1': `${ctNode.anchor.y}%`,
-    '--aim-x2': `${target.anchor.x}%`,
-    '--aim-y2': `${target.anchor.y}%`,
+    '--aim-x1': `${shotLine.from.x}%`,
+    '--aim-y1': `${shotLine.from.y}%`,
+    '--aim-x2': `${shotLine.to.x}%`,
+    '--aim-y2': `${shotLine.to.y}%`,
   } as CSSProperties;
 
   const previewPathNodeIds = mode === 'move' && hoverNodeId
@@ -500,7 +538,10 @@ export function CinematicBoardDuelSlice() {
           filter: blur(0.15px);
         }
 
-        .board-duel:not(.authoring) .scene-mask,
+        .board-duel:not(.authoring) .scene-mask {
+          opacity: 0 !important;
+        }
+
         .board-duel:not(.authoring) .foreground-occluder {
           opacity: 0 !important;
         }
@@ -691,6 +732,7 @@ export function CinematicBoardDuelSlice() {
 
         .ct-hotspot {
           border-radius: 24px;
+          transform: translate(-50%, -50%);
         }
 
         .actor-token {
@@ -722,6 +764,12 @@ export function CinematicBoardDuelSlice() {
           border: 2px solid rgba(90, 213, 255, 0.88);
           background: rgba(24, 165, 255, 0.16);
           box-shadow: 0 0 26px rgba(74, 203, 255, 0.54), inset 0 0 18px rgba(74, 203, 255, 0.16);
+        }
+
+        .unit-token.team-T .actor-shadow {
+          border-color: rgba(255, 118, 84, 0.92);
+          background: rgba(255, 83, 58, 0.14);
+          box-shadow: 0 0 26px rgba(255, 91, 70, 0.48), inset 0 0 18px rgba(255, 91, 70, 0.14);
         }
 
         .unit-token .unit-chevron {
@@ -804,18 +852,19 @@ export function CinematicBoardDuelSlice() {
           z-index: 12;
         }
 
-        .target-token.down {
+        .actor-token.down {
           transform: translate(-50%, -32%) rotate(-24deg) skewX(-6deg) scale(calc(var(--unit-scale) * 0.9));
           opacity: 0.72;
           transition: transform 360ms cubic-bezier(.2,.85,.2,1), opacity 240ms ease;
         }
 
-        .target-token.down .actor-rifle {
+        .actor-token.down .actor-rifle {
           opacity: 0.35;
         }
 
         .target-hotspot {
           border-radius: 24px;
+          transform: translate(-50%, -50%);
         }
 
         .mode-shoot .target-hotspot {
@@ -840,9 +889,13 @@ export function CinematicBoardDuelSlice() {
           opacity: 0;
         }
 
+        .phase-contact .aim-svg,
         .mode-shoot .aim-svg,
         .phase-firing .aim-svg,
-        .phase-impact .aim-svg {
+        .phase-impact .aim-svg,
+        .phase-trading .aim-svg,
+        .phase-trade-impact .aim-svg,
+        .phase-down .aim-svg {
           opacity: 1;
         }
 
@@ -1217,7 +1270,7 @@ export function CinematicBoardDuelSlice() {
           <polyline points={pathPoints} />
         </svg>
         <svg className="aim-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={aimLineStyle}>
-          <line x1={ctNode.anchor.x} y1={ctNode.anchor.y} x2={target.anchor.x} y2={target.anchor.y} />
+          <line x1={shotLine.from.x} y1={shotLine.from.y} x2={shotLine.to.x} y2={shotLine.to.y} />
         </svg>
         <div className="tile-layer" aria-hidden={mode !== 'move'}>
           {runtimeBoard.nodes.map((node) => {
@@ -1252,38 +1305,63 @@ export function CinematicBoardDuelSlice() {
             );
           })}
         </div>
-        <div
-          className={`actor-token unit-token team-${selectedActor.team} sprite-${selectedActor.sprite.kind}`}
-          style={{
-            ...tokenStyle,
-            '--unit-scale': `${selectedActor.sprite.scale ?? 1}`,
-          } as CSSProperties}
-          data-testid="board-actor-token"
-          data-actor-id={selectedActor.id}
-          aria-hidden="true"
-        >
-          <span className="actor-shadow" />
-          <span className="unit-chevron" />
-          <span className="actor-body" />
-          <span className="actor-head" />
-          <span className="actor-rifle" />
-        </div>
-        <div
-          className={`actor-token target-token team-${target.team} sprite-${target.sprite.kind} ${phase === 'down' ? 'down' : ''}`}
-          style={{
-            '--unit-x': `${target.anchor.x}%`,
-            '--unit-y': `${target.anchor.y}%`,
-            '--unit-scale': `${target.sprite.scale ?? 1}`,
-          } as CSSProperties}
-          data-testid="board-target-token"
-          data-target-id={target.id}
-          aria-hidden="true"
-        >
-          <span className="actor-shadow" />
-          <span className="actor-body" />
-          <span className="actor-head" />
-          <span className="actor-rifle" />
-        </div>
+        {runtimeBoard.actors.map((actor) => {
+          const actorNode = actor.id === selectedActor.id
+            ? ctNode
+            : getBoardNode(runtimeBoard, actor.nodeId);
+          if (!actorNode) return null;
+          return (
+            <div
+              key={actor.id}
+              className={[
+                'actor-token',
+                actor.id === selectedActor.id ? 'unit-token' : 'support-token',
+                `team-${actor.team}`,
+                `sprite-${actor.sprite.kind}`,
+                downIds.includes(actor.id) ? 'down' : '',
+              ].filter(Boolean).join(' ')}
+              style={{
+                '--unit-x': `${actorNode.anchor.x}%`,
+                '--unit-y': `${actorNode.anchor.y}%`,
+                '--unit-scale': `${actor.sprite.scale ?? 1}`,
+              } as CSSProperties}
+              data-testid="board-actor-token"
+              data-actor-id={actor.id}
+              aria-hidden="true"
+            >
+              <span className="actor-shadow" />
+              {actor.id === selectedActor.id && <span className="unit-chevron" />}
+              <span className="actor-body" />
+              <span className="actor-head" />
+              <span className="actor-rifle" />
+            </div>
+          );
+        })}
+        {runtimeBoard.targets.map((candidate) => (
+          <div
+            key={candidate.id}
+            className={[
+              'actor-token',
+              'target-token',
+              `team-${candidate.team}`,
+              `sprite-${candidate.sprite.kind}`,
+              downIds.includes(candidate.id) ? 'down' : '',
+            ].filter(Boolean).join(' ')}
+            style={{
+              '--unit-x': `${candidate.anchor.x}%`,
+              '--unit-y': `${candidate.anchor.y}%`,
+              '--unit-scale': `${candidate.sprite.scale ?? 1}`,
+            } as CSSProperties}
+            data-testid="board-target-token"
+            data-target-id={candidate.id}
+            aria-hidden="true"
+          >
+            <span className="actor-shadow" />
+            <span className="actor-body" />
+            <span className="actor-head" />
+            <span className="actor-rifle" />
+          </div>
+        ))}
         {runtimeBoard.scene.foregroundOccluders.map((occluder) => (
           <div
             key={occluder.id}
@@ -1399,7 +1477,7 @@ export function CinematicBoardDuelSlice() {
           style={placementStyle(actorHotspot)}
           onClick={(event) => {
             event.stopPropagation();
-            if (!isBusy && isAlive) {
+            if (!isBusy && !isRoundComplete) {
               if (mode !== 'idle') {
                 pushEvent(createBoard2d5Event('invalid', 'Invalid actor command.', {
                   actorId: selectedActor.id,
@@ -1417,12 +1495,16 @@ export function CinematicBoardDuelSlice() {
           type="button"
           className="hotspot target-hotspot"
           data-testid="board-duel-target"
-          aria-label={mode === 'shoot' ? `Fire at ${target.label}, ${target.hitChance} percent` : target.label}
-          disabled={phase === 'down'}
+          aria-label={phase === 'contact' ? `Trade ${target.label}, ${target.hitChance} percent` : target.label}
+          disabled={isRoundComplete}
           style={placementStyle(target.hotspot)}
           onClick={(event) => {
             event.stopPropagation();
-            fireShot();
+            if (phase === 'contact') {
+              beginTrade();
+            } else {
+              fireShot();
+            }
           }}
         />
         <div
@@ -1481,11 +1563,11 @@ export function CinematicBoardDuelSlice() {
       )}
 
       <div className="actions" onClick={(event) => event.stopPropagation()}>
-        <button type="button" className="chip move-chip" data-testid="board-duel-move" disabled={!isAlive || isBusy} onClick={beginMove}>
-          Move peek
+        <button type="button" className="chip move-chip" data-testid="board-duel-move" disabled={phase !== 'ready' || isBusy} onClick={beginMove}>
+          Move contact
         </button>
-        <button type="button" className="chip shoot-chip" data-testid="board-duel-shoot" disabled={!isAlive || isBusy} onClick={beginShoot}>
-          Shoot 70%
+        <button type="button" className="chip shoot-chip" data-testid="board-duel-shoot" disabled={phase !== 'contact' || isBusy} onClick={beginTrade}>
+          Trade {target.hitChance}%
         </button>
         <button type="button" className="chip" data-testid="board-duel-reset" onClick={reset}>
           Reset

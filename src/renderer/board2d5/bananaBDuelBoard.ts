@@ -26,28 +26,51 @@ export const bananaBDuelBoardPackage: BoardPackage = {
   ],
   actors: [
     {
-      id: 'ct-anchor',
-      label: 'CT anchor',
+      id: 'ct-entry',
+      label: 'CT entry',
       team: 'CT',
       nodeId: 'ct-start',
-      sprite: { kind: 'ct-rifle', scale: 1.02, facing: 'right' },
+      sprite: { kind: 'ct-rifle', scale: 1.04, facing: 'right' },
       hotspot: {
         anchor: { x: 22.7, y: 72.4 },
         size: { width: 14.5, height: 22.5 },
       },
     },
+    {
+      id: 'ct-trader',
+      label: 'CT trade',
+      team: 'CT',
+      nodeId: 'short-1',
+      sprite: { kind: 'ct-rifle', scale: 0.92, facing: 'right' },
+      hotspot: {
+        anchor: { x: 30.1, y: 65.7 },
+        size: { width: 12.5, height: 19.5 },
+      },
+    },
   ],
   targets: [
     {
-      id: 't-entry',
-      label: 'T side entry',
+      id: 't-anchor',
+      label: 'T anchor',
       team: 'T',
       anchor: { x: 78.8, y: 31.5 },
-      hitChance: 70,
-      sprite: { kind: 't-rifle', scale: 1.04, facing: 'left' },
+      hitChance: 64,
+      sprite: { kind: 't-rifle', scale: 1.02, facing: 'left' },
       hotspot: {
-        anchor: { x: 80.1, y: 36.1 },
-        size: { width: 13.5, height: 21.2 },
+        anchor: { x: 78.8, y: 31.5 },
+        size: { width: 9.4, height: 14.4 },
+      },
+    },
+    {
+      id: 't-site',
+      label: 'T site support',
+      team: 'T',
+      anchor: { x: 69.8, y: 38.1 },
+      hitChance: 42,
+      sprite: { kind: 't-rifle', scale: 0.88, facing: 'left' },
+      hotspot: {
+        anchor: { x: 69.8, y: 38.1 },
+        size: { width: 9.5, height: 14.5 },
       },
     },
   ],
@@ -110,8 +133,8 @@ export const bananaBDuelBoardPackage: BoardPackage = {
     authoringBlocks: [],
   },
   initial: {
-    selectedActorId: 'ct-anchor',
-    targetId: 't-entry',
+    selectedActorId: 'ct-entry',
+    targetId: 't-anchor',
     moveRange: 3,
   },
 };

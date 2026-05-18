@@ -72,6 +72,10 @@ test('Banana/B 2.5D board package stays valid and connected', () => {
     'mask-baked-t-entry',
   ]);
   expect(bananaBDuelBoardPackage.scene.foregroundOccluders.length).toBeGreaterThanOrEqual(1);
+  expect(bananaBDuelBoardPackage.actors).toHaveLength(2);
+  expect(bananaBDuelBoardPackage.targets).toHaveLength(2);
+  expect(bananaBDuelBoardPackage.actors.map((actor) => actor.team)).toEqual(['CT', 'CT']);
+  expect(bananaBDuelBoardPackage.targets.map((target) => target.team)).toEqual(['T', 'T']);
   expect(bananaBDuelBoardPackage.actors[0]?.sprite.kind).toBe('ct-rifle');
   expect(bananaBDuelBoardPackage.targets[0]?.sprite.kind).toBe('t-rifle');
   expect(bananaBDuelBoardPackage.targets[0]?.hotspot.size.width).toBeGreaterThan(0);
@@ -873,11 +877,11 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
 
   await page.goto('/duel-2-5d');
   await expect(page.getByTestId('board-duel-package')).toHaveAttribute('data-board-id', 'banana-b-duel-v0');
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT entry ready');
   await expect(page.getByTestId('hud-root')).toHaveCount(0);
   await expect(page.getByTestId('board-author-panel')).toHaveCount(0);
-  await expect(page.getByTestId('board-actor-token')).toBeVisible();
-  await expect(page.getByTestId('board-target-token')).toBeVisible();
+  await expect(page.getByTestId('board-actor-token')).toHaveCount(2);
+  await expect(page.getByTestId('board-target-token')).toHaveCount(2);
   await expect(page.getByTestId('board-scene-mask')).toHaveCount(2);
   await expect(page.getByTestId('board-foreground-occluder')).toHaveCount(
     bananaBDuelBoardPackage.scene.foregroundOccluders.length
@@ -888,7 +892,7 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   ))).toEqual(['center', 'coffins', 'ct-start', 'logs', 'short-1', 'site-box', 'site-left', 'site-mid']);
 
   await page.getByTestId('board-duel-move').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Pick a blue floor tile.');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Pick a blue contact tile.');
   await expect(page.getByTestId('board-duel-latest-event')).toHaveText('move_preview');
   const startTokenBox = await page.locator('.unit-token').boundingBox();
   await page.getByTestId('board-duel-peek-tile').hover();
@@ -897,7 +901,9 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
     return points?.trim().split(/\s+/).length ?? 0;
   }).toBe(3);
   await page.getByTestId('board-duel-peek-tile').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Contact! Entry down.');
+  await expect(page.getByTestId('board-duel-latest-event')).toHaveText('contact');
+  await expect(page.locator('[data-testid="board-actor-token"][data-actor-id="ct-entry"].down')).toBeVisible();
   const movedTokenBox = await page.locator('.unit-token').boundingBox();
   expect(startTokenBox, 'unit token should be measurable before movement').not.toBeNull();
   expect(movedTokenBox, 'unit token should be measurable after movement').not.toBeNull();
@@ -910,19 +916,13 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   ).toBeGreaterThan(40);
 
   await page.getByTestId('board-duel-shoot').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Target lock: 70%');
-  await page.mouse.click(640, 560);
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Invalid command.');
-  await expect(page.getByTestId('board-duel-latest-event')).toHaveText('invalid');
-
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Target lock: 70%');
-  await page.getByTestId('board-duel-target').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('Entry down. B lane held.');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('Trade secured. Site pressure cracked.');
   await expect(page.getByTestId('board-duel-latest-event')).toHaveText('kill');
+  await expect(page.locator('[data-testid="board-target-token"][data-target-id="t-anchor"].down')).toBeVisible();
   await expect(page.getByTestId('board-duel-target')).toBeDisabled();
 
   await page.getByTestId('board-duel-reset').click();
-  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT anchor ready');
+  await expect(page.getByTestId('board-duel-feedback')).toContainText('CT entry ready');
   await expect(page.getByTestId('board-duel-target')).toBeEnabled();
 });
 
@@ -932,8 +932,8 @@ test('2.5D board authoring mode can place an editable cover block', async ({ pag
   await page.goto('/duel-2-5d?debug=1');
   await expect(page.getByTestId('board-author-panel')).toBeVisible();
   await expect(page.getByTestId('board-author-node-handle')).toHaveCount(8);
-  await expect(page.getByTestId('board-author-actor-handle')).toHaveCount(1);
-  await expect(page.getByTestId('board-author-target-handle')).toHaveCount(1);
+  await expect(page.getByTestId('board-author-actor-handle')).toHaveCount(2);
+  await expect(page.getByTestId('board-author-target-handle')).toHaveCount(2);
   await expect(page.getByTestId('board-author-mask-handle')).toHaveCount(2);
   await expect(page.getByTestId('board-author-occluder-handle')).toHaveCount(
     bananaBDuelBoardPackage.scene.foregroundOccluders.length

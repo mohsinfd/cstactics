@@ -169,6 +169,13 @@ threat, or utility overlays.
   baked-unit mask placements as data. The temporary CSS sprites/masks are a
   proof of separation, not final unit art; the next quality jump needs
   exported actor sprites or a rigged render pass.
+- Layered board contact lesson: the first 2v2 `/duel-2-5d` contact slice uses
+  temporary package-described CT/T CSS actors for entry, trader, anchor, and
+  site defender states. This is enough to prove selection, down state, and trade
+  feedback over the concept board, but it should not be mistaken for final unit
+  production. The next visual pass needs exported directional sprites or a
+  renderer-generated sprite sheet so movement, aim, casualty, and trade poses
+  are authored rather than CSS-token approximations.
 - Tile-graph overlay: `/duel-2-5d` now separates visual art from gameplay
   coordinates. The CT gameplay marker, move tiles, path line, and target frame
   are overlay layers calibrated to the concept board. Future unit art should

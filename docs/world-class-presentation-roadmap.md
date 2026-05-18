@@ -312,6 +312,14 @@ Progress:
   occluders. Dragging a handle updates the board runtime immediately and the
   export panel emits a package-shaped patch, which makes visual/layout tuning
   agent-safe enough to continue without hiding coordinates in CSS.
+- `/duel-2-5d` now has the first deterministic 2v2 contact/trade board slice
+  on the layered concept board. The current beat is intentionally small and
+  product-facing: CT entry moves from Banana into B-site contact, dies to the
+  held T anchor, the second CT gets a trade action, and the T anchor receives a
+  down marker. The slice was flipped to CT-side action because the locked
+  concept image already bakes blue figures on the lower/Banana side and orange
+  defenders on the upper/site side; fighting that baked composition made the
+  previous T-side test visually confusing.
 
 ### Milestone P5: Production Sound
 
@@ -365,9 +373,12 @@ Progress:
    moves toward `public/concepts/isometric-duel-target.png`.
 13. Browser-board slice in progress: typed layered scene data, separate actor
    sprites, mask/occluder placements, draggable node/actor/target/mask/occluder
-   handles, and query-gated cover placement/export authoring are implemented
-   for `/duel-2-5d`.
-14. Next browser-board slice: replace temporary CSS masks/occluders with real
-   exported image layers, then extend the debug authoring surface to edit
+   handles, query-gated cover placement/export authoring, and a 2v2
+   contact/trade beat are implemented for `/duel-2-5d`.
+14. Next browser-board slice: replace temporary CSS actors/masks/occluders with
+   real exported image layers, then extend the debug authoring surface to edit
    size/rotation, click zones, cover hints, foreground occlusion, and
    LOS/contact anchors.
+15. After the 2v2 slice passes human visual review, bridge the same event shape
+   to real sim/store contact events instead of expanding deterministic local
+   state further.

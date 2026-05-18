@@ -289,6 +289,11 @@ verbs that make those nouns matter.
   baked-unit masks, and foreground occluders, routes authoring pointer events
   ahead of gameplay hotspots, and exports a package-shaped JSON patch with
   nodes, actors, targets, masks, occluders, and temporary authoring blocks.
+- The `/duel-2-5d` bridge has moved from a 1v1 proof into a deterministic 2v2
+  contact/trade slice aligned to the approved concept image composition: two CT
+  actors start on the lower Banana side, two T defenders hold the upper B-site
+  side, CT entry moves into contact, the entry is marked down, the second CT can
+  take a 64% trade shot, and the T anchor receives the casualty marker.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -377,8 +382,8 @@ verbs that make those nouns matter.
   browser prototype and should build from the `/duel-2-5d` concept-image bridge
   toward `public/concepts/isometric-duel-target.png`.
 - A full board-package-to-real-sim bridge. The current `board2d5` slice defines
-  the adapter seam and event vocabulary, but the local 1v1 scenario remains
-  deterministic until the presentation quality is approved.
+  the adapter seam and event vocabulary, but the local 2v2 contact scenario
+  remains deterministic until the presentation quality is approved.
 - Production decomposition of the concept art into clean exported floor, wall,
   foreground occlusion, unit, and VFX image layers. The current mask/occluder
   placements prove the data shape and debug edit loop, but they are not final
@@ -408,10 +413,10 @@ the browser route and turn the `/duel-2-5d` concept-image bridge into a real
 playable presentation slice that approaches
 `public/concepts/isometric-duel-target.png`.
 
-The immediate browser route is now: expand the `board2d5` package/runtime from
-the 1v1 proof into a higher-fidelity Banana/B contact slice, then connect it to
-real sim/store events only after the layered presentation is visually accepted.
-The next board2d5 milestone should replace the temporary CSS masks with real
-artist/renderer-exported layers and grow the debug authoring overlay into a
-small package editor for resizing/rotating cover, occlusion, click zones, unit
-anchors, and LOS/contact anchors.
+The immediate browser route is now: harden the deterministic `board2d5` 2v2
+contact/trade slice until the presentation is visibly worth keeping, then
+connect it to real sim/store events only after the layered presentation is
+accepted. The next board2d5 milestone should replace the temporary CSS actors
+and masks with real artist/renderer-exported layers and grow the debug authoring
+overlay into a small package editor for resizing/rotating cover, occlusion,
+click zones, unit anchors, and LOS/contact anchors.

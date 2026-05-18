@@ -113,9 +113,11 @@ export type Board2d5EventType =
   | 'select'
   | 'move_preview'
   | 'move_committed'
+  | 'contact'
   | 'aim_started'
   | 'invalid'
   | 'shot_fired'
+  | 'trade_started'
   | 'hit'
   | 'kill'
   | 'reset';
