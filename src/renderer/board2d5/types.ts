@@ -46,6 +46,8 @@ export type BoardAuthoringBlock = BoardRectPlacement & {
 
 export type BoardActorSprite = {
   kind: 'ct-rifle' | 't-rifle';
+  imageUrl: string;
+  downImageUrl?: string;
   scale?: number;
   facing?: 'left' | 'right';
 };

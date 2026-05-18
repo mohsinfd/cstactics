@@ -1,5 +1,17 @@
 import type { BoardPackage } from './types';
 
+const CT_RIFLE_SPRITE = {
+  kind: 'ct-rifle',
+  imageUrl: '/board2d5/units/ct-rifle.svg',
+  downImageUrl: '/board2d5/units/ct-rifle-down.svg',
+} as const;
+
+const T_RIFLE_SPRITE = {
+  kind: 't-rifle',
+  imageUrl: '/board2d5/units/t-rifle.svg',
+  downImageUrl: '/board2d5/units/t-rifle-down.svg',
+} as const;
+
 export const bananaBDuelBoardPackage: BoardPackage = {
   id: 'banana-b-duel-v0',
   name: 'Banana B Contact Board V0',
@@ -30,7 +42,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       label: 'CT entry',
       team: 'CT',
       nodeId: 'ct-start',
-      sprite: { kind: 'ct-rifle', scale: 1.04, facing: 'right' },
+      sprite: { ...CT_RIFLE_SPRITE, scale: 1.08, facing: 'right' },
       hotspot: {
         anchor: { x: 22.7, y: 72.4 },
         size: { width: 14.5, height: 22.5 },
@@ -41,7 +53,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       label: 'CT trade',
       team: 'CT',
       nodeId: 'short-1',
-      sprite: { kind: 'ct-rifle', scale: 0.92, facing: 'right' },
+      sprite: { ...CT_RIFLE_SPRITE, scale: 0.96, facing: 'right' },
       hotspot: {
         anchor: { x: 30.1, y: 65.7 },
         size: { width: 12.5, height: 19.5 },
@@ -55,7 +67,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       team: 'T',
       anchor: { x: 78.8, y: 31.5 },
       hitChance: 64,
-      sprite: { kind: 't-rifle', scale: 1.02, facing: 'left' },
+      sprite: { ...T_RIFLE_SPRITE, scale: 1.06, facing: 'left' },
       hotspot: {
         anchor: { x: 78.8, y: 31.5 },
         size: { width: 9.4, height: 14.4 },
@@ -67,7 +79,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       team: 'T',
       anchor: { x: 69.8, y: 38.1 },
       hitChance: 42,
-      sprite: { kind: 't-rifle', scale: 0.88, facing: 'left' },
+      sprite: { ...T_RIFLE_SPRITE, scale: 0.92, facing: 'left' },
       hotspot: {
         anchor: { x: 69.8, y: 38.1 },
         size: { width: 9.5, height: 14.5 },

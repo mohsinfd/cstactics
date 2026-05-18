@@ -92,6 +92,7 @@ export function validateBoardPackage(board: BoardPackage): string[] {
     actorIds.add(actor.id);
     if (!nodeIds.has(actor.nodeId)) errors.push(`actor ${actor.id} references missing node ${actor.nodeId}`);
     if (!actor.sprite) errors.push(`actor ${actor.id} requires a sprite`);
+    if (actor.sprite && !actor.sprite.imageUrl) errors.push(`actor ${actor.id} sprite imageUrl is required`);
     if (actor.hotspot) validatePlacement(errors, `actor ${actor.id} hotspot`, actor.hotspot);
   }
 
@@ -103,6 +104,7 @@ export function validateBoardPackage(board: BoardPackage): string[] {
       errors.push(`target ${target.id} hitChance must be within 0..100`);
     }
     if (!target.sprite) errors.push(`target ${target.id} requires a sprite`);
+    if (target.sprite && !target.sprite.imageUrl) errors.push(`target ${target.id} sprite imageUrl is required`);
     validatePlacement(errors, `target ${target.id} hotspot`, target.hotspot);
   }
 

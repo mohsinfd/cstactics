@@ -298,6 +298,11 @@ verbs that make those nouns matter.
   guard: normal viewports stay centered, but very wide host viewports anchor the
   board into the visible left pane so the image does not appear cut off with a
   large blank area on the left.
+- The `/duel-2-5d` runtime actors now render from board-package sprite asset
+  URLs instead of CSS-constructed body/head/rifle spans. The first assets live
+  under `public/board2d5/units/` with separate CT/T rifle and down-state SVGs,
+  keeping the scenario deterministic while moving the route toward an exported
+  layered asset pipeline.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller

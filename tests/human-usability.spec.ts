@@ -78,6 +78,10 @@ test('Banana/B 2.5D board package stays valid and connected', () => {
   expect(bananaBDuelBoardPackage.targets.map((target) => target.team)).toEqual(['T', 'T']);
   expect(bananaBDuelBoardPackage.actors[0]?.sprite.kind).toBe('ct-rifle');
   expect(bananaBDuelBoardPackage.targets[0]?.sprite.kind).toBe('t-rifle');
+  expect(bananaBDuelBoardPackage.actors[0]?.sprite.imageUrl).toBe('/board2d5/units/ct-rifle.svg');
+  expect(bananaBDuelBoardPackage.actors[0]?.sprite.downImageUrl).toBe('/board2d5/units/ct-rifle-down.svg');
+  expect(bananaBDuelBoardPackage.targets[0]?.sprite.imageUrl).toBe('/board2d5/units/t-rifle.svg');
+  expect(bananaBDuelBoardPackage.targets[0]?.sprite.downImageUrl).toBe('/board2d5/units/t-rifle-down.svg');
   expect(bananaBDuelBoardPackage.targets[0]?.hotspot.size.width).toBeGreaterThan(0);
   expect(getReachableNodeIds(
     bananaBDuelBoardPackage,
@@ -882,6 +886,12 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   await expect(page.getByTestId('board-author-panel')).toHaveCount(0);
   await expect(page.getByTestId('board-actor-token')).toHaveCount(2);
   await expect(page.getByTestId('board-target-token')).toHaveCount(2);
+  await expect(page.locator('[data-testid="board-actor-token"] .actor-image')).toHaveCount(2);
+  await expect(page.locator('[data-testid="board-target-token"] .actor-image')).toHaveCount(2);
+  await expect(page.locator('[data-testid="board-actor-token"][data-actor-id="ct-entry"] .actor-image')).toHaveAttribute(
+    'src',
+    /\/board2d5\/units\/ct-rifle\.svg$/
+  );
   await expect(page.getByTestId('board-scene-mask')).toHaveCount(2);
   await expect(page.getByTestId('board-foreground-occluder')).toHaveCount(
     bananaBDuelBoardPackage.scene.foregroundOccluders.length
@@ -904,6 +914,10 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   await expect(page.getByTestId('board-duel-feedback')).toContainText('Contact! Entry down.');
   await expect(page.getByTestId('board-duel-latest-event')).toHaveText('contact');
   await expect(page.locator('[data-testid="board-actor-token"][data-actor-id="ct-entry"].down')).toBeVisible();
+  await expect(page.locator('[data-testid="board-actor-token"][data-actor-id="ct-entry"] .actor-image')).toHaveAttribute(
+    'src',
+    /\/board2d5\/units\/ct-rifle-down\.svg$/
+  );
   const movedTokenBox = await page.locator('.unit-token').boundingBox();
   expect(startTokenBox, 'unit token should be measurable before movement').not.toBeNull();
   expect(movedTokenBox, 'unit token should be measurable after movement').not.toBeNull();
@@ -919,6 +933,10 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
   await expect(page.getByTestId('board-duel-feedback')).toContainText('Trade secured. Site pressure cracked.');
   await expect(page.getByTestId('board-duel-latest-event')).toHaveText('kill');
   await expect(page.locator('[data-testid="board-target-token"][data-target-id="t-anchor"].down')).toBeVisible();
+  await expect(page.locator('[data-testid="board-target-token"][data-target-id="t-anchor"] .actor-image')).toHaveAttribute(
+    'src',
+    /\/board2d5\/units\/t-rifle-down\.svg$/
+  );
   await expect(page.getByTestId('board-duel-target')).toBeDisabled();
 
   await page.getByTestId('board-duel-reset').click();

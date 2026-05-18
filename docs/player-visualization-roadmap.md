@@ -176,6 +176,11 @@ threat, or utility overlays.
   production. The next visual pass needs exported directional sprites or a
   renderer-generated sprite sheet so movement, aim, casualty, and trade poses
   are authored rather than CSS-token approximations.
+- Layered board sprite pass: `/duel-2-5d` now resolves actor visuals through
+  sprite image URLs in the board package, with first CT/T rifle and down-state
+  SVG assets in `public/board2d5/units/`. This removes the visible CSS
+  body/head/rifle construction from the board route and creates the seam for
+  replacing these placeholders with real rendered sprite-sheet frames later.
 - Tile-graph overlay: `/duel-2-5d` now separates visual art from gameplay
   coordinates. The CT gameplay marker, move tiles, path line, and target frame
   are overlay layers calibrated to the concept board. Future unit art should

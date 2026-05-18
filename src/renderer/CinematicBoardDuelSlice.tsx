@@ -13,6 +13,7 @@ import { BOARD_DUEL_TIMING, boardDuelPhaseCopy, createBoard2d5Event, type BoardD
 import { findBoardPath, getBoardNode, getReachableNodeIds } from './board2d5/graph';
 import type {
   Board2d5Event,
+  BoardActorSprite,
   BoardAuthoringBlock,
   BoardNode,
   BoardPackage,
@@ -63,6 +64,10 @@ function makeAuthoringBlock(anchor: BoardPoint, index: number): BoardAuthoringBl
     rotation: -25,
     skewX: -7,
   };
+}
+
+function getSpriteImageUrl(sprite: BoardActorSprite, isDown: boolean): string {
+  return isDown && sprite.downImageUrl ? sprite.downImageUrl : sprite.imageUrl;
 }
 
 type AuthorTool = 'inspect' | 'cover';
@@ -750,7 +755,7 @@ export function CinematicBoardDuelSlice() {
           left: var(--unit-x);
           top: var(--unit-y);
           z-index: 12;
-          width: 9.2%;
+          width: 11.2%;
           aspect-ratio: 1;
           transform: translate(-50%, -66%) scale(var(--unit-scale));
           transform-origin: 50% 76%;
@@ -758,10 +763,26 @@ export function CinematicBoardDuelSlice() {
           transition: left 520ms cubic-bezier(.2,.84,.2,1), top 520ms cubic-bezier(.2,.84,.2,1);
         }
 
+        .actor-image {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          filter: drop-shadow(0 9px 12px rgba(0,0,0,0.42));
+          transform-origin: 50% 74%;
+          user-select: none;
+        }
+
+        .actor-token.facing-left .actor-image {
+          transform: scaleX(-1);
+        }
+
         .actor-shadow {
           position: absolute;
           left: 50%;
-          bottom: 2%;
+          bottom: 1%;
           width: 76%;
           height: 35%;
           transform: translateX(-50%) rotate(-25deg) skewX(-7deg);
@@ -785,13 +806,14 @@ export function CinematicBoardDuelSlice() {
         .unit-token .unit-chevron {
           position: absolute;
           left: 50%;
-          top: 5%;
+          top: 2%;
           width: 28%;
           height: 18%;
           transform: translateX(-50%);
           clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
           background: rgba(116, 221, 255, 0.9);
           filter: drop-shadow(0 0 10px rgba(94, 206, 255, 0.8));
+          z-index: 3;
         }
 
         .actor-body {
@@ -868,8 +890,8 @@ export function CinematicBoardDuelSlice() {
           transition: transform 360ms cubic-bezier(.2,.85,.2,1), opacity 240ms ease;
         }
 
-        .actor-token.down .actor-rifle {
-          opacity: 0.35;
+        .actor-token.down .actor-image {
+          filter: drop-shadow(0 4px 8px rgba(0,0,0,0.38)) saturate(0.88);
         }
 
         .target-hotspot {
@@ -1336,6 +1358,7 @@ export function CinematicBoardDuelSlice() {
             ? ctNode
             : getBoardNode(runtimeBoard, actor.nodeId);
           if (!actorNode) return null;
+          const isDown = downIds.includes(actor.id);
           return (
             <div
               key={actor.id}
@@ -1344,7 +1367,8 @@ export function CinematicBoardDuelSlice() {
                 actor.id === selectedActor.id ? 'unit-token' : 'support-token',
                 `team-${actor.team}`,
                 `sprite-${actor.sprite.kind}`,
-                downIds.includes(actor.id) ? 'down' : '',
+                `facing-${actor.sprite.facing ?? 'right'}`,
+                isDown ? 'down' : '',
               ].filter(Boolean).join(' ')}
               style={{
                 '--unit-x': `${actorNode.anchor.x}%`,
@@ -1357,37 +1381,47 @@ export function CinematicBoardDuelSlice() {
             >
               <span className="actor-shadow" />
               {actor.id === selectedActor.id && <span className="unit-chevron" />}
-              <span className="actor-body" />
-              <span className="actor-head" />
-              <span className="actor-rifle" />
+              <img
+                className="actor-image"
+                src={getSpriteImageUrl(actor.sprite, isDown)}
+                alt=""
+                draggable={false}
+              />
             </div>
           );
         })}
-        {runtimeBoard.targets.map((candidate) => (
-          <div
-            key={candidate.id}
-            className={[
-              'actor-token',
-              'target-token',
-              `team-${candidate.team}`,
-              `sprite-${candidate.sprite.kind}`,
-              downIds.includes(candidate.id) ? 'down' : '',
-            ].filter(Boolean).join(' ')}
-            style={{
-              '--unit-x': `${candidate.anchor.x}%`,
-              '--unit-y': `${candidate.anchor.y}%`,
-              '--unit-scale': `${candidate.sprite.scale ?? 1}`,
-            } as CSSProperties}
-            data-testid="board-target-token"
-            data-target-id={candidate.id}
-            aria-hidden="true"
-          >
-            <span className="actor-shadow" />
-            <span className="actor-body" />
-            <span className="actor-head" />
-            <span className="actor-rifle" />
-          </div>
-        ))}
+        {runtimeBoard.targets.map((candidate) => {
+          const isDown = downIds.includes(candidate.id);
+          return (
+            <div
+              key={candidate.id}
+              className={[
+                'actor-token',
+                'target-token',
+                `team-${candidate.team}`,
+                `sprite-${candidate.sprite.kind}`,
+                `facing-${candidate.sprite.facing ?? 'right'}`,
+                isDown ? 'down' : '',
+              ].filter(Boolean).join(' ')}
+              style={{
+                '--unit-x': `${candidate.anchor.x}%`,
+                '--unit-y': `${candidate.anchor.y}%`,
+                '--unit-scale': `${candidate.sprite.scale ?? 1}`,
+              } as CSSProperties}
+              data-testid="board-target-token"
+              data-target-id={candidate.id}
+              aria-hidden="true"
+            >
+              <span className="actor-shadow" />
+              <img
+                className="actor-image"
+                src={getSpriteImageUrl(candidate.sprite, isDown)}
+                alt=""
+                draggable={false}
+              />
+            </div>
+          );
+        })}
         {runtimeBoard.scene.foregroundOccluders.map((occluder) => (
           <div
             key={occluder.id}
