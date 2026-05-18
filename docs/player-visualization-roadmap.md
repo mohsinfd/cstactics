@@ -163,6 +163,12 @@ threat, or utility overlays.
   isometric camera, thick walls, grounded cover, readable CT/T silhouettes,
   selection base, target frame, and shot lane. Do not regress back to a flat
   skewed 2D board.
+- Layered board actor lesson: `/duel-2-5d` must not depend on baked characters
+  inside the concept image. The current browser slice now renders CT/T as
+  separate package-described actor sprites over the board layer and keeps
+  baked-unit mask placements as data. The temporary CSS sprites/masks are a
+  proof of separation, not final unit art; the next quality jump needs
+  exported actor sprites or a rigged render pass.
 - Tile-graph overlay: `/duel-2-5d` now separates visual art from gameplay
   coordinates. The CT gameplay marker, move tiles, path line, and target frame
   are overlay layers calibrated to the concept board. Future unit art should

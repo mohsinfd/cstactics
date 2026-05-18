@@ -1,120 +1,200 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { bananaBDuelBoardPackage } from './board2d5/bananaBDuelBoard';
+import { BOARD_DUEL_TIMING, boardDuelPhaseCopy, createBoard2d5Event, type BoardDuelMode, type BoardDuelPhase } from './board2d5/duelScenario';
+import { findBoardPath, getBoardNode, getReachableNodeIds } from './board2d5/graph';
+import type { Board2d5Event, BoardAuthoringBlock, BoardNode, BoardPoint, BoardRectPlacement } from './board2d5/types';
+import { assertValidBoardPackage } from './board2d5/validateBoardPackage';
 
-type BoardPhase = 'ready' | 'move-select' | 'moving' | 'aiming' | 'invalid' | 'firing' | 'impact' | 'down';
-type BoardMode = 'idle' | 'move' | 'shoot';
-type TileId = 'ct-start' | 'short-1' | 'logs' | 'center' | 'site-left' | 'site-mid' | 'site-box' | 'coffins';
+assertValidBoardPackage(bananaBDuelBoardPackage);
 
-type BoardTile = {
-  id: TileId;
-  label: string;
-  x: number;
-  y: number;
-  cover?: 'full' | 'half';
-};
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
 
-const boardTiles: BoardTile[] = [
-  { id: 'ct-start', label: 'CT start', x: 22.7, y: 72.4, cover: 'half' },
-  { id: 'short-1', label: 'Short lane', x: 30.1, y: 65.7 },
-  { id: 'logs', label: 'Logs peek', x: 38.6, y: 58.7, cover: 'full' },
-  { id: 'center', label: 'Center site lane', x: 47.6, y: 52.1 },
-  { id: 'site-left', label: 'Left site', x: 56.4, y: 47.5 },
-  { id: 'site-mid', label: 'B mark', x: 64.5, y: 43.6 },
-  { id: 'site-box', label: 'Site box', x: 70.3, y: 38.8, cover: 'half' },
-  { id: 'coffins', label: 'Coffins edge', x: 77.3, y: 34.6, cover: 'full' },
-];
+function getBoardPointFromPointer(frame: HTMLDivElement, clientX: number, clientY: number): BoardPoint {
+  const rect = frame.getBoundingClientRect();
+  return {
+    x: clampPercent(((clientX - rect.left) / rect.width) * 100),
+    y: clampPercent(((clientY - rect.top) / rect.height) * 100),
+  };
+}
 
-const targetPoint = { x: 78.8, y: 31.5 };
-const tileById = new Map(boardTiles.map((tile) => [tile.id, tile]));
+function placementStyle(placement: BoardRectPlacement): CSSProperties {
+  return {
+    left: `${placement.anchor.x}%`,
+    top: `${placement.anchor.y}%`,
+    width: `${placement.size.width}%`,
+    height: `${placement.size.height}%`,
+    '--placement-rotate': `${placement.rotation ?? 0}deg`,
+    '--placement-skew': `${placement.skewX ?? 0}deg`,
+  } as CSSProperties;
+}
 
-const phaseCopy: Record<BoardPhase, string> = {
-  ready: 'CT anchor ready. Choose move or shot.',
-  'move-select': 'Pick a blue floor tile.',
-  moving: 'CT shifts into the angle.',
-  aiming: 'Target lock: 70%. Click the T.',
-  invalid: 'Invalid command.',
-  firing: 'AWP fired through B lane.',
-  impact: 'Hit confirmed.',
-  down: 'Entry down. B lane held.',
-};
+function makeAuthoringBlock(anchor: BoardPoint, index: number): BoardAuthoringBlock {
+  return {
+    id: `author-cover-${index}`,
+    label: `Placed cover ${index}`,
+    kind: 'cover',
+    anchor,
+    size: { width: 7.8, height: 4.8 },
+    rotation: -25,
+    skewX: -7,
+  };
+}
 
 export function CinematicBoardDuelSlice() {
-  const [phase, setPhase] = useState<BoardPhase>('ready');
-  const [mode, setMode] = useState<BoardMode>('idle');
-  const [ctTileId, setCtTileId] = useState<TileId>('ct-start');
-  const [pathTileIds, setPathTileIds] = useState<TileId[]>(['ct-start']);
+  const board = bananaBDuelBoardPackage;
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const isAuthoring = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('debug') || params.has('author');
+  }, []);
+  const selectedActor = board.actors.find((actor) => actor.id === board.initial.selectedActorId) ?? board.actors[0];
+  const target = board.targets.find((candidate) => candidate.id === board.initial.targetId) ?? board.targets[0];
+  const initialNodeId = selectedActor.nodeId;
+  const [phase, setPhase] = useState<BoardDuelPhase>('ready');
+  const [mode, setMode] = useState<BoardDuelMode>('idle');
+  const [ctNodeId, setCtNodeId] = useState(initialNodeId);
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  const [pathNodeIds, setPathNodeIds] = useState<string[]>([initialNodeId]);
+  const [authorTool, setAuthorTool] = useState<'inspect' | 'cover'>('inspect');
+  const [authoringBlocks, setAuthoringBlocks] = useState<BoardAuthoringBlock[]>(board.scene.authoringBlocks);
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [events, setEvents] = useState<Board2d5Event[]>([
+    createBoard2d5Event('select', 'CT anchor selected.', {
+      actorId: selectedActor.id,
+      toNodeId: initialNodeId,
+    }),
+  ]);
 
   const isBusy = phase === 'moving' || phase === 'firing' || phase === 'impact';
   const isAlive = phase !== 'down';
-  const ctTile = tileById.get(ctTileId) ?? boardTiles[0];
-  const selectedTileIndex = boardTiles.findIndex((tile) => tile.id === ctTileId);
+  const ctNode = getBoardNode(board, ctNodeId) ?? board.nodes[0];
+  const reachableNodeIds = useMemo(
+    () => getReachableNodeIds(board, ctNodeId, board.initial.moveRange),
+    [board, ctNodeId]
+  );
+
+  const pushEvent = useCallback((event: Board2d5Event) => {
+    setEvents((current) => [event, ...current].slice(0, 10));
+  }, []);
 
   useEffect(() => {
     if (phase === 'moving') {
       const timer = window.setTimeout(() => {
         setPhase('ready');
         setMode('idle');
-      }, 520);
+      }, BOARD_DUEL_TIMING.moveMs);
       return () => window.clearTimeout(timer);
     }
 
     if (phase === 'firing') {
-      const timer = window.setTimeout(() => setPhase('impact'), 300);
+      const timer = window.setTimeout(() => {
+        pushEvent(createBoard2d5Event('hit', 'Hit confirmed.', {
+          actorId: selectedActor.id,
+          targetId: target.id,
+          toNodeId: ctNodeId,
+        }));
+        setPhase('impact');
+      }, BOARD_DUEL_TIMING.shotToImpactMs);
       return () => window.clearTimeout(timer);
     }
 
     if (phase === 'impact') {
       const timer = window.setTimeout(() => {
+        pushEvent(createBoard2d5Event('kill', 'Entry down.', {
+          actorId: selectedActor.id,
+          targetId: target.id,
+          toNodeId: ctNodeId,
+        }));
         setPhase('down');
         setMode('idle');
-      }, 680);
+      }, BOARD_DUEL_TIMING.casualtySettleMs);
       return () => window.clearTimeout(timer);
     }
 
     if (phase === 'invalid') {
-      const timer = window.setTimeout(() => setPhase(mode === 'shoot' ? 'aiming' : mode === 'move' ? 'move-select' : 'ready'), 680);
+      const timer = window.setTimeout(
+        () => setPhase(mode === 'shoot' ? 'aiming' : mode === 'move' ? 'move-select' : 'ready'),
+        BOARD_DUEL_TIMING.invalidMs
+      );
       return () => window.clearTimeout(timer);
     }
 
     return undefined;
-  }, [mode, phase]);
+  }, [ctNodeId, mode, phase, pushEvent, selectedActor.id, target.id]);
 
   const className = useMemo(() => [
     'board-duel',
     `phase-${phase}`,
     `mode-${mode}`,
-    ctTileId !== 'ct-start' ? 'ct-advanced' : '',
-  ].filter(Boolean).join(' '), [ctTileId, mode, phase]);
+    ctNodeId !== initialNodeId ? 'ct-advanced' : '',
+    isAuthoring ? 'authoring' : '',
+  ].filter(Boolean).join(' '), [ctNodeId, initialNodeId, isAuthoring, mode, phase]);
 
   const beginMove = () => {
     if (!isAlive || isBusy) return;
+    pushEvent(createBoard2d5Event('move_preview', 'Movement preview opened.', {
+      actorId: selectedActor.id,
+      fromNodeId: ctNodeId,
+    }));
     setMode('move');
     setPhase('move-select');
   };
 
-  const commitMove = (tileId: TileId) => {
-    if (!isAlive || isBusy || mode !== 'move') {
+  const commitMove = (nodeId: string) => {
+    if (!isAlive || isBusy || mode !== 'move' || !reachableNodeIds.includes(nodeId)) {
+      pushEvent(createBoard2d5Event('invalid', 'Invalid move command.', {
+        actorId: selectedActor.id,
+        fromNodeId: ctNodeId,
+        toNodeId: nodeId,
+      }));
       setPhase('invalid');
       return;
     }
 
-    const destinationIndex = boardTiles.findIndex((tile) => tile.id === tileId);
-    const currentIndex = Math.max(0, selectedTileIndex);
-    if (destinationIndex < 0 || destinationIndex === currentIndex) {
+    const path = findBoardPath(board, ctNodeId, nodeId);
+    if (path.length <= 1) {
+      pushEvent(createBoard2d5Event('invalid', 'Invalid move command.', {
+        actorId: selectedActor.id,
+        fromNodeId: ctNodeId,
+        toNodeId: nodeId,
+      }));
       setPhase('invalid');
       return;
     }
 
-    const [start, end] = currentIndex < destinationIndex
-      ? [currentIndex, destinationIndex]
-      : [destinationIndex, currentIndex];
-    const route = boardTiles.slice(start, end + 1).map((tile) => tile.id);
-    setPathTileIds(currentIndex < destinationIndex ? route : route.reverse());
-    setCtTileId(tileId);
+    pushEvent(createBoard2d5Event('move_committed', 'Move committed.', {
+      actorId: selectedActor.id,
+      fromNodeId: ctNodeId,
+      toNodeId: nodeId,
+      pathNodeIds: path,
+    }));
+    setPathNodeIds(path);
+    setHoverNodeId(null);
+    setCtNodeId(nodeId);
     setPhase('moving');
   };
 
   const beginShoot = () => {
     if (!isAlive || isBusy) return;
+    window.setTimeout(() => {
+      pushEvent(createBoard2d5Event('aim_started', 'Target lock acquired.', {
+        actorId: selectedActor.id,
+        targetId: target.id,
+        fromNodeId: ctNodeId,
+      }));
+    }, BOARD_DUEL_TIMING.aimRaiseMs);
     setMode('shoot');
     setPhase('aiming');
   };
@@ -123,56 +203,118 @@ export function CinematicBoardDuelSlice() {
     if (!isAlive || isBusy) return;
 
     if (mode !== 'shoot') {
+      pushEvent(createBoard2d5Event('invalid', 'Invalid shot command.', {
+        actorId: selectedActor.id,
+        targetId: target.id,
+        fromNodeId: ctNodeId,
+      }));
       setPhase('invalid');
       return;
     }
 
+    pushEvent(createBoard2d5Event('shot_fired', 'Shot fired.', {
+      actorId: selectedActor.id,
+      targetId: target.id,
+      fromNodeId: ctNodeId,
+    }));
     setPhase('firing');
   };
 
   const rejectBoardClick = () => {
     if (!isAlive || isBusy || mode === 'idle') return;
+    pushEvent(createBoard2d5Event('invalid', 'Invalid board command.', {
+      actorId: selectedActor.id,
+      targetId: mode === 'shoot' ? target.id : undefined,
+      fromNodeId: ctNodeId,
+    }));
     setPhase('invalid');
   };
 
   const reset = () => {
+    pushEvent(createBoard2d5Event('reset', 'Board reset.', {
+      actorId: selectedActor.id,
+      targetId: target.id,
+      toNodeId: initialNodeId,
+    }));
     setPhase('ready');
     setMode('idle');
-    setCtTileId('ct-start');
-    setPathTileIds(['ct-start']);
+    setCtNodeId(initialNodeId);
+    setHoverNodeId(null);
+    setPathNodeIds([initialNodeId]);
   };
 
-  const handleTileClick = (tileId: TileId) => {
+  const handleNodeClick = (nodeId: string) => {
     if (mode === 'move') {
-      commitMove(tileId);
+      commitMove(nodeId);
       return;
     }
 
     if (mode === 'shoot') {
+      pushEvent(createBoard2d5Event('invalid', 'Invalid shot target.', {
+        actorId: selectedActor.id,
+        targetId: target.id,
+        fromNodeId: ctNodeId,
+        toNodeId: nodeId,
+      }));
       setPhase('invalid');
     }
   };
 
   const tokenStyle = {
-    '--unit-x': `${ctTile.x}%`,
-    '--unit-y': `${ctTile.y}%`,
+    '--unit-x': `${ctNode.anchor.x}%`,
+    '--unit-y': `${ctNode.anchor.y}%`,
   } as CSSProperties;
 
   const aimLineStyle = {
-    '--aim-x1': `${ctTile.x}%`,
-    '--aim-y1': `${ctTile.y}%`,
-    '--aim-x2': `${targetPoint.x}%`,
-    '--aim-y2': `${targetPoint.y}%`,
+    '--aim-x1': `${ctNode.anchor.x}%`,
+    '--aim-y1': `${ctNode.anchor.y}%`,
+    '--aim-x2': `${target.anchor.x}%`,
+    '--aim-y2': `${target.anchor.y}%`,
   } as CSSProperties;
 
-  const pathPoints = pathTileIds
-    .map((tileId) => tileById.get(tileId))
-    .filter((tile): tile is BoardTile => Boolean(tile))
-    .map((tile) => `${tile.x},${tile.y}`)
+  const previewPathNodeIds = mode === 'move' && hoverNodeId
+    ? findBoardPath(board, ctNodeId, hoverNodeId)
+    : pathNodeIds;
+  const pathPoints = previewPathNodeIds
+    .map((nodeId) => getBoardNode(board, nodeId))
+    .filter((node): node is BoardNode => Boolean(node))
+    .map((node) => `${node.anchor.x},${node.anchor.y}`)
     .join(' ');
+  const boardLayer = board.scene.layers.find((layer) => layer.role === 'base') ?? board.scene.layers[0];
+  const actorHotspot = selectedActor.hotspot
+    ? { ...selectedActor.hotspot, anchor: ctNode.anchor }
+    : { anchor: ctNode.anchor, size: { width: 12, height: 18 } };
+  const authoringExport = useMemo(() => JSON.stringify({ authoringBlocks }, null, 2), [authoringBlocks]);
+
+  const handleFrameClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!isAuthoring || authorTool !== 'cover' || !frameRef.current) return;
+    if ((event.target as HTMLElement).closest('button')) return;
+    event.stopPropagation();
+    const anchor = getBoardPointFromPointer(frameRef.current, event.clientX, event.clientY);
+    setAuthoringBlocks((current) => [...current, makeAuthoringBlock(anchor, current.length + 1)]);
+  };
+
+  const handleFramePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isAuthoring || !draggingBlockId || !frameRef.current) return;
+    event.stopPropagation();
+    const anchor = getBoardPointFromPointer(frameRef.current, event.clientX, event.clientY);
+    setAuthoringBlocks((current) => current.map((block) => (
+      block.id === draggingBlockId ? { ...block, anchor } : block
+    )));
+  };
+
+  const stopDraggingBlock = () => {
+    setDraggingBlockId(null);
+  };
 
   return (
-    <main className={className} aria-label="Playable isometric one versus one board slice" onClick={rejectBoardClick}>
+    <main
+      className={className}
+      aria-label="Playable isometric one versus one board slice"
+      data-testid="board-duel-package"
+      data-board-id={board.id}
+      onClick={rejectBoardClick}
+    >
       <style>{`
         :root { color-scheme: dark; }
         * { box-sizing: border-box; }
@@ -193,10 +335,10 @@ export function CinematicBoardDuelSlice() {
           position: absolute;
           left: 50%;
           top: 50%;
-          width: min(100vw, 129.82vh);
-          height: min(100vh, 77.03vw);
+          width: min(100vw, calc(100vh * var(--board-aspect)));
+          aspect-ratio: var(--board-aspect);
           transform: translate(-50%, -50%);
-          background-image: url('/concepts/isometric-duel-target.png');
+          background-image: var(--board-image);
           background-size: contain;
           background-position: center;
           background-repeat: no-repeat;
@@ -218,6 +360,75 @@ export function CinematicBoardDuelSlice() {
 
         .phase-invalid .concept-frame {
           animation: invalid-shake 190ms ease 2;
+        }
+
+        .scene-image-layer {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+          background-size: contain;
+          background-position: center;
+          background-repeat: no-repeat;
+          pointer-events: none;
+        }
+
+        .scene-mask,
+        .foreground-occluder,
+        .authoring-block {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%) rotate(var(--placement-rotate)) skewX(var(--placement-skew));
+          transform-origin: center;
+          pointer-events: none;
+        }
+
+        .scene-mask {
+          z-index: 5;
+          border-radius: 18px;
+          filter: blur(0.15px);
+        }
+
+        .board-duel:not(.authoring) .scene-mask,
+        .board-duel:not(.authoring) .foreground-occluder {
+          opacity: 0 !important;
+        }
+
+        .scene-mask.tone-floor-clay {
+          background:
+            radial-gradient(circle at 40% 35%, rgba(185, 203, 211, 0.78), transparent 42%),
+            linear-gradient(145deg, rgba(67, 93, 111, 0.8), rgba(27, 42, 56, 0.86));
+          box-shadow: inset 0 0 18px rgba(208, 228, 236, 0.12), 0 10px 24px rgba(0,0,0,0.14);
+        }
+
+        .scene-mask.tone-wall-clay {
+          background:
+            linear-gradient(180deg, rgba(214, 196, 147, 0.72), rgba(98, 86, 66, 0.7)),
+            radial-gradient(circle at 42% 32%, rgba(240, 223, 174, 0.35), transparent 50%);
+          box-shadow: inset 0 0 18px rgba(255, 232, 174, 0.13), 0 10px 20px rgba(0,0,0,0.16);
+        }
+
+        .scene-mask.tone-shadow-clay {
+          background: rgba(17, 25, 33, 0.54);
+          box-shadow: 0 10px 20px rgba(0,0,0,0.18);
+        }
+
+        .foreground-occluder {
+          z-index: 14;
+          border-radius: 7px;
+          box-shadow: 0 12px 24px rgba(0,0,0,0.16), inset 0 1px rgba(255,255,255,0.12);
+        }
+
+        .foreground-occluder.tone-cover-block {
+          background: linear-gradient(180deg, rgba(196, 171, 105, 0.92), rgba(97, 78, 43, 0.86));
+        }
+
+        .foreground-occluder.tone-front-wall {
+          background: linear-gradient(180deg, rgba(196, 208, 213, 0.9), rgba(80, 101, 113, 0.86));
+        }
+
+        .foreground-occluder.tone-shadow {
+          background: rgba(18, 26, 34, 0.58);
         }
 
         .feedback {
@@ -316,9 +527,9 @@ export function CinematicBoardDuelSlice() {
           position: absolute;
           left: var(--tile-x);
           top: var(--tile-y);
-          width: 7.2%;
-          aspect-ratio: 1 / 0.58;
-          transform: translate(-50%, -50%) rotate(-25deg) skewX(-7deg);
+          width: var(--tile-width);
+          aspect-ratio: 1 / var(--tile-aspect);
+          transform: translate(-50%, -50%) rotate(var(--tile-rotate)) skewX(var(--tile-skew));
           transform-origin: center;
           border: 1px solid rgba(105, 211, 255, 0);
           border-radius: 8px;
@@ -332,15 +543,26 @@ export function CinematicBoardDuelSlice() {
         .mode-move .iso-tile {
           cursor: pointer;
           opacity: 1;
-          border-color: rgba(89, 213, 255, 0.62);
-          background: rgba(65, 195, 255, 0.09);
-          box-shadow: 0 0 30px rgba(89, 213, 255, 0.38);
+          border-color: rgba(89, 213, 255, 0.7);
+          background: rgba(65, 195, 255, 0.12);
+          box-shadow: 0 0 34px rgba(89, 213, 255, 0.45), inset 0 0 22px rgba(89, 213, 255, 0.08);
           animation: tile-pulse 1.05s ease infinite;
         }
 
         .mode-move .iso-tile.current {
           border-color: rgba(255, 255, 255, 0.64);
           background: rgba(255, 255, 255, 0.08);
+        }
+
+        .mode-move .iso-tile.unreachable {
+          pointer-events: none;
+          opacity: 0;
+        }
+
+        .mode-move .iso-tile.hovered {
+          border-color: rgba(255, 235, 157, 0.92);
+          background: rgba(255, 220, 120, 0.18);
+          box-shadow: 0 0 42px rgba(255, 220, 120, 0.5), inset 0 0 20px rgba(255, 220, 120, 0.12);
         }
 
         .mode-move .iso-tile.cover-full::after,
@@ -357,58 +579,131 @@ export function CinematicBoardDuelSlice() {
         }
 
         .ct-hotspot {
-          left: 16.5%;
-          top: 56%;
-          width: 18%;
-          height: 29%;
           border-radius: 24px;
         }
 
-        .unit-token {
+        .actor-token {
           position: absolute;
           left: var(--unit-x);
           top: var(--unit-y);
           z-index: 12;
           width: 9.2%;
           aspect-ratio: 1;
-          transform: translate(-50%, -65%);
+          transform: translate(-50%, -66%) scale(var(--unit-scale));
+          transform-origin: 50% 76%;
           pointer-events: none;
           transition: left 520ms cubic-bezier(.2,.84,.2,1), top 520ms cubic-bezier(.2,.84,.2,1);
         }
 
-        .unit-token::before {
-          content: "";
+        .actor-shadow {
           position: absolute;
           left: 50%;
-          bottom: 4%;
+          bottom: 2%;
           width: 76%;
           height: 35%;
           transform: translateX(-50%) rotate(-25deg) skewX(-7deg);
           border-radius: 12px;
+          background: rgba(4, 8, 14, 0.44);
+          filter: blur(0.6px);
+        }
+
+        .unit-token .actor-shadow {
           border: 2px solid rgba(90, 213, 255, 0.88);
-          background: rgba(24, 165, 255, 0.1);
+          background: rgba(24, 165, 255, 0.16);
           box-shadow: 0 0 26px rgba(74, 203, 255, 0.54), inset 0 0 18px rgba(74, 203, 255, 0.16);
         }
 
-        .unit-token::after {
-          content: "";
+        .unit-token .unit-chevron {
           position: absolute;
           left: 50%;
-          bottom: 31%;
-          width: 30%;
-          height: 42%;
+          top: 5%;
+          width: 28%;
+          height: 18%;
+          transform: translateX(-50%);
+          clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+          background: rgba(116, 221, 255, 0.9);
+          filter: drop-shadow(0 0 10px rgba(94, 206, 255, 0.8));
+        }
+
+        .actor-body {
+          position: absolute;
+          left: 50%;
+          bottom: 27%;
+          width: 31%;
+          height: 46%;
           transform: translateX(-50%);
           border-radius: 999px;
-          background: linear-gradient(180deg, rgba(132, 225, 255, 0.92), rgba(12, 74, 132, 0.94));
           box-shadow: 0 10px 18px rgba(0,0,0,0.44), 0 0 20px rgba(94, 206, 255, 0.45);
           clip-path: polygon(50% 0, 78% 18%, 88% 58%, 70% 100%, 30% 100%, 12% 58%, 22% 18%);
         }
 
+        .actor-head {
+          position: absolute;
+          left: 50%;
+          bottom: 66%;
+          width: 22%;
+          height: 22%;
+          transform: translateX(-50%);
+          border-radius: 50%;
+          box-shadow: 0 8px 12px rgba(0,0,0,0.32);
+        }
+
+        .actor-rifle {
+          position: absolute;
+          left: 54%;
+          bottom: 53%;
+          width: 54%;
+          height: 6%;
+          border-radius: 999px;
+          transform-origin: 0 50%;
+          transform: rotate(-8deg);
+          box-shadow: 0 6px 8px rgba(0,0,0,0.4);
+        }
+
+        .team-CT .actor-body {
+          background: linear-gradient(180deg, rgba(132, 225, 255, 0.96), rgba(12, 74, 132, 0.96));
+        }
+
+        .team-CT .actor-head {
+          background: linear-gradient(180deg, #d5f2ff, #5e9cc2);
+        }
+
+        .team-CT .actor-rifle {
+          background: linear-gradient(90deg, #06101b, #111c26 72%, #010306);
+        }
+
+        .team-T .actor-body {
+          background: linear-gradient(180deg, #ffb05f, #9b3a24 55%, #3a0d0a);
+          box-shadow: 0 10px 18px rgba(0,0,0,0.46), 0 0 20px rgba(255, 96, 72, 0.42);
+        }
+
+        .team-T .actor-head {
+          background: linear-gradient(180deg, #ffd69a, #a56636);
+        }
+
+        .team-T .actor-rifle {
+          left: auto;
+          right: 52%;
+          transform-origin: 100% 50%;
+          transform: rotate(8deg);
+          background: linear-gradient(90deg, #090302, #1f0b08 28%, #060101);
+        }
+
+        .target-token {
+          z-index: 12;
+        }
+
+        .target-token.down {
+          transform: translate(-50%, -32%) rotate(-24deg) skewX(-6deg) scale(calc(var(--unit-scale) * 0.9));
+          opacity: 0.72;
+          transition: transform 360ms cubic-bezier(.2,.85,.2,1), opacity 240ms ease;
+        }
+
+        .target-token.down .actor-rifle {
+          opacity: 0.35;
+        }
+
         .target-hotspot {
-          left: 73.4%;
-          top: 25.5%;
-          width: 13.5%;
-          height: 21.2%;
           border-radius: 24px;
         }
 
@@ -466,8 +761,159 @@ export function CinematicBoardDuelSlice() {
 
         .phase-down .target-hotspot {
           pointer-events: none;
-          outline: 0;
-          box-shadow: none;
+          outline: 2px solid rgba(255, 108, 82, 0.92);
+          background: rgba(62, 7, 8, 0.28);
+          box-shadow: 0 0 34px rgba(255, 91, 70, 0.42), inset 0 0 28px rgba(255, 91, 70, 0.18);
+        }
+
+        .phase-down .target-hotspot::before,
+        .phase-down .target-hotspot::after {
+          content: "";
+          position: absolute;
+          left: 12%;
+          top: 48%;
+          width: 76%;
+          height: 4px;
+          border-radius: 999px;
+          background: rgba(255, 228, 196, 0.92);
+          box-shadow: 0 0 16px rgba(255, 88, 58, 0.92);
+        }
+
+        .phase-down .target-hotspot::before {
+          transform: rotate(34deg);
+        }
+
+        .phase-down .target-hotspot::after {
+          transform: rotate(-34deg);
+        }
+
+        .phase-down .casualty-marker {
+          opacity: 1;
+          transform: translate(-50%, -50%) rotate(-25deg) skewX(-7deg) scale(1);
+        }
+
+        .casualty-marker {
+          position: absolute;
+          left: var(--target-x);
+          top: var(--target-y);
+          z-index: 11;
+          width: 7.2%;
+          aspect-ratio: 1 / 0.52;
+          border-radius: 12px;
+          border: 2px solid rgba(255, 120, 92, 0.7);
+          background: rgba(124, 22, 20, 0.36);
+          box-shadow: 0 0 24px rgba(255, 82, 64, 0.45), inset 0 0 18px rgba(255, 82, 64, 0.18);
+          opacity: 0;
+          transform: translate(-50%, -50%) rotate(-25deg) skewX(-7deg) scale(0.82);
+          transition: opacity 220ms ease, transform 260ms ease;
+          pointer-events: none;
+        }
+
+        .event-probe {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+
+        .authoring .concept-frame {
+          cursor: crosshair;
+        }
+
+        .authoring .concept-frame::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 30;
+          pointer-events: none;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.16) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.16) 1px, transparent 1px);
+          background-size: 10% 10%;
+          opacity: 0.22;
+        }
+
+        .authoring-block {
+          z-index: 31;
+          border: 1px solid rgba(255, 227, 139, 0.92);
+          border-radius: 8px;
+          background: rgba(255, 215, 118, 0.28);
+          box-shadow: 0 0 24px rgba(255, 215, 118, 0.32), inset 0 0 12px rgba(255, 255, 255, 0.16);
+          pointer-events: auto;
+          cursor: grab;
+        }
+
+        .authoring-block:active {
+          cursor: grabbing;
+        }
+
+        .authoring-panel {
+          position: absolute;
+          right: 18px;
+          top: 18px;
+          z-index: 40;
+          width: min(360px, calc(100vw - 36px));
+          max-height: calc(100vh - 36px);
+          overflow: auto;
+          padding: 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          background: rgba(5, 12, 18, 0.84);
+          box-shadow: 0 24px 60px rgba(0,0,0,0.42), inset 0 1px rgba(255,255,255,0.1);
+          backdrop-filter: blur(12px);
+        }
+
+        .authoring-title {
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+        }
+
+        .authoring-buttons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .authoring-buttons button {
+          min-height: 32px;
+          padding: 0 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(184, 219, 255, 0.22);
+          background: rgba(15, 28, 42, 0.88);
+          color: #f5fbff;
+          font: 850 11px/1 Inter, Segoe UI, system-ui, sans-serif;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .authoring-buttons button.active {
+          border-color: rgba(255, 218, 132, 0.82);
+          background: rgba(93, 58, 13, 0.88);
+        }
+
+        .authoring-panel p {
+          margin: 10px 0;
+          color: rgba(245,251,255,0.72);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+
+        .authoring-panel output {
+          display: block;
+          white-space: pre-wrap;
+          max-height: 220px;
+          overflow: auto;
+          padding: 10px;
+          border-radius: 8px;
+          background: rgba(0,0,0,0.32);
+          color: #d6f6ff;
+          font: 11px/1.35 Consolas, "SFMono-Regular", monospace;
         }
 
         .actions {
@@ -541,44 +987,165 @@ export function CinematicBoardDuelSlice() {
         }
       `}</style>
 
-      <div className="feedback" data-testid="board-duel-feedback">{phaseCopy[phase]}</div>
-      <div className="concept-frame">
+      <div className="feedback" data-testid="board-duel-feedback">{boardDuelPhaseCopy[phase]}</div>
+      <output className="event-probe" data-testid="board-duel-latest-event">{events[0]?.type ?? 'none'}</output>
+      <div
+        ref={frameRef}
+        className="concept-frame"
+        style={{
+          '--board-image': `url(${boardLayer.imageUrl})`,
+          '--board-aspect': `${board.aspectRatio}`,
+          '--tile-width': `${board.scene.projection.tileWidth}%`,
+          '--tile-aspect': `${board.scene.projection.tileAspect}`,
+          '--tile-rotate': `${board.scene.projection.rotate}deg`,
+          '--tile-skew': `${board.scene.projection.skewX}deg`,
+        } as CSSProperties}
+        onClick={handleFrameClick}
+        onPointerMove={handleFramePointerMove}
+        onPointerUp={stopDraggingBlock}
+        onPointerCancel={stopDraggingBlock}
+      >
+        {board.scene.layers.filter((layer) => layer.role !== 'base').map((layer) => (
+          <div
+            key={layer.id}
+            className={`scene-image-layer layer-${layer.role}`}
+            data-layer-id={layer.id}
+            style={{
+              backgroundImage: `url(${layer.imageUrl})`,
+              opacity: layer.opacity ?? 1,
+            }}
+            aria-hidden="true"
+          />
+        ))}
+        {board.scene.bakedUnitMasks.map((mask) => (
+          <div
+            key={mask.id}
+            className={`scene-mask tone-${mask.tone}`}
+            data-testid="board-scene-mask"
+            data-mask-id={mask.id}
+            style={placementStyle(mask)}
+            aria-hidden="true"
+          />
+        ))}
         <svg className="tile-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <polyline points={pathPoints} />
         </svg>
         <svg className="aim-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={aimLineStyle}>
-          <line x1={ctTile.x} y1={ctTile.y} x2={targetPoint.x} y2={targetPoint.y} />
+          <line x1={ctNode.anchor.x} y1={ctNode.anchor.y} x2={target.anchor.x} y2={target.anchor.y} />
         </svg>
         <div className="tile-layer" aria-hidden={mode !== 'move'}>
-          {boardTiles.map((tile) => (
+          {board.nodes.map((node) => {
+            const reachable = reachableNodeIds.includes(node.id);
+            return (
             <button
-              key={tile.id}
+              key={node.id}
               type="button"
               className={[
                 'hotspot',
                 'iso-tile',
-                tile.id === ctTileId ? 'current' : '',
-                tile.cover ? `cover-${tile.cover}` : '',
+                node.id === ctNodeId ? 'current' : '',
+                mode === 'move' && !reachable && node.id !== ctNodeId ? 'unreachable' : '',
+                hoverNodeId === node.id ? 'hovered' : '',
+                node.cover ? `cover-${node.cover}` : '',
               ].filter(Boolean).join(' ')}
-              style={{ '--tile-x': `${tile.x}%`, '--tile-y': `${tile.y}%` } as CSSProperties}
-              data-testid={tile.id === 'logs' ? 'board-duel-peek-tile' : undefined}
-              aria-label={tile.label}
+              style={{ '--tile-x': `${node.anchor.x}%`, '--tile-y': `${node.anchor.y}%` } as CSSProperties}
+              data-testid={node.id === 'logs' ? 'board-duel-peek-tile' : 'board-duel-node'}
+              data-node-id={node.id}
+              aria-label={node.label}
+              onMouseEnter={() => {
+                if (mode === 'move' && reachable) setHoverNodeId(node.id);
+              }}
+              onMouseLeave={() => {
+                if (hoverNodeId === node.id) setHoverNodeId(null);
+              }}
               onClick={(event) => {
                 event.stopPropagation();
-                handleTileClick(tile.id);
+                handleNodeClick(node.id);
               }}
             />
-          ))}
+            );
+          })}
         </div>
-        <div className="unit-token" style={tokenStyle} aria-hidden="true" />
+        <div
+          className={`actor-token unit-token team-${selectedActor.team} sprite-${selectedActor.sprite.kind}`}
+          style={{
+            ...tokenStyle,
+            '--unit-scale': `${selectedActor.sprite.scale ?? 1}`,
+          } as CSSProperties}
+          data-testid="board-actor-token"
+          data-actor-id={selectedActor.id}
+          aria-hidden="true"
+        >
+          <span className="actor-shadow" />
+          <span className="unit-chevron" />
+          <span className="actor-body" />
+          <span className="actor-head" />
+          <span className="actor-rifle" />
+        </div>
+        <div
+          className={`actor-token target-token team-${target.team} sprite-${target.sprite.kind} ${phase === 'down' ? 'down' : ''}`}
+          style={{
+            '--unit-x': `${target.anchor.x}%`,
+            '--unit-y': `${target.anchor.y}%`,
+            '--unit-scale': `${target.sprite.scale ?? 1}`,
+          } as CSSProperties}
+          data-testid="board-target-token"
+          data-target-id={target.id}
+          aria-hidden="true"
+        >
+          <span className="actor-shadow" />
+          <span className="actor-body" />
+          <span className="actor-head" />
+          <span className="actor-rifle" />
+        </div>
+        {board.scene.foregroundOccluders.map((occluder) => (
+          <div
+            key={occluder.id}
+            className={`foreground-occluder tone-${occluder.tone}`}
+            data-testid="board-foreground-occluder"
+            data-occluder-id={occluder.id}
+            style={{
+              ...placementStyle(occluder),
+              opacity: occluder.opacity ?? 1,
+            }}
+            aria-hidden="true"
+          />
+        ))}
+        {authoringBlocks.map((block) => (
+          <button
+            key={block.id}
+            type="button"
+            className={`authoring-block block-${block.kind}`}
+            data-testid="board-author-block"
+            data-block-id={block.id}
+            style={placementStyle(block)}
+            aria-label={block.label}
+            onPointerDown={(event) => {
+              if (!isAuthoring) return;
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setDraggingBlockId(block.id);
+            }}
+            onClick={(event) => event.stopPropagation()}
+          />
+        ))}
         <button
           type="button"
           className="hotspot ct-hotspot"
           data-testid="board-duel-ct"
           aria-label="Counter-terrorist anchor"
+          style={placementStyle(actorHotspot)}
           onClick={(event) => {
             event.stopPropagation();
             if (!isBusy && isAlive) {
+              if (mode !== 'idle') {
+                pushEvent(createBoard2d5Event('invalid', 'Invalid actor command.', {
+                  actorId: selectedActor.id,
+                  fromNodeId: ctNodeId,
+                }));
+                setPhase('invalid');
+                return;
+              }
               setMode('idle');
               setPhase('ready');
             }
@@ -588,15 +1155,53 @@ export function CinematicBoardDuelSlice() {
           type="button"
           className="hotspot target-hotspot"
           data-testid="board-duel-target"
-          aria-label={mode === 'shoot' ? 'Fire at T side entry, 70 percent' : 'T side entry'}
+          aria-label={mode === 'shoot' ? `Fire at ${target.label}, ${target.hitChance} percent` : target.label}
           disabled={phase === 'down'}
+          style={placementStyle(target.hotspot)}
           onClick={(event) => {
             event.stopPropagation();
             fireShot();
           }}
         />
+        <div
+          className="casualty-marker"
+          style={{ '--target-x': `${target.anchor.x}%`, '--target-y': `${target.anchor.y}%` } as CSSProperties}
+          aria-hidden="true"
+        />
         <div className="shot-flash" />
       </div>
+
+      {isAuthoring && (
+        <aside className="authoring-panel" data-testid="board-author-panel" onClick={(event) => event.stopPropagation()}>
+          <div className="authoring-title">Board authoring</div>
+          <div className="authoring-buttons">
+            <button
+              type="button"
+              className={authorTool === 'inspect' ? 'active' : ''}
+              onClick={() => setAuthorTool('inspect')}
+            >
+              Inspect
+            </button>
+            <button
+              type="button"
+              className={authorTool === 'cover' ? 'active' : ''}
+              data-testid="board-author-place-cover"
+              onClick={() => setAuthorTool('cover')}
+            >
+              Place cover
+            </button>
+            <button
+              type="button"
+              data-testid="board-author-clear"
+              onClick={() => setAuthoringBlocks([])}
+            >
+              Clear
+            </button>
+          </div>
+          <p>Click the board to place a cover block. Drag placed blocks to tune anchors.</p>
+          <output data-testid="board-author-export">{authoringExport}</output>
+        </aside>
+      )}
 
       <div className="actions" onClick={(event) => event.stopPropagation()}>
         <button type="button" className="chip move-chip" data-testid="board-duel-move" disabled={!isAlive || isBusy} onClick={beginMove}>

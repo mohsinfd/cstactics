@@ -293,6 +293,20 @@ Progress:
 - S&box product verdict landed on May 17, 2026: killed as the main visual
   client. It works mechanically, but the screenshot is not a meaningful visual
   jump over the existing browser prototype.
+- First layered browser-board runtime seam landed for `/duel-2-5d`: the concept
+  image is now driven by a typed `board2d5` package with graph nodes, edges,
+  actor/target anchors, cover hints, validation, reachability/path helpers, and
+  a small event vocabulary for select, preview, move, aim, invalid, shot, hit,
+  kill, and reset. This is the chosen agent-safe path toward the offline
+  compiled 2.5D board pipeline.
+- First layered/authorable board correction landed after the baked-image
+  critique: `/duel-2-5d` now separates runtime CT/T actors from the board layer,
+  moves hotspots and sprite metadata into the board package, defines explicit
+  baked-unit masks and foreground occluders, and adds `/duel-2-5d?debug=1` as a
+  tiny authoring surface where placed cover blocks can be created, dragged, and
+  exported as board-package coordinates. This is still not final art; it is the
+  missing production affordance that lets future agents tune placement data
+  instead of editing JSX by eye.
 
 ### Milestone P5: Production Sound
 
@@ -344,3 +358,10 @@ Progress:
    reopens it. The next visual task is the browser presentation rebuild:
    convert the `/duel-2-5d` concept-image bridge into a playable slice that
    moves toward `public/concepts/isometric-duel-target.png`.
+13. Browser-board slice in progress: typed layered scene data, separate actor
+   sprites, mask/occluder placements, and query-gated cover placement/export
+   authoring are implemented for `/duel-2-5d`.
+14. Next browser-board slice: replace temporary CSS masks/occluders with real
+   exported image layers, then extend the debug authoring surface to edit
+   click zones, unit anchors, cover hints, foreground occlusion, and LOS/contact
+   anchors.

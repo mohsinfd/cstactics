@@ -1,0 +1,117 @@
+import type { BoardPackage } from './types';
+
+export const bananaBDuelBoardPackage: BoardPackage = {
+  id: 'banana-b-duel-v0',
+  name: 'Banana B Contact Board V0',
+  imageUrl: '/concepts/isometric-duel-target.png',
+  aspectRatio: 998 / 768,
+  nodes: [
+    { id: 'ct-start', label: 'CT start', anchor: { x: 22.7, y: 72.4 }, cover: 'half' },
+    { id: 'short-1', label: 'Short lane', anchor: { x: 30.1, y: 65.7 } },
+    { id: 'logs', label: 'Logs peek', anchor: { x: 38.6, y: 58.7 }, cover: 'full' },
+    { id: 'center', label: 'Center site lane', anchor: { x: 47.6, y: 52.1 } },
+    { id: 'site-left', label: 'Left site', anchor: { x: 56.4, y: 47.5 } },
+    { id: 'site-mid', label: 'B mark', anchor: { x: 64.5, y: 43.6 } },
+    { id: 'site-box', label: 'Site box', anchor: { x: 70.3, y: 38.8 }, cover: 'half' },
+    { id: 'coffins', label: 'Coffins edge', anchor: { x: 77.3, y: 34.6 }, cover: 'full' },
+  ],
+  edges: [
+    { from: 'ct-start', to: 'short-1' },
+    { from: 'short-1', to: 'logs' },
+    { from: 'logs', to: 'center' },
+    { from: 'center', to: 'site-left' },
+    { from: 'site-left', to: 'site-mid' },
+    { from: 'site-mid', to: 'site-box' },
+    { from: 'site-box', to: 'coffins' },
+  ],
+  actors: [
+    {
+      id: 'ct-anchor',
+      label: 'CT anchor',
+      team: 'CT',
+      nodeId: 'ct-start',
+      sprite: { kind: 'ct-rifle', scale: 1.02, facing: 'right' },
+      hotspot: {
+        anchor: { x: 22.7, y: 72.4 },
+        size: { width: 14.5, height: 22.5 },
+      },
+    },
+  ],
+  targets: [
+    {
+      id: 't-entry',
+      label: 'T side entry',
+      team: 'T',
+      anchor: { x: 78.8, y: 31.5 },
+      hitChance: 70,
+      sprite: { kind: 't-rifle', scale: 1.04, facing: 'left' },
+      hotspot: {
+        anchor: { x: 80.1, y: 36.1 },
+        size: { width: 13.5, height: 21.2 },
+      },
+    },
+  ],
+  scene: {
+    projection: {
+      tileWidth: 7.2,
+      tileAspect: 0.58,
+      rotate: -25,
+      skewX: -7,
+    },
+    layers: [
+      {
+        id: 'painted-board-base',
+        role: 'base',
+        imageUrl: '/concepts/isometric-duel-target.png',
+      },
+    ],
+    bakedUnitMasks: [
+      {
+        id: 'mask-baked-ct-start',
+        label: 'Paint out baked CT miniature',
+        anchor: { x: 22.6, y: 71.4 },
+        size: { width: 12.4, height: 18.6 },
+        rotation: -24,
+        skewX: -7,
+        tone: 'floor-clay',
+      },
+      {
+        id: 'mask-baked-t-entry',
+        label: 'Paint out baked T miniature',
+        anchor: { x: 79.5, y: 33.6 },
+        size: { width: 13.1, height: 17.4 },
+        rotation: -16,
+        skewX: -5,
+        tone: 'wall-clay',
+      },
+    ],
+    foregroundOccluders: [
+      {
+        id: 'logs-front-lip',
+        label: 'Logs foreground cover lip',
+        anchor: { x: 39.5, y: 58.8 },
+        size: { width: 14.3, height: 3.4 },
+        rotation: -25,
+        skewX: -7,
+        tone: 'cover-block',
+        opacity: 0.84,
+      },
+      {
+        id: 'target-wall-lip',
+        label: 'Target-side foreground wall lip',
+        anchor: { x: 74.8, y: 37.6 },
+        size: { width: 11.2, height: 3.1 },
+        rotation: -24,
+        skewX: -6,
+        tone: 'front-wall',
+        opacity: 0.72,
+      },
+    ],
+    authoringBlocks: [],
+  },
+  initial: {
+    selectedActorId: 'ct-anchor',
+    targetId: 't-entry',
+    moveRange: 3,
+  },
+};

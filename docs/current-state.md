@@ -267,6 +267,23 @@ verbs that make those nouns matter.
   overlay, path line, and a movable CT gameplay marker. This proves the hybrid
   direction: keep the painted board texture, but drive movement/targeting from
   a separate tile layer.
+- `/duel-2-5d` now has the first `board2d5` runtime seam: the eight-node
+  concept board is defined as a typed board package with graph edges, cover
+  hints, actor/target anchors, hit chance, move range, validation, graph
+  pathing, and a small presentation event stream. The route still uses the
+  concept image as the visual layer, but no longer keeps core tile/target data
+  hardcoded inside the React component.
+- The 2.5D browser proof now has stronger package-driven feedback: reachable
+  tiles are derived from graph range, hover previews the path, movement commits
+  through a board event, wrong clicks emit an invalid event, shooting emits
+  shot/hit/kill events, and the baked target receives an obvious down marker.
+- The `/duel-2-5d` bridge now has a first real layered-board/authoring pass:
+  the board package owns scene projection, image layers, baked-unit mask
+  placements, foreground occluder placements, actor/target sprite metadata, and
+  target/actor hotspots. The normal route renders separate CT/T runtime actors
+  over the concept board instead of relying only on baked characters, while
+  `/duel-2-5d?debug=1` exposes a query-gated authoring overlay that can place
+  draggable cover blocks on the board and export their package coordinates.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -354,6 +371,13 @@ verbs that make those nouns matter.
   S&box failed to produce enough visual lift. The active path returns to the
   browser prototype and should build from the `/duel-2-5d` concept-image bridge
   toward `public/concepts/isometric-duel-target.png`.
+- A full board-package-to-real-sim bridge. The current `board2d5` slice defines
+  the adapter seam and event vocabulary, but the local 1v1 scenario remains
+  deterministic until the presentation quality is approved.
+- Production decomposition of the concept art into clean exported floor, wall,
+  foreground occlusion, unit, and VFX image layers. The current mask/occluder
+  placements prove the data shape and debug edit loop, but they are not final
+  art-quality masks.
 
 ## Immediate Focus
 
@@ -378,3 +402,11 @@ touched for reference/data validation. The next visual milestone should stay in
 the browser route and turn the `/duel-2-5d` concept-image bridge into a real
 playable presentation slice that approaches
 `public/concepts/isometric-duel-target.png`.
+
+The immediate browser route is now: expand the `board2d5` package/runtime from
+the 1v1 proof into a higher-fidelity Banana/B contact slice, then connect it to
+real sim/store events only after the layered presentation is visually accepted.
+The next board2d5 milestone should replace the temporary CSS masks with real
+artist/renderer-exported layers and grow the debug authoring overlay into a
+small package editor for cover, occlusion, click zones, unit anchors, and LOS
+anchors.
