@@ -18,14 +18,14 @@ export const bananaBDuelBoardPackage: BoardPackage = {
   imageUrl: '/board2d5/scenes/banana-b-clay-v1/base.png',
   aspectRatio: 998 / 768,
   nodes: [
-    { id: 'ct-start', label: 'CT start', anchor: { x: 22.7, y: 72.4 }, cover: 'half' },
-    { id: 'short-1', label: 'Short lane', anchor: { x: 30.1, y: 65.7 } },
-    { id: 'logs', label: 'Logs peek', anchor: { x: 38.6, y: 58.7 }, cover: 'full' },
-    { id: 'center', label: 'Center site lane', anchor: { x: 47.6, y: 52.1 } },
-    { id: 'site-left', label: 'Left site', anchor: { x: 56.4, y: 47.5 } },
-    { id: 'site-mid', label: 'B mark', anchor: { x: 64.5, y: 43.6 } },
-    { id: 'site-box', label: 'Site box', anchor: { x: 70.3, y: 38.8 }, cover: 'half' },
-    { id: 'coffins', label: 'Coffins edge', anchor: { x: 77.3, y: 34.6 }, cover: 'full' },
+    { id: 'ct-start', label: 'CT start', anchor: { x: 23.4, y: 73.0 }, cover: 'half' },
+    { id: 'short-1', label: 'Short lane', anchor: { x: 31.0, y: 67.2 } },
+    { id: 'logs', label: 'Logs peek', anchor: { x: 38.7, y: 62.0 }, cover: 'full' },
+    { id: 'center', label: 'Center site lane', anchor: { x: 47.6, y: 56.1 } },
+    { id: 'site-left', label: 'Left site', anchor: { x: 56.3, y: 51.4 } },
+    { id: 'site-mid', label: 'B mark', anchor: { x: 64.2, y: 47.1 } },
+    { id: 'site-box', label: 'Site box', anchor: { x: 70.7, y: 42.9 }, cover: 'half' },
+    { id: 'coffins', label: 'Coffins edge', anchor: { x: 76.8, y: 39.2 }, cover: 'full' },
   ],
   edges: [
     { from: 'ct-start', to: 'short-1' },
@@ -44,7 +44,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       nodeId: 'ct-start',
       sprite: { ...CT_RIFLE_SPRITE, scale: 1.08, facing: 'right' },
       hotspot: {
-        anchor: { x: 22.7, y: 72.4 },
+        anchor: { x: 23.4, y: 73.0 },
         size: { width: 14.5, height: 22.5 },
       },
     },
@@ -55,7 +55,7 @@ export const bananaBDuelBoardPackage: BoardPackage = {
       nodeId: 'short-1',
       sprite: { ...CT_RIFLE_SPRITE, scale: 0.96, facing: 'right' },
       hotspot: {
-        anchor: { x: 30.1, y: 65.7 },
+        anchor: { x: 31.0, y: 67.2 },
         size: { width: 12.5, height: 19.5 },
       },
     },
@@ -88,10 +88,10 @@ export const bananaBDuelBoardPackage: BoardPackage = {
   ],
   scene: {
     projection: {
-      tileWidth: 7.2,
+      tileWidth: 5.2,
       tileAspect: 0.58,
       rotate: -25,
-      skewX: -7,
+      skewX: 0,
     },
     layers: [
       {

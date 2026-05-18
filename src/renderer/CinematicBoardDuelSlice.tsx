@@ -666,7 +666,7 @@ export function CinematicBoardDuelSlice() {
         .tile-layer {
           position: absolute;
           inset: 0;
-          z-index: 9;
+          z-index: 8;
           pointer-events: none;
         }
 
@@ -677,7 +677,7 @@ export function CinematicBoardDuelSlice() {
         .tile-path {
           position: absolute;
           inset: 0;
-          z-index: 9;
+          z-index: 8;
           width: 100%;
           height: 100%;
           pointer-events: none;
@@ -692,11 +692,10 @@ export function CinematicBoardDuelSlice() {
 
         .tile-path polyline {
           fill: none;
-          stroke: rgba(91, 213, 255, 0.74);
-          stroke-width: 0.55;
+          stroke: rgba(91, 213, 255, 0.58);
+          stroke-width: 0.42;
           stroke-linecap: round;
           stroke-linejoin: round;
-          filter: drop-shadow(0 0 4px rgba(91, 213, 255, 0.8));
         }
 
         .iso-tile {
@@ -708,7 +707,7 @@ export function CinematicBoardDuelSlice() {
           transform: translate(-50%, -50%) rotate(var(--tile-rotate)) skewX(var(--tile-skew));
           transform-origin: center;
           border: 1px solid rgba(105, 211, 255, 0);
-          border-radius: 8px;
+          border-radius: 2px;
           background: rgba(69, 194, 255, 0);
           box-shadow: 0 0 0 rgba(89, 213, 255, 0);
           pointer-events: auto;
@@ -719,15 +718,14 @@ export function CinematicBoardDuelSlice() {
         .mode-move .iso-tile {
           cursor: pointer;
           opacity: 1;
-          border-color: rgba(89, 213, 255, 0.7);
-          background: rgba(65, 195, 255, 0.12);
-          box-shadow: 0 0 34px rgba(89, 213, 255, 0.45), inset 0 0 22px rgba(89, 213, 255, 0.08);
-          animation: tile-pulse 1.05s ease infinite;
+          border-color: rgba(89, 213, 255, 0.9);
+          background: rgba(65, 195, 255, 0.14);
+          box-shadow: inset 0 0 0 1px rgba(210, 247, 255, 0.16);
         }
 
         .mode-move .iso-tile.current {
           border-color: rgba(255, 255, 255, 0.64);
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.1);
         }
 
         .mode-move .iso-tile.unreachable {
@@ -738,7 +736,7 @@ export function CinematicBoardDuelSlice() {
         .mode-move .iso-tile.hovered {
           border-color: rgba(255, 235, 157, 0.92);
           background: rgba(255, 220, 120, 0.18);
-          box-shadow: 0 0 42px rgba(255, 220, 120, 0.5), inset 0 0 20px rgba(255, 220, 120, 0.12);
+          box-shadow: inset 0 0 0 1px rgba(255, 248, 206, 0.22);
         }
 
         .mode-move .iso-tile.cover-full::after,
@@ -747,11 +745,11 @@ export function CinematicBoardDuelSlice() {
           position: absolute;
           right: 8%;
           top: 12%;
-          width: 20%;
-          height: 20%;
-          border-radius: 50%;
-          background: rgba(255, 211, 116, 0.85);
-          box-shadow: 0 0 10px rgba(255, 211, 116, 0.65);
+          width: 16%;
+          height: 16%;
+          border-radius: 2px;
+          background: rgba(255, 211, 116, 0.82);
+          box-shadow: 0 0 4px rgba(255, 211, 116, 0.42);
         }
 
         .ct-hotspot {
