@@ -26,11 +26,13 @@ including left-click selection, hover path preview, click-to-move, and
 moved-unit screenshots. It is now killed as a main-client candidate because the
 visual result is not enough better than Three.js to justify the switch.
 
-The active presentation path is back in the browser route: use the
-`/duel-2-5d` concept-image bridge and
-`public/concepts/isometric-duel-target.png` as the visual target, then replace
-prototype map/unit rendering with a playable presentation slice that actually
-meets that bar.
+The active presentation path is back in the browser, but the base Three.js map
+is the primary playable client again. Its square-tile movement, hover previews,
+LOS overlays, camera controls, and HUD regressions are already stronger than
+the `/duel-2-5d` board slice. Use `/duel-2-5d`, Blender renders, and
+`public/concepts/isometric-duel-target.png` as visual reference and asset
+sources, then port the useful parts back onto the tile-true map instead of
+replacing the gameplay board prematurely.
 
 The first five seconds matter. A CS player should look at the board and say:
 "That is Inferno." If the map silhouette, routes, timings, and site geometry do

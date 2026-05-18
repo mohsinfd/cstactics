@@ -316,6 +316,17 @@ verbs that make those nouns matter.
   `src/renderer/board2d5/bananaBClayGeometry.ts`, and renders matching subtle
   floor grooves into the board art so move decals light actual physical cells
   instead of approximate CSS diamonds.
+- May 18, 2026 product correction: the base Three.js map is back to being the
+  primary playable client because its movement tiles, pathing, hover previews,
+  LOS overlays, and camera/HUD regressions are already strongest there.
+  `/duel-2-5d` and the Blender clay board remain valuable visual R&D and asset
+  pipeline proofs, but they are not the main gameplay route until their tile
+  contract can match the base renderer without approximation.
+- The base Three.js map now uses the `board2d5` CT/T rifle SVG art as enlarged
+  camera-facing unit sprites in `UnitRenderer.tsx`, with a primitive fallback
+  while image textures load. This ports the best part of the 2.5D visual spike
+  back onto the tile-true map without touching gameplay graph, AP, LOS, or
+  movement resolution.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -400,9 +411,9 @@ verbs that make those nouns matter.
   player-facing live/debrief rail.
 - A production-quality presentation layer. Both external-engine spikes have
   failed the main-client gate: Luanti failed mouse/camera/control feel, and
-  S&box failed to produce enough visual lift. The active path returns to the
-  browser prototype and should build from the `/duel-2-5d` concept-image bridge
-  toward `public/concepts/isometric-duel-target.png`.
+  S&box failed to produce enough visual lift. The active path now keeps the base
+  Three.js map as the playable client and harvests the best `board2d5`/Blender
+  discoveries as sprites, pose assets, materials, and reference renders.
 - A full board-package-to-real-sim bridge. The current `board2d5` slice defines
   the adapter seam and event vocabulary, but the local 2v2 contact scenario
   remains deterministic until the presentation quality is approved.
@@ -430,15 +441,14 @@ XCOM-style decisions.
 
 In parallel, continue the visual-client decision from evidence, not hope.
 Luanti and S&box are both retired as main-client candidates and should only be
-touched for reference/data validation. The next visual milestone should stay in
-the browser route and turn the `/duel-2-5d` concept-image bridge into a real
-playable presentation slice that approaches
-`public/concepts/isometric-duel-target.png`.
+touched for reference/data validation. The browser route remains the path, but
+the primary playable surface is now the base Three.js map because it already has
+the cleanest movement/tiling contract. The next visual milestone should improve
+base-map unit sprites, authored movement poses, and contact beats while using
+`/duel-2-5d`, Blender renders, and `public/concepts/isometric-duel-target.png`
+as reference and asset sources rather than replacing the gameplay board.
 
-The immediate browser route is now: harden the deterministic `board2d5` 2v2
-contact/trade slice until the presentation is visibly worth keeping, then
-connect it to real sim/store events only after the layered presentation is
-accepted. The next board2d5 milestone should replace the temporary CSS actors
-and masks with real artist/renderer-exported layers and grow the debug authoring
-overlay into a small package editor for resizing/rotating cover, occlusion,
-click zones, unit anchors, and LOS/contact anchors.
+The immediate browser route is now: keep the tile-true Three.js map playable,
+make its unit sprites and movement presentation approach the 2.5D target, then
+only promote Blender board layers if their authored tile/occlusion contract can
+match the base renderer without visual approximation.

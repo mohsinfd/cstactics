@@ -25,10 +25,12 @@ evidence gate:
    has a first playable selection/movement proof, but the visual result is not
    enough better than Three.js/browser to justify the platform/editor cost.
 
-React/Three remains the gameplay rules prototype. Neither spike should port the
-full game. The active path returns to a browser presentation rebuild around the
-`/duel-2-5d` concept-image bridge and
-`public/concepts/isometric-duel-target.png`.
+React/Three remains the gameplay rules prototype and the base Three.js map is
+again the primary playable client. Neither external spike should port the full
+game. `/duel-2-5d`, Blender renders, and
+`public/concepts/isometric-duel-target.png` are now reference/asset sources:
+use their strongest visual learnings to improve the tile-true base map rather
+than replacing the gameplay board prematurely.
 
 ## Spike A: Luanti
 
@@ -262,8 +264,10 @@ On the next machine:
 3. Do not continue Luanti or S&box main-client testing. Run
    `npm run luanti:validate` or `npm run sbox:validate` only if touching their
    archived spike data.
-4. Continue the browser presentation rebuild from `/duel-2-5d` and
-   `public/concepts/isometric-duel-target.png`.
-5. The next proof should be a playable browser slice that looks materially
-   closer to the reference image, not another external-engine setup pass.
+4. Continue the browser presentation rebuild on the base Three.js map. Preserve
+   its tile-perfect movement, hover previews, LOS overlays, and HUD/camera
+   regression coverage.
+5. Use `/duel-2-5d`, Blender, and the concept target as visual reference and
+   asset sources only; the next proof should improve base-map sprites, movement
+   poses, and contact beats, not restart an external-engine setup pass.
 

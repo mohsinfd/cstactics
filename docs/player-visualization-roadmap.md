@@ -22,9 +22,11 @@ pass after integration.
 ## Scope
 
 This roadmap began as a renderer audit plus an additive identity artifact. The
-current player-visualization direction is now whitebox tactical miniatures:
-renderer-only primitive units in `src/renderer/UnitRenderer.tsx`, with solid
-team color first, role silhouettes second, and state overlays above both.
+current player-visualization direction is the base Three.js tactical map with
+large CT/T sprite billboards layered onto the existing tile-true gameplay
+renderer. The primitive miniatures remain useful as loading/fallback silhouettes,
+but the desired production read is authored sprites or sprite-sheet poses:
+team first, role second, state overlays above both.
 
 ## Current Visual Vocabulary
 
@@ -204,15 +206,25 @@ threat, or utility overlays.
   proportions, CT hard-helmet/armor-cross geometry, T scarf/headwrap geometry,
   body-mounted role modules, and thicker lifted weapon profiles. Keep future
   work moving physical silhouette first, floor glyph/text second.
+- Base-map sprite pivot: after the Blender clay `/duel-2-5d` board proved the
+  visual target but exposed movement/tile mismatch risk, the main playable route
+  returned to the base Three.js map. `UnitRenderer.tsx` now uses the
+  `public/board2d5/units/` CT/T rifle art as enlarged camera-facing sprite
+  billboards on the tile-true map, with a primitive fallback while the SVG
+  textures load. This is the current lowest-risk path: preserve the mature
+  movement/LOS/overlay contract and improve units, movement poses, and shot
+  beats on top of it.
 
 ## Next Presentation Targets
 
 1. Replace latest-event visual assumptions in remaining board markers/casualty
    effects as the execute timeline grows beyond one or two combat beats.
-2. Add richer pixel/screenshot checks for casualty, targetable enemy, and
+2. Grow the base-map sprite path into authored directional pose sheets for idle,
+   move, aim, hit, and casualty states instead of relying on one rifle pose.
+3. Add richer pixel/screenshot checks for casualty, targetable enemy, and
    selected-spent states once scenarios can force those states without direct
    store mutation.
-3. Graduate procedural audio into an authored-asset pipeline once the cue
+4. Graduate procedural audio into an authored-asset pipeline once the cue
    vocabulary and mix hierarchy stop changing every slice.
 
 ## Acceptance Checks

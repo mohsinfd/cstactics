@@ -26,10 +26,13 @@ S&box is now killed as the main-client candidate because the visual result is
 not enough better than Three.js/browser to justify the platform and editor
 cost.
 
-The active production direction is now a Blender-authored board-art pipeline for
-the browser client. Blender creates the board scene and exports image layers;
-React/browser remains the gameplay compositor with graph-driven movement,
-targeting, and overlays.
+The active production direction is now the base React/Three browser client with
+better authored presentation assets. The base map remains the gameplay surface
+because its tile movement, overlays, camera controls, and regression coverage
+are stronger than the `/duel-2-5d` board slice. Blender and `board2d5` remain
+valuable art R&D: they can produce reference renders, sprite assets, materials,
+and eventually board layers, but they should not replace the base renderer
+until their movement/tile/occlusion contract is equally exact.
 
 ## North Star
 
@@ -378,19 +381,21 @@ Progress:
 11. Do not continue Luanti main-client testing; use it only for reference/data
    validation if a future task touches the archived spike.
 12. Stop external-engine proving unless a new product decision explicitly
-   reopens it. The next visual task is the browser presentation rebuild:
-   convert the `/duel-2-5d` concept-image bridge into a playable slice that
-   moves toward `public/concepts/isometric-duel-target.png`.
-13. Browser-board slice in progress: typed layered scene data, separate actor
+   reopens it. The next visual task is the browser presentation rebuild on the
+   base Three.js map: preserve tile-perfect movement and improve units,
+   movement poses, contact beats, and materials there.
+13. Browser-board slice status: typed layered scene data, separate actor
    sprites, Blender-rendered base/shadow/foreground board layers, draggable
    node/actor/target handles, query-gated cover placement/export authoring, and
-   a 2v2 contact/trade beat are implemented for `/duel-2-5d`.
-14. Improve the Blender clay diorama from v1 blockout toward the reference:
-   richer stone/roof material detail, stronger B-site readability, cleaner
-   foreground occlusion, and exported CT/T pose renders.
-15. Next browser-board slice: replace placeholder CT/T SVG actors with exported
-   pose renders, then extend the debug authoring surface to edit size/rotation,
-   click zones, cover hints, foreground occlusion, and LOS/contact anchors.
-16. After the 2v2 slice passes human visual review, bridge the same event shape
-   to real sim/store contact events instead of expanding deterministic local
-   state further.
+   a 2v2 contact/trade beat are implemented for `/duel-2-5d`, but that route is
+   now an art/reference spike rather than the main gameplay client.
+14. Main path correction: keep the base Three.js map as the playable board and
+   port the strongest `board2d5` learnings back into it. First slice done:
+   CT/T rifle SVG assets now render as enlarged camera-facing unit billboards in
+   `UnitRenderer.tsx` with the gameplay graph untouched.
+15. Next unit slice: turn the base-map sprite path into authored directional
+   pose sheets for idle, move, aim, hit, and casualty states, then tune movement
+   timing so sprites travel cleanly across the existing square tile grid.
+16. Improve Blender only where it directly feeds the main path: rendered unit
+   pose sheets, material reference, or board-layer experiments whose tile
+   footprints can be validated against the base map.

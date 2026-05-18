@@ -24,7 +24,7 @@
 import { Suspense, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
 import type { Unit, RoleId, WeaponCategory } from '../game/types';
 import { getShotPreview } from '../game/combat';
@@ -117,6 +117,10 @@ const DEFAULT_CAMERA_READABLE_YAW = 2.45;
 const MINIATURE_ROOT_SCALE = 1.88;
 const WEAPON_REST_Z = 0.5;
 const WEAPON_PRESENTATION_SCALE = 0.94;
+const UNIT_SPRITE_URLS = {
+  CT: '/board2d5/units/ct-rifle.svg',
+  T: '/board2d5/units/t-rifle.svg',
+} satisfies Record<Unit['team'], string>;
 
 type RoleMiniatureProfile = {
   torsoWidth: number;
@@ -980,7 +984,7 @@ function SelectedCommandMarker({
   const opacity = spent ? 0.66 : 0.96;
 
   return (
-    <group position={[0, 1.92 * scale, 0]} raycast={() => null}>
+    <group position={[0, 2.86 * scale, 0]} raycast={() => null}>
       <mesh position={[0, 0.01 * scale, 0]} rotation={[Math.PI, 0, Math.PI / 3]}>
         <coneGeometry args={[0.18 * scale, 0.32 * scale, 3]} />
         <meshBasicMaterial color={outlineColor} transparent opacity={opacity} depthWrite={false} />
@@ -988,6 +992,150 @@ function SelectedCommandMarker({
       <mesh position={[0, 0.012 * scale, 0]} rotation={[Math.PI, 0, Math.PI / 3]}>
         <coneGeometry args={[0.13 * scale, 0.25 * scale, 3]} />
         <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function UnitSpriteBody({
+  unit,
+  roleAccent,
+  roleTagColor,
+  roleTag,
+  isSelected,
+  isSpent,
+  stateColor,
+  outlineColor,
+  scale,
+}: {
+  unit: Unit;
+  roleAccent: string;
+  roleTagColor: string;
+  roleTag: string;
+  isSelected: boolean;
+  isSpent: boolean;
+  stateColor: string;
+  outlineColor: string;
+  scale: number;
+}) {
+  const texture = useLoader(THREE.TextureLoader, UNIT_SPRITE_URLS[unit.team]);
+
+  return (
+    <group raycast={() => null}>
+      <mesh
+        position={[0, 0.108 * scale, -0.05 * scale]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[1, 0.46, 1]}
+        renderOrder={42}
+        raycast={() => null}
+      >
+        <circleGeometry args={[0.76 * scale, 36]} />
+        <meshBasicMaterial
+          color="#020810"
+          transparent
+          opacity={0.34}
+          depthWrite={false}
+          depthTest={false}
+        />
+      </mesh>
+      <sprite
+        position={[0, 1.42 * scale, 0.14 * scale]}
+        scale={[2.08 * scale, 2.62 * scale, 1]}
+        renderOrder={82}
+        raycast={() => null}
+      >
+        <spriteMaterial
+          map={texture}
+          transparent
+          alphaTest={0.04}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </sprite>
+      <SafeText
+        position={[0, 0.14 * scale, -0.82 * scale]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.26 * scale}
+        color={roleTagColor}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.025}
+        outlineColor="#07080d"
+        font={undefined}
+      >
+        {roleTag}
+      </SafeText>
+      {isSelected && (
+        <SelectedCommandMarker
+          color={stateColor}
+          outlineColor={outlineColor}
+          scale={scale}
+          spent={isSpent}
+        />
+      )}
+      {unit.hasBomb && (
+        <mesh position={[0.56 * scale, 0.72 * scale, 0.16 * scale]}>
+          <boxGeometry args={[0.24 * scale, 0.17 * scale, 0.09 * scale]} />
+          <meshStandardMaterial color="#882200" roughness={0.5} emissive="#882200" emissiveIntensity={0.15} />
+        </mesh>
+      )}
+      {unit.hasDefuseKit && (
+        <mesh position={[-0.56 * scale, 0.72 * scale, 0.16 * scale]}>
+          <boxGeometry args={[0.2 * scale, 0.16 * scale, 0.08 * scale]} />
+          <meshStandardMaterial color="#4488cc" roughness={0.5} />
+        </mesh>
+      )}
+      <mesh position={[0, 0.16 * scale, 0.64 * scale]} raycast={() => null}>
+        <boxGeometry args={[0.68 * scale, 0.052 * scale, 0.022 * scale]} />
+        <meshBasicMaterial color={roleAccent} transparent opacity={0.9} depthWrite={false} depthTest={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function UnitSpriteLoadFallback({
+  unit,
+  roleAccent,
+  scale,
+}: {
+  unit: Unit;
+  roleAccent: string;
+  scale: number;
+}) {
+  const palette = TEAM_RENDER_PALETTES[unit.team];
+
+  return (
+    <group raycast={() => null}>
+      <mesh
+        position={[0, 0.108 * scale, -0.05 * scale]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[1, 0.46, 1]}
+        renderOrder={36}
+      >
+        <circleGeometry args={[0.68 * scale, 32]} />
+        <meshBasicMaterial color="#020810" transparent opacity={0.28} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0.96 * scale, 0.08 * scale]} castShadow>
+        <boxGeometry args={[0.72 * scale, 1.22 * scale, 0.26 * scale]} />
+        <meshStandardMaterial
+          color={palette.vest}
+          roughness={0.72}
+          emissive={palette.accent}
+          emissiveIntensity={0.16}
+        />
+      </mesh>
+      <mesh position={[0, 1.74 * scale, 0.08 * scale]} castShadow>
+        <sphereGeometry args={[0.25 * scale, 12, 8]} />
+        <meshStandardMaterial color={palette.helmet} roughness={0.58} />
+      </mesh>
+      <mesh position={[0.42 * scale, 1.08 * scale, 0.22 * scale]} rotation={[0.08, 0, -0.2]} castShadow>
+        <boxGeometry args={[0.12 * scale, 0.16 * scale, 1.02 * scale]} />
+        <meshStandardMaterial color="#080b0f" roughness={0.38} metalness={0.32} />
+      </mesh>
+      <mesh position={[0, 0.2 * scale, 0.6 * scale]}>
+        <boxGeometry args={[0.58 * scale, 0.055 * scale, 0.026 * scale]} />
+        <meshBasicMaterial color={roleAccent} transparent opacity={0.82} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -1450,6 +1598,22 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         ))}
 
         <group ref={bodyRef}>
+          <Suspense fallback={<UnitSpriteLoadFallback unit={unit} roleAccent={rc.accent} scale={s} />}>
+            <UnitSpriteBody
+              unit={unit}
+              roleAccent={rc.accent}
+              roleTagColor={stateVisual.roleTagColor}
+              roleTag={rc.shortTag}
+              isSelected={isSelected}
+              isSpent={isSpent}
+              stateColor={stateVisual.color}
+              outlineColor={stateVisual.outlineColor}
+              scale={s}
+            />
+          </Suspense>
+        </group>
+
+        <group visible={false} raycast={() => null}>
         {/* === BOOTS === */}
         <mesh position={[-rm.stanceWidth * s, 0.075, 0.1 * s]} rotation={[0, 0.18, -0.08]} castShadow material={mats.boot}>
           <boxGeometry args={[0.28 * s, 0.11, 0.34 * s]} />
@@ -1595,6 +1759,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         {/* Rifle stays on the gameplay-facing root while the body is biased to the camera. */}
         <group
           ref={weaponRef}
+          visible={false}
           position={[0, 1.02 * s, WEAPON_REST_Z]}
           scale={[WEAPON_PRESENTATION_SCALE, WEAPON_PRESENTATION_SCALE, WEAPON_PRESENTATION_SCALE]}
         >
