@@ -18,6 +18,7 @@ import type {
   BoardNode,
   BoardPackage,
   BoardPoint,
+  BoardPolygon,
   BoardRectPlacement,
 } from './board2d5/types';
 import { assertValidBoardPackage } from './board2d5/validateBoardPackage';
@@ -64,6 +65,10 @@ function makeAuthoringBlock(anchor: BoardPoint, index: number): BoardAuthoringBl
     rotation: -25,
     skewX: -7,
   };
+}
+
+function polygonPoints(points: BoardPolygon): string {
+  return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
 function getSpriteImageUrl(sprite: BoardActorSprite, isDown: boolean): string {
@@ -667,10 +672,15 @@ export function CinematicBoardDuelSlice() {
           position: absolute;
           inset: 0;
           z-index: 8;
+          width: 100%;
+          height: 100%;
           pointer-events: none;
+          opacity: 0;
+          transition: opacity 150ms ease;
         }
 
         .mode-move .tile-layer {
+          opacity: 1;
           pointer-events: auto;
         }
 
@@ -699,33 +709,26 @@ export function CinematicBoardDuelSlice() {
         }
 
         .iso-tile {
-          position: absolute;
-          left: var(--tile-x);
-          top: var(--tile-y);
-          width: var(--tile-width);
-          aspect-ratio: 1 / var(--tile-aspect);
-          transform: translate(-50%, -50%) rotate(var(--tile-rotate)) skewX(var(--tile-skew));
-          transform-origin: center;
-          border: 1px solid rgba(105, 211, 255, 0);
-          border-radius: 2px;
-          background: rgba(69, 194, 255, 0);
-          box-shadow: 0 0 0 rgba(89, 213, 255, 0);
-          pointer-events: auto;
-          transition: opacity 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+          fill: rgba(69, 194, 255, 0);
+          stroke: rgba(105, 211, 255, 0);
+          stroke-width: 0.18;
+          vector-effect: non-scaling-stroke;
+          pointer-events: visiblePainted;
+          cursor: default;
+          transition: opacity 150ms ease, fill 150ms ease, stroke 150ms ease;
           opacity: 0;
         }
 
         .mode-move .iso-tile {
           cursor: pointer;
           opacity: 1;
-          border-color: rgba(89, 213, 255, 0.9);
-          background: rgba(65, 195, 255, 0.14);
-          box-shadow: inset 0 0 0 1px rgba(210, 247, 255, 0.16);
+          stroke: rgba(89, 213, 255, 0.9);
+          fill: rgba(65, 195, 255, 0.14);
         }
 
         .mode-move .iso-tile.current {
-          border-color: rgba(255, 255, 255, 0.64);
-          background: rgba(255, 255, 255, 0.1);
+          stroke: rgba(255, 255, 255, 0.64);
+          fill: rgba(255, 255, 255, 0.1);
         }
 
         .mode-move .iso-tile.unreachable {
@@ -734,22 +737,8 @@ export function CinematicBoardDuelSlice() {
         }
 
         .mode-move .iso-tile.hovered {
-          border-color: rgba(255, 235, 157, 0.92);
-          background: rgba(255, 220, 120, 0.18);
-          box-shadow: inset 0 0 0 1px rgba(255, 248, 206, 0.22);
-        }
-
-        .mode-move .iso-tile.cover-full::after,
-        .mode-move .iso-tile.cover-half::after {
-          content: "";
-          position: absolute;
-          right: 8%;
-          top: 12%;
-          width: 16%;
-          height: 16%;
-          border-radius: 2px;
-          background: rgba(255, 211, 116, 0.82);
-          box-shadow: 0 0 4px rgba(255, 211, 116, 0.42);
+          stroke: rgba(255, 235, 157, 0.92);
+          fill: rgba(255, 220, 120, 0.18);
         }
 
         .ct-hotspot {
@@ -1289,10 +1278,6 @@ export function CinematicBoardDuelSlice() {
         style={{
           '--board-image': `url(${boardLayer.imageUrl})`,
           '--board-aspect': `${runtimeBoard.aspectRatio}`,
-          '--tile-width': `${runtimeBoard.scene.projection.tileWidth}%`,
-          '--tile-aspect': `${runtimeBoard.scene.projection.tileAspect}`,
-          '--tile-rotate': `${runtimeBoard.scene.projection.rotate}deg`,
-          '--tile-skew': `${runtimeBoard.scene.projection.skewX}deg`,
         } as CSSProperties}
         onClick={handleFrameClick}
         onPointerMove={handleFramePointerMove}
@@ -1327,24 +1312,24 @@ export function CinematicBoardDuelSlice() {
         <svg className="aim-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={aimLineStyle}>
           <line x1={shotLine.from.x} y1={shotLine.from.y} x2={shotLine.to.x} y2={shotLine.to.y} />
         </svg>
-        <div className="tile-layer" aria-hidden={mode !== 'move'}>
+        <svg className="tile-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden={mode !== 'move'}>
           {runtimeBoard.nodes.map((node) => {
             const reachable = reachableNodeIds.includes(node.id);
             return (
-            <button
+            <polygon
               key={node.id}
-              type="button"
               className={[
-                'hotspot',
                 'iso-tile',
                 node.id === ctNodeId ? 'current' : '',
                 mode === 'move' && !reachable && node.id !== ctNodeId ? 'unreachable' : '',
                 hoverNodeId === node.id ? 'hovered' : '',
                 node.cover ? `cover-${node.cover}` : '',
               ].filter(Boolean).join(' ')}
-              style={{ '--tile-x': `${node.anchor.x}%`, '--tile-y': `${node.anchor.y}%` } as CSSProperties}
+              points={polygonPoints(node.footprint)}
               data-testid={node.id === 'logs' ? 'board-duel-peek-tile' : 'board-duel-node'}
               data-node-id={node.id}
+              role="button"
+              tabIndex={mode === 'move' && reachable ? 0 : -1}
               aria-label={node.label}
               onMouseEnter={() => {
                 if (mode === 'move' && reachable) setHoverNodeId(node.id);
@@ -1356,10 +1341,16 @@ export function CinematicBoardDuelSlice() {
                 event.stopPropagation();
                 handleNodeClick(node.id);
               }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                event.stopPropagation();
+                handleNodeClick(node.id);
+              }}
             />
             );
           })}
-        </div>
+        </svg>
         {runtimeBoard.actors.map((actor) => {
           const actorNode = actor.id === selectedActor.id
             ? ctNode

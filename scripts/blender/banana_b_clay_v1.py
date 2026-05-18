@@ -21,6 +21,7 @@ from mathutils import Vector
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_OUT = REPO_ROOT / "public" / "board2d5" / "scenes" / "banana-b-clay-v1"
 BLEND_OUT = REPO_ROOT / "art" / "blender" / "banana-b-clay-v1"
+GEOMETRY_TS_OUT = REPO_ROOT / "src" / "renderer" / "board2d5" / "bananaBClayGeometry.ts"
 
 WIDTH = 998
 HEIGHT = 768
@@ -29,6 +30,17 @@ ORTHO_SCALE = 12.4
 
 CAMERA_LOCATION = Vector((7.8, -8.7, 7.1))
 CAMERA_TARGET = Vector((0.2, 0.0, 0.0))
+
+PLAYABLE_TILE_SPECS = [
+    {"id": "ct-start", "anchor": (23.4, 73.0), "size": (4.8, 4.4), "rotation": -25},
+    {"id": "short-1", "anchor": (31.0, 67.2), "size": (4.8, 4.4), "rotation": -25},
+    {"id": "logs", "anchor": (38.7, 62.0), "size": (4.8, 4.4), "rotation": -25},
+    {"id": "center", "anchor": (47.6, 56.1), "size": (4.8, 4.4), "rotation": -25},
+    {"id": "site-left", "anchor": (56.3, 51.4), "size": (4.6, 4.4), "rotation": -25},
+    {"id": "site-mid", "anchor": (64.2, 47.1), "size": (4.6, 4.4), "rotation": -25},
+    {"id": "site-box", "anchor": (70.7, 42.9), "size": (4.6, 4.4), "rotation": -25},
+    {"id": "coffins", "anchor": (76.8, 39.2), "size": (4.6, 4.4), "rotation": -25},
+]
 
 
 def ensure_dirs() -> None:
@@ -328,6 +340,113 @@ def add_shadow_plane(
     return add_box(camera, collection, name, anchor, size, 0.012, material, rotation, 0.012, bevel=0)
 
 
+def add_screen_line(
+    camera: bpy.types.Object,
+    collection: bpy.types.Collection,
+    name: str,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    thickness: float,
+    material: bpy.types.Material,
+    z_base: float,
+) -> bpy.types.Object:
+    center = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = math.sqrt(dx * dx + dy * dy)
+    rotation = math.degrees(math.atan2(dy, dx))
+    return add_box(camera, collection, name, center, (length, thickness), 0.012, material, rotation, z_base, bevel=0)
+
+
+def screen_rect_corners(anchor: tuple[float, float], size: tuple[float, float], rotation: float) -> list[tuple[float, float]]:
+    angle = math.radians(rotation)
+    right = Vector((math.cos(angle), math.sin(angle))) * (size[0] / 2)
+    depth_angle = angle + math.pi / 2
+    depth = Vector((math.cos(depth_angle), math.sin(depth_angle))) * (size[1] / 2)
+    center = Vector(anchor)
+    return [
+        tuple(center - right - depth),
+        tuple(center + right - depth),
+        tuple(center + right + depth),
+        tuple(center - right + depth),
+    ]
+
+
+def add_playable_tile_floor_seams(
+    camera: bpy.types.Object,
+    collection: bpy.types.Collection,
+    material: bpy.types.Material,
+) -> None:
+    for spec in PLAYABLE_TILE_SPECS:
+        corners = screen_rect_corners(spec["anchor"], spec["size"], spec["rotation"])
+        for index, start in enumerate(corners):
+            end = corners[(index + 1) % len(corners)]
+            add_screen_line(
+                camera,
+                collection,
+                f"gameplay tile seam {spec['id']} {index + 1}",
+                start,
+                end,
+                0.075,
+                material,
+                0.17,
+            )
+
+
+def percent_point(point: tuple[float, float]) -> dict[str, float]:
+    return {
+        "x": round(point[0], 3),
+        "y": round(point[1], 3),
+    }
+
+
+def write_geometry_ts(tile_data: dict[str, dict[str, object]]) -> None:
+    GEOMETRY_TS_OUT.write_text(
+        "import type { BoardPoint, BoardPolygon } from './types';\n\n"
+        "type BananaBClayTile = {\n"
+        "  anchor: BoardPoint;\n"
+        "  footprint: BoardPolygon;\n"
+        "};\n\n"
+        "export const bananaBClayTiles = {\n"
+        + "".join(
+            f"  '{tile_id}': {{\n"
+            f"    anchor: {{ x: {data['anchor']['x']}, y: {data['anchor']['y']} }},\n"
+            "    footprint: [\n"
+            + "".join(f"      {{ x: {point['x']}, y: {point['y']} }},\n" for point in data["footprint"])
+            + "    ],\n"
+            + "  },\n"
+            for tile_id, data in tile_data.items()
+        )
+        + "} as const satisfies Record<string, BananaBClayTile>;\n",
+        encoding="utf-8",
+    )
+
+
+def add_playable_tile_guides(camera: bpy.types.Object) -> dict[str, dict[str, object]]:
+    collection = make_collection("gameplay_tile_footprints")
+    collection.hide_render = True
+    tile_data: dict[str, dict[str, object]] = {}
+    guide_mat = make_mat("non-rendered gameplay tile guides", (0.1, 0.6, 1.0, 0.28))
+
+    for spec in PLAYABLE_TILE_SPECS:
+        corners_2d = screen_rect_corners(spec["anchor"], spec["size"], spec["rotation"])
+        world_points = [screen_to_ground(camera, x, y, z=0.18) for x, y in corners_2d]
+        mesh = bpy.data.meshes.new(f"{spec['id']} gameplay tile mesh")
+        mesh.from_pydata([(point.x, point.y, point.z) for point in world_points], [], [(0, 1, 2, 3)])
+        mesh.update()
+        obj = bpy.data.objects.new(f"gameplay tile {spec['id']}", mesh)
+        obj.data.materials.append(guide_mat)
+        obj.show_in_front = True
+        collection.objects.link(obj)
+        tile_data[spec["id"]] = {
+            "anchor": percent_point(spec["anchor"]),
+            "footprint": [percent_point(point) for point in corners_2d],
+        }
+
+    write_geometry_ts(tile_data)
+    return tile_data
+
+
 def add_arch(camera: bpy.types.Object, collection: bpy.types.Collection, mats: dict[str, bpy.types.Material]) -> None:
     add_box(camera, collection, "arch left pier", (24.4, 42.8), (3.2, 8.5), 1.25, mats["wall"], -25, bevel=0.05)
     add_box(camera, collection, "arch right pier", (32.4, 39.8), (3.0, 8.0), 1.25, mats["wall"], -25, bevel=0.05)
@@ -427,6 +546,7 @@ def build_scene(camera: bpy.types.Object) -> dict[str, bpy.types.Collection]:
         add_box(camera, base, f"site horizontal floor seam {index + 1}", (61.0, y), (35.5, 0.16), 0.012, mats["floor_line"], -25, z_base=0.157, bevel=0)
     for index, y in enumerate([56.0, 59.8, 63.6, 67.4]):
         add_box(camera, base, f"banana lane stone seam {index + 1}", (34.0, y), (38.0, 0.15), 0.012, mats["floor_line"], -25, z_base=0.148, bevel=0)
+    add_playable_tile_floor_seams(camera, base, mats["floor_line"])
 
     # Walls and architectural massing.
     add_box(camera, base, "top perimeter wall", (51.7, 24.4), (56.0, 4.6), 1.15, mats["wall"], -25, bevel=0.045)
@@ -492,6 +612,7 @@ def main() -> None:
     setup_render(camera)
     setup_lights()
     collections = build_scene(camera)
+    add_playable_tile_guides(camera)
     render_layer(collections, "base", {"base"})
     render_layer(collections, "shadow", {"shadow"})
     render_layer(collections, "foreground", {"foreground"})

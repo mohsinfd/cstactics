@@ -310,10 +310,12 @@ verbs that make those nouns matter.
   `art/blender/banana-b-clay-v1/`, and exports base/shadow/foreground PNG
   layers under `public/board2d5/scenes/banana-b-clay-v1/`. The browser package
   now uses those rendered layers instead of the concept PNG as the board art.
-- The `/duel-2-5d` tactical overlays are calibrated to the Blender floor pass:
-  movement nodes sit on walkable lane/site floor centers, not on cover props,
-  and move decals use flat ground-plane cells rather than glowing faux-3D
-  panels.
+- The `/duel-2-5d` tactical overlays now use Blender-authored movement tile
+  footprints. `banana_b_clay_v1.py` writes non-rendered gameplay tile guide
+  meshes into the `.blend`, exports their board-space polygons to
+  `src/renderer/board2d5/bananaBClayGeometry.ts`, and renders matching subtle
+  floor grooves into the board art so move decals light actual physical cells
+  instead of approximate CSS diamonds.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller

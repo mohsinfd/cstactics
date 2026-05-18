@@ -10,6 +10,7 @@ export type BoardSize = {
 
 export type BoardCover = 'half' | 'full';
 export type BoardTeam = 'T' | 'CT';
+export type BoardPolygon = readonly BoardPoint[];
 
 export type BoardLayer = {
   id: string;
@@ -56,6 +57,7 @@ export type BoardNode = {
   id: string;
   label: string;
   anchor: BoardPoint;
+  footprint: BoardPolygon;
   cover?: BoardCover;
 };
 

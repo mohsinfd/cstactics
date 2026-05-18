@@ -67,6 +67,7 @@ test('Banana/B 2.5D board package stays valid and connected', () => {
   expect(validateBoardPackage(bananaBDuelBoardPackage)).toEqual([]);
   expect(bananaBDuelBoardPackage.nodes).toHaveLength(8);
   expect(bananaBDuelBoardPackage.imageUrl).toBe('/board2d5/scenes/banana-b-clay-v1/base.png');
+  expect(bananaBDuelBoardPackage.nodes.every((node) => (node.footprint?.length ?? 0) === 4)).toBe(true);
   expect(bananaBDuelBoardPackage.scene.layers.map((layer) => layer.role)).toEqual(['base', 'shadow', 'foreground']);
   expect(bananaBDuelBoardPackage.scene.layers.map((layer) => layer.imageUrl)).toEqual([
     '/board2d5/scenes/banana-b-clay-v1/base.png',
@@ -902,6 +903,9 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
     bananaBDuelBoardPackage.scene.foregroundOccluders.length
   );
   await expect(page.locator('.iso-tile')).toHaveCount(8);
+  await expect.poll(async () => page.locator('.iso-tile').evaluateAll((nodes) => (
+    nodes.every((node) => (node.getAttribute('points')?.trim().split(/\s+/).length ?? 0) === 4)
+  ))).toBe(true);
   await expect.poll(async () => page.locator('.iso-tile').evaluateAll((nodes) => (
     nodes.map((node) => (node as HTMLElement).dataset.nodeId).filter(Boolean).sort()
   ))).toEqual(['center', 'coffins', 'ct-start', 'logs', 'short-1', 'site-box', 'site-left', 'site-mid']);

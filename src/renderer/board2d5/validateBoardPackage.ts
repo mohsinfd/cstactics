@@ -29,6 +29,15 @@ function validatePlacement(errors: string[], label: string, placement: BoardRect
   }
 }
 
+function validatePolygon(errors: string[], label: string, polygon: readonly BoardPoint[]): void {
+  if (polygon.length < 3) {
+    errors.push(`${label} footprint must have at least three points`);
+  }
+  for (const [index, point] of polygon.entries()) {
+    if (!isPercentPoint(point)) errors.push(`${label} footprint point ${index} must be within 0..100%`);
+  }
+}
+
 export function validateBoardPackage(board: BoardPackage): string[] {
   const errors: string[] = [];
   const nodeIds = new Set<string>();
@@ -79,6 +88,7 @@ export function validateBoardPackage(board: BoardPackage): string[] {
     if (nodeIds.has(node.id)) errors.push(`duplicate node id ${node.id}`);
     nodeIds.add(node.id);
     if (!isPercentPoint(node.anchor)) errors.push(`node ${node.id} anchor must be within 0..100%`);
+    validatePolygon(errors, `node ${node.id}`, node.footprint);
   }
 
   for (const edge of board.edges) {
