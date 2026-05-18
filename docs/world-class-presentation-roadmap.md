@@ -307,6 +307,11 @@ Progress:
   exported as board-package coordinates. This is still not final art; it is the
   missing production affordance that lets future agents tune placement data
   instead of editing JSX by eye.
+- The authoring surface now exposes the real package-driving handles: path
+  nodes, actor anchor, target anchor, baked-unit masks, and foreground
+  occluders. Dragging a handle updates the board runtime immediately and the
+  export panel emits a package-shaped patch, which makes visual/layout tuning
+  agent-safe enough to continue without hiding coordinates in CSS.
 
 ### Milestone P5: Production Sound
 
@@ -359,9 +364,10 @@ Progress:
    convert the `/duel-2-5d` concept-image bridge into a playable slice that
    moves toward `public/concepts/isometric-duel-target.png`.
 13. Browser-board slice in progress: typed layered scene data, separate actor
-   sprites, mask/occluder placements, and query-gated cover placement/export
-   authoring are implemented for `/duel-2-5d`.
+   sprites, mask/occluder placements, draggable node/actor/target/mask/occluder
+   handles, and query-gated cover placement/export authoring are implemented
+   for `/duel-2-5d`.
 14. Next browser-board slice: replace temporary CSS masks/occluders with real
    exported image layers, then extend the debug authoring surface to edit
-   click zones, unit anchors, cover hints, foreground occlusion, and LOS/contact
-   anchors.
+   size/rotation, click zones, cover hints, foreground occlusion, and
+   LOS/contact anchors.

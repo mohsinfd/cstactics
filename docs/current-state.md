@@ -284,6 +284,11 @@ verbs that make those nouns matter.
   over the concept board instead of relying only on baked characters, while
   `/duel-2-5d?debug=1` exposes a query-gated authoring overlay that can place
   draggable cover blocks on the board and export their package coordinates.
+- The authoring overlay is now more than a cover toy: debug mode shows
+  draggable handles for the eight path nodes, actor anchor, target anchor,
+  baked-unit masks, and foreground occluders, routes authoring pointer events
+  ahead of gameplay hotspots, and exports a package-shaped JSON patch with
+  nodes, actors, targets, masks, occluders, and temporary authoring blocks.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -408,5 +413,5 @@ the 1v1 proof into a higher-fidelity Banana/B contact slice, then connect it to
 real sim/store events only after the layered presentation is visually accepted.
 The next board2d5 milestone should replace the temporary CSS masks with real
 artist/renderer-exported layers and grow the debug authoring overlay into a
-small package editor for cover, occlusion, click zones, unit anchors, and LOS
-anchors.
+small package editor for resizing/rotating cover, occlusion, click zones, unit
+anchors, and LOS/contact anchors.

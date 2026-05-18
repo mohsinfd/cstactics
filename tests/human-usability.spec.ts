@@ -931,9 +931,31 @@ test('2.5D board authoring mode can place an editable cover block', async ({ pag
 
   await page.goto('/duel-2-5d?debug=1');
   await expect(page.getByTestId('board-author-panel')).toBeVisible();
+  await expect(page.getByTestId('board-author-node-handle')).toHaveCount(8);
+  await expect(page.getByTestId('board-author-actor-handle')).toHaveCount(1);
+  await expect(page.getByTestId('board-author-target-handle')).toHaveCount(1);
+  await expect(page.getByTestId('board-author-mask-handle')).toHaveCount(2);
+  await expect(page.getByTestId('board-author-occluder-handle')).toHaveCount(
+    bananaBDuelBoardPackage.scene.foregroundOccluders.length
+  );
+
   await page.getByTestId('board-author-place-cover').click();
   await page.locator('.concept-frame').click({ position: { x: 500, y: 400 } });
   await expect(page.getByTestId('board-author-block')).toHaveCount(1);
   await expect(page.getByTestId('board-author-export')).toContainText('author-cover-1');
   await expect(page.getByTestId('board-author-export')).toContainText('"kind": "cover"');
+
+  const exportBefore = JSON.parse(await page.getByTestId('board-author-export').textContent() ?? '{}');
+  const logsBefore = exportBefore.nodes.find((node: { id: string }) => node.id === 'logs').anchor.x;
+  const logsHandle = page.locator('[data-testid="board-author-node-handle"][data-author-id="logs"]');
+  const logsBox = await logsHandle.boundingBox();
+  expect(logsBox, 'logs authoring handle should be measurable').not.toBeNull();
+  await page.mouse.move((logsBox?.x ?? 0) + (logsBox?.width ?? 0) / 2, (logsBox?.y ?? 0) + (logsBox?.height ?? 0) / 2);
+  await page.mouse.down();
+  await page.mouse.move((logsBox?.x ?? 0) + 44, (logsBox?.y ?? 0) + 24, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByTestId('board-author-selected')).toContainText('node:logs');
+  const exportAfter = JSON.parse(await page.getByTestId('board-author-export').textContent() ?? '{}');
+  const logsAfter = exportAfter.nodes.find((node: { id: string }) => node.id === 'logs').anchor.x;
+  expect(logsAfter).toBeGreaterThan(logsBefore);
 });

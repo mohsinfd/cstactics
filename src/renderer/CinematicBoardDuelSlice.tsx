@@ -11,7 +11,14 @@ import {
 import { bananaBDuelBoardPackage } from './board2d5/bananaBDuelBoard';
 import { BOARD_DUEL_TIMING, boardDuelPhaseCopy, createBoard2d5Event, type BoardDuelMode, type BoardDuelPhase } from './board2d5/duelScenario';
 import { findBoardPath, getBoardNode, getReachableNodeIds } from './board2d5/graph';
-import type { Board2d5Event, BoardAuthoringBlock, BoardNode, BoardPoint, BoardRectPlacement } from './board2d5/types';
+import type {
+  Board2d5Event,
+  BoardAuthoringBlock,
+  BoardNode,
+  BoardPackage,
+  BoardPoint,
+  BoardRectPlacement,
+} from './board2d5/types';
 import { assertValidBoardPackage } from './board2d5/validateBoardPackage';
 
 assertValidBoardPackage(bananaBDuelBoardPackage);
@@ -39,6 +46,13 @@ function placementStyle(placement: BoardRectPlacement): CSSProperties {
   } as CSSProperties;
 }
 
+function pointHandleStyle(anchor: BoardPoint): CSSProperties {
+  return {
+    left: `${anchor.x}%`,
+    top: `${anchor.y}%`,
+  };
+}
+
 function makeAuthoringBlock(anchor: BoardPoint, index: number): BoardAuthoringBlock {
   return {
     id: `author-cover-${index}`,
@@ -51,6 +65,14 @@ function makeAuthoringBlock(anchor: BoardPoint, index: number): BoardAuthoringBl
   };
 }
 
+type AuthorTool = 'inspect' | 'cover';
+type AuthorDragKind = 'node' | 'target' | 'mask' | 'occluder' | 'block';
+
+type AuthorDrag = {
+  kind: AuthorDragKind;
+  id: string;
+};
+
 export function CinematicBoardDuelSlice() {
   const board = bananaBDuelBoardPackage;
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -60,16 +82,21 @@ export function CinematicBoardDuelSlice() {
     return params.has('debug') || params.has('author');
   }, []);
   const selectedActor = board.actors.find((actor) => actor.id === board.initial.selectedActorId) ?? board.actors[0];
-  const target = board.targets.find((candidate) => candidate.id === board.initial.targetId) ?? board.targets[0];
+  const baseTarget = board.targets.find((candidate) => candidate.id === board.initial.targetId) ?? board.targets[0];
   const initialNodeId = selectedActor.nodeId;
   const [phase, setPhase] = useState<BoardDuelPhase>('ready');
   const [mode, setMode] = useState<BoardDuelMode>('idle');
   const [ctNodeId, setCtNodeId] = useState(initialNodeId);
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const [pathNodeIds, setPathNodeIds] = useState<string[]>([initialNodeId]);
-  const [authorTool, setAuthorTool] = useState<'inspect' | 'cover'>('inspect');
+  const [authorTool, setAuthorTool] = useState<AuthorTool>('inspect');
+  const [editedNodeAnchors, setEditedNodeAnchors] = useState<Record<string, BoardPoint>>({});
+  const [editedTargetAnchors, setEditedTargetAnchors] = useState<Record<string, BoardPoint>>({});
+  const [editedMaskAnchors, setEditedMaskAnchors] = useState<Record<string, BoardPoint>>({});
+  const [editedOccluderAnchors, setEditedOccluderAnchors] = useState<Record<string, BoardPoint>>({});
   const [authoringBlocks, setAuthoringBlocks] = useState<BoardAuthoringBlock[]>(board.scene.authoringBlocks);
-  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [authorDrag, setAuthorDrag] = useState<AuthorDrag | null>(null);
+  const [selectedAuthorItem, setSelectedAuthorItem] = useState<string>('none');
   const [events, setEvents] = useState<Board2d5Event[]>([
     createBoard2d5Event('select', 'CT anchor selected.', {
       actorId: selectedActor.id,
@@ -77,12 +104,40 @@ export function CinematicBoardDuelSlice() {
     }),
   ]);
 
+  const runtimeBoard: BoardPackage = useMemo(() => ({
+    ...board,
+    nodes: board.nodes.map((node) => ({
+      ...node,
+      anchor: editedNodeAnchors[node.id] ?? node.anchor,
+    })),
+    targets: board.targets.map((candidate) => ({
+      ...candidate,
+      anchor: editedTargetAnchors[candidate.id] ?? candidate.anchor,
+      hotspot: {
+        ...candidate.hotspot,
+        anchor: editedTargetAnchors[candidate.id] ?? candidate.hotspot.anchor,
+      },
+    })),
+    scene: {
+      ...board.scene,
+      bakedUnitMasks: board.scene.bakedUnitMasks.map((mask) => ({
+        ...mask,
+        anchor: editedMaskAnchors[mask.id] ?? mask.anchor,
+      })),
+      foregroundOccluders: board.scene.foregroundOccluders.map((occluder) => ({
+        ...occluder,
+        anchor: editedOccluderAnchors[occluder.id] ?? occluder.anchor,
+      })),
+      authoringBlocks,
+    },
+  }), [authoringBlocks, board, editedMaskAnchors, editedNodeAnchors, editedOccluderAnchors, editedTargetAnchors]);
+  const target = runtimeBoard.targets.find((candidate) => candidate.id === board.initial.targetId) ?? baseTarget;
   const isBusy = phase === 'moving' || phase === 'firing' || phase === 'impact';
   const isAlive = phase !== 'down';
-  const ctNode = getBoardNode(board, ctNodeId) ?? board.nodes[0];
+  const ctNode = getBoardNode(runtimeBoard, ctNodeId) ?? runtimeBoard.nodes[0];
   const reachableNodeIds = useMemo(
-    () => getReachableNodeIds(board, ctNodeId, board.initial.moveRange),
-    [board, ctNodeId]
+    () => getReachableNodeIds(runtimeBoard, ctNodeId, runtimeBoard.initial.moveRange),
+    [ctNodeId, runtimeBoard]
   );
 
   const pushEvent = useCallback((event: Board2d5Event) => {
@@ -163,7 +218,7 @@ export function CinematicBoardDuelSlice() {
       return;
     }
 
-    const path = findBoardPath(board, ctNodeId, nodeId);
+    const path = findBoardPath(runtimeBoard, ctNodeId, nodeId);
     if (path.length <= 1) {
       pushEvent(createBoard2d5Event('invalid', 'Invalid move command.', {
         actorId: selectedActor.id,
@@ -273,18 +328,56 @@ export function CinematicBoardDuelSlice() {
   } as CSSProperties;
 
   const previewPathNodeIds = mode === 'move' && hoverNodeId
-    ? findBoardPath(board, ctNodeId, hoverNodeId)
+    ? findBoardPath(runtimeBoard, ctNodeId, hoverNodeId)
     : pathNodeIds;
   const pathPoints = previewPathNodeIds
-    .map((nodeId) => getBoardNode(board, nodeId))
+    .map((nodeId) => getBoardNode(runtimeBoard, nodeId))
     .filter((node): node is BoardNode => Boolean(node))
     .map((node) => `${node.anchor.x},${node.anchor.y}`)
     .join(' ');
-  const boardLayer = board.scene.layers.find((layer) => layer.role === 'base') ?? board.scene.layers[0];
+  const boardLayer = runtimeBoard.scene.layers.find((layer) => layer.role === 'base') ?? runtimeBoard.scene.layers[0];
   const actorHotspot = selectedActor.hotspot
     ? { ...selectedActor.hotspot, anchor: ctNode.anchor }
     : { anchor: ctNode.anchor, size: { width: 12, height: 18 } };
-  const authoringExport = useMemo(() => JSON.stringify({ authoringBlocks }, null, 2), [authoringBlocks]);
+  const authoringExport = useMemo(() => JSON.stringify({
+    boardId: runtimeBoard.id,
+    nodes: runtimeBoard.nodes.map((node) => ({ id: node.id, anchor: node.anchor })),
+    actors: runtimeBoard.actors.map((actor) => {
+      const actorNode = getBoardNode(runtimeBoard, actor.nodeId);
+      return {
+        id: actor.id,
+        nodeId: actor.nodeId,
+        hotspot: actor.hotspot && actorNode
+          ? { ...actor.hotspot, anchor: actorNode.anchor }
+          : actor.hotspot,
+      };
+    }),
+    targets: runtimeBoard.targets.map((candidate) => ({
+      id: candidate.id,
+      anchor: candidate.anchor,
+      hotspot: candidate.hotspot,
+    })),
+    scene: {
+      bakedUnitMasks: runtimeBoard.scene.bakedUnitMasks.map((mask) => ({
+        id: mask.id,
+        anchor: mask.anchor,
+        size: mask.size,
+        rotation: mask.rotation,
+        skewX: mask.skewX,
+        tone: mask.tone,
+      })),
+      foregroundOccluders: runtimeBoard.scene.foregroundOccluders.map((occluder) => ({
+        id: occluder.id,
+        anchor: occluder.anchor,
+        size: occluder.size,
+        rotation: occluder.rotation,
+        skewX: occluder.skewX,
+        tone: occluder.tone,
+        opacity: occluder.opacity,
+      })),
+      authoringBlocks,
+    },
+  }, null, 2), [authoringBlocks, runtimeBoard]);
 
   const handleFrameClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!isAuthoring || authorTool !== 'cover' || !frameRef.current) return;
@@ -295,16 +388,34 @@ export function CinematicBoardDuelSlice() {
   };
 
   const handleFramePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!isAuthoring || !draggingBlockId || !frameRef.current) return;
+    if (!isAuthoring || !authorDrag || !frameRef.current) return;
     event.stopPropagation();
     const anchor = getBoardPointFromPointer(frameRef.current, event.clientX, event.clientY);
-    setAuthoringBlocks((current) => current.map((block) => (
-      block.id === draggingBlockId ? { ...block, anchor } : block
-    )));
+    if (authorDrag.kind === 'node') {
+      setEditedNodeAnchors((current) => ({ ...current, [authorDrag.id]: anchor }));
+    } else if (authorDrag.kind === 'target') {
+      setEditedTargetAnchors((current) => ({ ...current, [authorDrag.id]: anchor }));
+    } else if (authorDrag.kind === 'mask') {
+      setEditedMaskAnchors((current) => ({ ...current, [authorDrag.id]: anchor }));
+    } else if (authorDrag.kind === 'occluder') {
+      setEditedOccluderAnchors((current) => ({ ...current, [authorDrag.id]: anchor }));
+    } else {
+      setAuthoringBlocks((current) => current.map((block) => (
+        block.id === authorDrag.id ? { ...block, anchor } : block
+      )));
+    }
   };
 
   const stopDraggingBlock = () => {
-    setDraggingBlockId(null);
+    setAuthorDrag(null);
+  };
+
+  const beginAuthorDrag = (drag: AuthorDrag) => (event: ReactPointerEvent<HTMLElement>) => {
+    if (!isAuthoring) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSelectedAuthorItem(`${drag.kind}:${drag.id}`);
+    setAuthorDrag(drag);
   };
 
   return (
@@ -822,6 +933,11 @@ export function CinematicBoardDuelSlice() {
           cursor: crosshair;
         }
 
+        .authoring .hotspot,
+        .authoring .tile-layer {
+          pointer-events: none;
+        }
+
         .authoring .concept-frame::before {
           content: "";
           position: absolute;
@@ -847,6 +963,67 @@ export function CinematicBoardDuelSlice() {
 
         .authoring-block:active {
           cursor: grabbing;
+        }
+
+        .authoring-handle-layer {
+          position: absolute;
+          inset: 0;
+          z-index: 34;
+          pointer-events: none;
+        }
+
+        .author-handle {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 18px;
+          height: 18px;
+          transform: translate(-50%, -50%);
+          border: 2px solid rgba(255,255,255,0.92);
+          border-radius: 50%;
+          background: rgba(6, 13, 20, 0.72);
+          color: #fff;
+          font: 900 9px/1 Inter, Segoe UI, system-ui, sans-serif;
+          box-shadow: 0 0 0 2px rgba(0,0,0,0.32), 0 0 16px rgba(255,255,255,0.24);
+          pointer-events: auto;
+          cursor: grab;
+        }
+
+        .author-handle:active {
+          cursor: grabbing;
+        }
+
+        .handle-node {
+          border-color: rgba(91, 213, 255, 0.96);
+          z-index: 36;
+        }
+
+        .handle-actor {
+          width: 24px;
+          height: 24px;
+          border-color: rgba(70, 193, 255, 0.98);
+          background: rgba(18, 82, 128, 0.72);
+          z-index: 38;
+        }
+
+        .handle-target {
+          width: 24px;
+          height: 24px;
+          border-color: rgba(255, 92, 66, 0.98);
+          background: rgba(114, 28, 18, 0.74);
+          z-index: 38;
+        }
+
+        .handle-mask {
+          border-color: rgba(255, 228, 142, 0.98);
+          background: rgba(103, 74, 18, 0.72);
+          z-index: 35;
+        }
+
+        .handle-occluder {
+          border-color: rgba(171, 255, 194, 0.96);
+          background: rgba(24, 91, 47, 0.74);
+          z-index: 34;
         }
 
         .authoring-panel {
@@ -902,6 +1079,15 @@ export function CinematicBoardDuelSlice() {
           color: rgba(245,251,255,0.72);
           font-size: 12px;
           line-height: 1.35;
+        }
+
+        .authoring-selection {
+          margin: 8px 0;
+          padding: 7px 9px;
+          border-radius: 8px;
+          background: rgba(104, 207, 255, 0.09);
+          color: #aeeeff;
+          font: 850 11px/1 Consolas, "SFMono-Regular", monospace;
         }
 
         .authoring-panel output {
@@ -994,18 +1180,18 @@ export function CinematicBoardDuelSlice() {
         className="concept-frame"
         style={{
           '--board-image': `url(${boardLayer.imageUrl})`,
-          '--board-aspect': `${board.aspectRatio}`,
-          '--tile-width': `${board.scene.projection.tileWidth}%`,
-          '--tile-aspect': `${board.scene.projection.tileAspect}`,
-          '--tile-rotate': `${board.scene.projection.rotate}deg`,
-          '--tile-skew': `${board.scene.projection.skewX}deg`,
+          '--board-aspect': `${runtimeBoard.aspectRatio}`,
+          '--tile-width': `${runtimeBoard.scene.projection.tileWidth}%`,
+          '--tile-aspect': `${runtimeBoard.scene.projection.tileAspect}`,
+          '--tile-rotate': `${runtimeBoard.scene.projection.rotate}deg`,
+          '--tile-skew': `${runtimeBoard.scene.projection.skewX}deg`,
         } as CSSProperties}
         onClick={handleFrameClick}
         onPointerMove={handleFramePointerMove}
         onPointerUp={stopDraggingBlock}
         onPointerCancel={stopDraggingBlock}
       >
-        {board.scene.layers.filter((layer) => layer.role !== 'base').map((layer) => (
+        {runtimeBoard.scene.layers.filter((layer) => layer.role !== 'base').map((layer) => (
           <div
             key={layer.id}
             className={`scene-image-layer layer-${layer.role}`}
@@ -1017,7 +1203,7 @@ export function CinematicBoardDuelSlice() {
             aria-hidden="true"
           />
         ))}
-        {board.scene.bakedUnitMasks.map((mask) => (
+        {runtimeBoard.scene.bakedUnitMasks.map((mask) => (
           <div
             key={mask.id}
             className={`scene-mask tone-${mask.tone}`}
@@ -1034,7 +1220,7 @@ export function CinematicBoardDuelSlice() {
           <line x1={ctNode.anchor.x} y1={ctNode.anchor.y} x2={target.anchor.x} y2={target.anchor.y} />
         </svg>
         <div className="tile-layer" aria-hidden={mode !== 'move'}>
-          {board.nodes.map((node) => {
+          {runtimeBoard.nodes.map((node) => {
             const reachable = reachableNodeIds.includes(node.id);
             return (
             <button
@@ -1098,7 +1284,7 @@ export function CinematicBoardDuelSlice() {
           <span className="actor-head" />
           <span className="actor-rifle" />
         </div>
-        {board.scene.foregroundOccluders.map((occluder) => (
+        {runtimeBoard.scene.foregroundOccluders.map((occluder) => (
           <div
             key={occluder.id}
             className={`foreground-occluder tone-${occluder.tone}`}
@@ -1124,11 +1310,87 @@ export function CinematicBoardDuelSlice() {
               if (!isAuthoring) return;
               event.stopPropagation();
               event.currentTarget.setPointerCapture(event.pointerId);
-              setDraggingBlockId(block.id);
+              setSelectedAuthorItem(`block:${block.id}`);
+              setAuthorDrag({ kind: 'block', id: block.id });
             }}
             onClick={(event) => event.stopPropagation()}
           />
         ))}
+        {isAuthoring && (
+          <div className="authoring-handle-layer" aria-label="Board package authoring handles">
+            {runtimeBoard.nodes.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                className="author-handle handle-node"
+                style={pointHandleStyle(node.anchor)}
+                data-testid="board-author-node-handle"
+                data-author-id={node.id}
+                aria-label={`Move node ${node.label}`}
+                onPointerDown={beginAuthorDrag({ kind: 'node', id: node.id })}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {node.id === ctNodeId ? 'A' : ''}
+              </button>
+            ))}
+            {runtimeBoard.actors.map((actor) => {
+              const actorNode = getBoardNode(runtimeBoard, actor.nodeId);
+              if (!actorNode) return null;
+              return (
+                <button
+                  key={actor.id}
+                  type="button"
+                  className="author-handle handle-actor"
+                  style={pointHandleStyle(actorNode.anchor)}
+                  data-testid="board-author-actor-handle"
+                  data-author-id={actor.id}
+                  aria-label={`Move actor anchor ${actor.label}`}
+                  onPointerDown={beginAuthorDrag({ kind: 'node', id: actor.nodeId })}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              );
+            })}
+            {runtimeBoard.targets.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                className="author-handle handle-target"
+                style={pointHandleStyle(candidate.anchor)}
+                data-testid="board-author-target-handle"
+                data-author-id={candidate.id}
+                aria-label={`Move target ${candidate.label}`}
+                onPointerDown={beginAuthorDrag({ kind: 'target', id: candidate.id })}
+                onClick={(event) => event.stopPropagation()}
+              />
+            ))}
+            {runtimeBoard.scene.bakedUnitMasks.map((mask) => (
+              <button
+                key={mask.id}
+                type="button"
+                className="author-handle handle-mask"
+                style={pointHandleStyle(mask.anchor)}
+                data-testid="board-author-mask-handle"
+                data-author-id={mask.id}
+                aria-label={`Move mask ${mask.label}`}
+                onPointerDown={beginAuthorDrag({ kind: 'mask', id: mask.id })}
+                onClick={(event) => event.stopPropagation()}
+              />
+            ))}
+            {runtimeBoard.scene.foregroundOccluders.map((occluder) => (
+              <button
+                key={occluder.id}
+                type="button"
+                className="author-handle handle-occluder"
+                style={pointHandleStyle(occluder.anchor)}
+                data-testid="board-author-occluder-handle"
+                data-author-id={occluder.id}
+                aria-label={`Move occluder ${occluder.label}`}
+                onPointerDown={beginAuthorDrag({ kind: 'occluder', id: occluder.id })}
+                onClick={(event) => event.stopPropagation()}
+              />
+            ))}
+          </div>
+        )}
         <button
           type="button"
           className="hotspot ct-hotspot"
@@ -1197,8 +1459,23 @@ export function CinematicBoardDuelSlice() {
             >
               Clear
             </button>
+            <button
+              type="button"
+              data-testid="board-author-reset-edits"
+              onClick={() => {
+                setEditedNodeAnchors({});
+                setEditedTargetAnchors({});
+                setEditedMaskAnchors({});
+                setEditedOccluderAnchors({});
+                setAuthoringBlocks([]);
+                setSelectedAuthorItem('none');
+              }}
+            >
+              Reset edits
+            </button>
           </div>
-          <p>Click the board to place a cover block. Drag placed blocks to tune anchors.</p>
+          <p>Drag node, actor, target, mask, and occluder handles. Use Place cover for temporary package blocks.</p>
+          <div className="authoring-selection" data-testid="board-author-selected">{selectedAuthorItem}</div>
           <output data-testid="board-author-export">{authoringExport}</output>
         </aside>
       )}
