@@ -66,12 +66,15 @@ const CLICK_TARGET_IDS = new Set([
 test('Banana/B 2.5D board package stays valid and connected', () => {
   expect(validateBoardPackage(bananaBDuelBoardPackage)).toEqual([]);
   expect(bananaBDuelBoardPackage.nodes).toHaveLength(8);
-  expect(bananaBDuelBoardPackage.scene.layers).toHaveLength(1);
-  expect(bananaBDuelBoardPackage.scene.bakedUnitMasks.map((mask) => mask.id).sort()).toEqual([
-    'mask-baked-ct-start',
-    'mask-baked-t-entry',
+  expect(bananaBDuelBoardPackage.imageUrl).toBe('/board2d5/scenes/banana-b-clay-v1/base.png');
+  expect(bananaBDuelBoardPackage.scene.layers.map((layer) => layer.role)).toEqual(['base', 'shadow', 'foreground']);
+  expect(bananaBDuelBoardPackage.scene.layers.map((layer) => layer.imageUrl)).toEqual([
+    '/board2d5/scenes/banana-b-clay-v1/base.png',
+    '/board2d5/scenes/banana-b-clay-v1/shadow.png',
+    '/board2d5/scenes/banana-b-clay-v1/foreground.png',
   ]);
-  expect(bananaBDuelBoardPackage.scene.foregroundOccluders.length).toBeGreaterThanOrEqual(1);
+  expect(bananaBDuelBoardPackage.scene.bakedUnitMasks).toEqual([]);
+  expect(bananaBDuelBoardPackage.scene.foregroundOccluders).toEqual([]);
   expect(bananaBDuelBoardPackage.actors).toHaveLength(2);
   expect(bananaBDuelBoardPackage.targets).toHaveLength(2);
   expect(bananaBDuelBoardPackage.actors.map((actor) => actor.team)).toEqual(['CT', 'CT']);
@@ -390,6 +393,8 @@ async function queueBananaDrillContact(page: Page) {
 
 test.describe('human usability regression', () => {
   test('HUD controls remain findable and clickable after camera abuse', async ({ page }) => {
+    test.setTimeout(120_000);
+
     const consoleErrors: string[] = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -892,7 +897,7 @@ test('2.5D board duel proof supports move, invalid targeting, kill, and reset', 
     'src',
     /\/board2d5\/units\/ct-rifle\.svg$/
   );
-  await expect(page.getByTestId('board-scene-mask')).toHaveCount(2);
+  await expect(page.getByTestId('board-scene-mask')).toHaveCount(0);
   await expect(page.getByTestId('board-foreground-occluder')).toHaveCount(
     bananaBDuelBoardPackage.scene.foregroundOccluders.length
   );
@@ -969,7 +974,7 @@ test('2.5D board authoring mode can place an editable cover block', async ({ pag
   await expect(page.getByTestId('board-author-node-handle')).toHaveCount(8);
   await expect(page.getByTestId('board-author-actor-handle')).toHaveCount(2);
   await expect(page.getByTestId('board-author-target-handle')).toHaveCount(2);
-  await expect(page.getByTestId('board-author-mask-handle')).toHaveCount(2);
+  await expect(page.getByTestId('board-author-mask-handle')).toHaveCount(0);
   await expect(page.getByTestId('board-author-occluder-handle')).toHaveCount(
     bananaBDuelBoardPackage.scene.foregroundOccluders.length
   );

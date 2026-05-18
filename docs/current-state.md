@@ -303,6 +303,13 @@ verbs that make those nouns matter.
   under `public/board2d5/units/` with separate CT/T rifle and down-state SVGs,
   keeping the scenario deterministic while moving the route toward an exported
   layered asset pipeline.
+- The `/duel-2-5d` board now has the first real Blender-authored clay diorama
+  layer pass. `npm run board2d5:render` runs
+  `scripts/blender/banana_b_clay_v1.py`, generates real geometry from a locked
+  orthographic Blender camera, saves the source scene under
+  `art/blender/banana-b-clay-v1/`, and exports base/shadow/foreground PNG
+  layers under `public/board2d5/scenes/banana-b-clay-v1/`. The browser package
+  now uses those rendered layers instead of the concept PNG as the board art.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -393,10 +400,10 @@ verbs that make those nouns matter.
 - A full board-package-to-real-sim bridge. The current `board2d5` slice defines
   the adapter seam and event vocabulary, but the local 2v2 contact scenario
   remains deterministic until the presentation quality is approved.
-- Production decomposition of the concept art into clean exported floor, wall,
-  foreground occlusion, unit, and VFX image layers. The current mask/occluder
-  placements prove the data shape and debug edit loop, but they are not final
-  art-quality masks.
+- Production decomposition of the concept art into final floor, wall, foreground
+  occlusion, unit, and VFX image layers. The first Blender board layer pass now
+  proves the real render pipeline, but it is still a v1 clay blockout and needs
+  stronger CS-like material detail plus exported unit/pose renders.
 
 ## Immediate Focus
 

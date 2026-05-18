@@ -181,6 +181,11 @@ threat, or utility overlays.
   SVG assets in `public/board2d5/units/`. This removes the visible CSS
   body/head/rifle construction from the board route and creates the seam for
   replacing these placeholders with real rendered sprite-sheet frames later.
+- Blender board-art seam: `/duel-2-5d` now uses Blender-rendered base, shadow,
+  and foreground board layers from `public/board2d5/scenes/banana-b-clay-v1/`
+  while keeping CT/T actors as separate runtime sprites. This is the correct
+  separation for unit production: future CT/T poses should be exported as
+  sprites or sprite sheets, not baked into the board render.
 - Tile-graph overlay: `/duel-2-5d` now separates visual art from gameplay
   coordinates. The CT gameplay marker, move tiles, path line, and target frame
   are overlay layers calibrated to the concept board. Future unit art should

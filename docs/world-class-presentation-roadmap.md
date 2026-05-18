@@ -26,6 +26,11 @@ S&box is now killed as the main-client candidate because the visual result is
 not enough better than Three.js/browser to justify the platform and editor
 cost.
 
+The active production direction is now a Blender-authored board-art pipeline for
+the browser client. Blender creates the board scene and exports image layers;
+React/browser remains the gameplay compositor with graph-driven movement,
+targeting, and overlays.
+
 ## North Star
 
 Counter-Strike slowed into XCOM should feel like this:
@@ -293,6 +298,11 @@ Progress:
 - S&box product verdict landed on May 17, 2026: killed as the main visual
   client. It works mechanically, but the screenshot is not a meaningful visual
   jump over the existing browser prototype.
+- First Blender clay diorama layer pass landed for `/duel-2-5d`: a scripted
+  Blender scene builds B Banana/B-site geometry from the same locked isometric
+  composition, renders base/shadow/foreground layers into
+  `public/board2d5/scenes/banana-b-clay-v1/`, and keeps gameplay actors
+  separate from the board art.
 - First layered browser-board runtime seam landed for `/duel-2-5d`: the concept
   image is now driven by a typed `board2d5` package with graph nodes, edges,
   actor/target anchors, cover hints, validation, reachability/path helpers, and
@@ -372,13 +382,15 @@ Progress:
    convert the `/duel-2-5d` concept-image bridge into a playable slice that
    moves toward `public/concepts/isometric-duel-target.png`.
 13. Browser-board slice in progress: typed layered scene data, separate actor
-   sprites, mask/occluder placements, draggable node/actor/target/mask/occluder
-   handles, query-gated cover placement/export authoring, and a 2v2
-   contact/trade beat are implemented for `/duel-2-5d`.
-14. Next browser-board slice: replace temporary CSS actors/masks/occluders with
-   real exported image layers, then extend the debug authoring surface to edit
-   size/rotation, click zones, cover hints, foreground occlusion, and
-   LOS/contact anchors.
-15. After the 2v2 slice passes human visual review, bridge the same event shape
+   sprites, Blender-rendered base/shadow/foreground board layers, draggable
+   node/actor/target handles, query-gated cover placement/export authoring, and
+   a 2v2 contact/trade beat are implemented for `/duel-2-5d`.
+14. Improve the Blender clay diorama from v1 blockout toward the reference:
+   richer stone/roof material detail, stronger B-site readability, cleaner
+   foreground occlusion, and exported CT/T pose renders.
+15. Next browser-board slice: replace placeholder CT/T SVG actors with exported
+   pose renders, then extend the debug authoring surface to edit size/rotation,
+   click zones, cover hints, foreground occlusion, and LOS/contact anchors.
+16. After the 2v2 slice passes human visual review, bridge the same event shape
    to real sim/store contact events instead of expanding deterministic local
    state further.

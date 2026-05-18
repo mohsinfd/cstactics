@@ -15,7 +15,7 @@ const T_RIFLE_SPRITE = {
 export const bananaBDuelBoardPackage: BoardPackage = {
   id: 'banana-b-duel-v0',
   name: 'Banana B Contact Board V0',
-  imageUrl: '/concepts/isometric-duel-target.png',
+  imageUrl: '/board2d5/scenes/banana-b-clay-v1/base.png',
   aspectRatio: 998 / 768,
   nodes: [
     { id: 'ct-start', label: 'CT start', anchor: { x: 22.7, y: 72.4 }, cover: 'half' },
@@ -95,53 +95,24 @@ export const bananaBDuelBoardPackage: BoardPackage = {
     },
     layers: [
       {
-        id: 'painted-board-base',
+        id: 'banana-b-clay-base',
         role: 'base',
-        imageUrl: '/concepts/isometric-duel-target.png',
+        imageUrl: '/board2d5/scenes/banana-b-clay-v1/base.png',
+      },
+      {
+        id: 'banana-b-clay-shadow',
+        role: 'shadow',
+        imageUrl: '/board2d5/scenes/banana-b-clay-v1/shadow.png',
+        opacity: 0.42,
+      },
+      {
+        id: 'banana-b-clay-foreground',
+        role: 'foreground',
+        imageUrl: '/board2d5/scenes/banana-b-clay-v1/foreground.png',
       },
     ],
-    bakedUnitMasks: [
-      {
-        id: 'mask-baked-ct-start',
-        label: 'Paint out baked CT miniature',
-        anchor: { x: 22.6, y: 71.4 },
-        size: { width: 12.4, height: 18.6 },
-        rotation: -24,
-        skewX: -7,
-        tone: 'floor-clay',
-      },
-      {
-        id: 'mask-baked-t-entry',
-        label: 'Paint out baked T miniature',
-        anchor: { x: 79.5, y: 33.6 },
-        size: { width: 13.1, height: 17.4 },
-        rotation: -16,
-        skewX: -5,
-        tone: 'wall-clay',
-      },
-    ],
-    foregroundOccluders: [
-      {
-        id: 'logs-front-lip',
-        label: 'Logs foreground cover lip',
-        anchor: { x: 39.5, y: 58.8 },
-        size: { width: 14.3, height: 3.4 },
-        rotation: -25,
-        skewX: -7,
-        tone: 'cover-block',
-        opacity: 0.84,
-      },
-      {
-        id: 'target-wall-lip',
-        label: 'Target-side foreground wall lip',
-        anchor: { x: 74.8, y: 37.6 },
-        size: { width: 11.2, height: 3.1 },
-        rotation: -24,
-        skewX: -6,
-        tone: 'front-wall',
-        opacity: 0.72,
-      },
-    ],
+    bakedUnitMasks: [],
+    foregroundOccluders: [],
     authoringBlocks: [],
   },
   initial: {

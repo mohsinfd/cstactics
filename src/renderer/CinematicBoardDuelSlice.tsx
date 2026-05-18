@@ -536,6 +536,15 @@ export function CinematicBoardDuelSlice() {
           pointer-events: none;
         }
 
+        .scene-image-layer.layer-shadow {
+          z-index: 3;
+          mix-blend-mode: multiply;
+        }
+
+        .scene-image-layer.layer-foreground {
+          z-index: 14;
+        }
+
         .scene-mask,
         .foreground-occluder,
         .authoring-block {
