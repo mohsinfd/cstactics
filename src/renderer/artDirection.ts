@@ -88,9 +88,11 @@ export const overlayY = {
   interactiveFloor: heights.floor + 0.01,
   contactShadow: heights.floor + 0.018,
   siteMarker: heights.floor + 0.026,
+  fog: heights.floor + 0.038,
   siteText: heights.floor + 0.06,
   calloutText: heights.floor + 0.07,
   movementBand: heights.floor + 0.045,
+  fogEdge: heights.floor + 0.102,
   threatBand: heights.floor + 0.06,
   movementBoundary: heights.floor + 0.105,
   oneApBoundary: heights.floor + 0.118,
@@ -122,6 +124,8 @@ export const overlayY = {
 // layers remain readable even when React render order changes.
 export const overlayOrder = {
   siteLabel: 5,
+  fog: 8,
+  fogEdge: 28,
   movementBand: 10,
   threatBand: 20,
   movementBoundary: 30,

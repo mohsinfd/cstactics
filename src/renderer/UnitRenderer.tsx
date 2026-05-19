@@ -29,6 +29,7 @@ import { useGameStore } from '../game/store';
 import type { MovementPresentationRoute, TileCoord, Unit, RoleId, WeaponCategory } from '../game/types';
 import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
+import { isUnitVisibleToTeam } from '../game/visibility';
 import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds } from './movementEasing';
 import {
   getWeaponVisualProfile,
@@ -2137,12 +2138,20 @@ function CasualtyMarker({ unit }: { unit: Unit }) {
 
 export function UnitRenderer() {
   const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const smokes = useGameStore((s) => s.smokes);
+  const visibleLiveUnits = useMemo(
+    () => units.filter((unit) => unit.alive && isUnitVisibleToTeam(map, units, activeTeam, unit, smokes)),
+    [activeTeam, map, smokes, units],
+  );
+
   return (
     <group>
       {units.filter((u) => !u.alive).map((unit) => (
         <CasualtyMarker key={`dead-${unit.id}`} unit={unit} />
       ))}
-      {units.filter((u) => u.alive).map((unit) => (
+      {visibleLiveUnits.map((unit) => (
         <SoldierFigure key={unit.id} unit={unit} />
       ))}
     </group>

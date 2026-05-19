@@ -227,6 +227,11 @@ verbs that make those nouns matter.
 - The main wall renderer now merges adjacent wall footprint tiles into longer
   clay slab masses, reducing the old tile-by-tile sawtooth outline without
   changing walkability, LOS, AP, or route timing.
+- First-pass tactical fog of war is implemented as a renderer-facing visibility
+  layer: the active side reveals walkable tiles through short-radius proximity
+  and LOS-limited vision, unseen floor space receives a soft slate shroud, and
+  live enemy miniatures/facing overlays only render when currently visible.
+  Store state, pathfinding, LOS, AP, AI, and combat math remain unchanged.
 - CS2 stratboard whitebox pass: renderer colors now flow through
   `src/renderer/artDirection.ts`, the board renders as a floating clay tactical
   model over a pale studio void, walls use taller white room-boundary masses,
@@ -416,6 +421,9 @@ verbs that make those nouns matter.
 - Save/hunt outcomes.
 - Production-grade enemy AI.
 - Production-grade authored audio assets and final mix.
+- Production-grade intel memory: last-known enemy positions, sound/contact
+  pings, teammate shared vision tuning, and fog-of-war UI copy beyond the
+  current soft visibility shroud.
 - Production-grade synchronized execute timeline beyond the current bounded
   per-order utility/swing timing contract, inspectable event stream, and compact
   player-facing live/debrief rail.

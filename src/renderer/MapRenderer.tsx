@@ -28,6 +28,7 @@ import { getShotPreview } from '../game/combat';
 import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
 import { getWatchedLane, hasLineOfSight } from '../game/los';
 import { getShotPresentation } from '../game/shotPresentation';
+import { buildTeamVisibleTileKeys, isUnitVisibleToTeam, visibilityTileKey } from '../game/visibility';
 import { ART, standardMaterialProps, type ArtMaterialProfile, type ArtPaletteToken } from './artDirection';
 import { InfernoSetDressingLayer } from './diorama/InfernoSetDressing';
 import { LandmarkCoverProp } from './diorama/LandmarkProps';
@@ -89,6 +90,7 @@ const MOVE_BOUNDARY_COLOR = ART.palette.selected;
 const THREAT_COLOR = ART.palette.danger;
 const SMOKE_PREVIEW_COLOR = ART.palette.smoke;
 const FLASH_PREVIEW_COLOR = ART.palette.flash;
+const FOG_COLOR = '#34414d';
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS_TILES = 2;
 const FLASH_THROW_RANGE = 12;
@@ -561,12 +563,18 @@ function UnitFacingCone({ unit, tileSize, selected }: {
 function UnitTacticalOverlayLayer() {
   const units = useGameStore((s) => s.units);
   const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const visibleUnits = useMemo(
+    () => units.filter((unit) => unit.alive && isUnitVisibleToTeam(map, units, activeTeam, unit, smokes)),
+    [activeTeam, map, smokes, units],
+  );
 
   return (
     <>
-      {units.filter((unit) => unit.alive).map((unit) => {
+      {visibleUnits.map((unit) => {
         const [wx, , wz] = tileWorld(unit.position.x, unit.position.y, ts);
         const selected = unit.id === selectedUnitId;
         const color = unit.team === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
@@ -593,6 +601,75 @@ function UnitTacticalOverlayLayer() {
           </group>
         );
       })}
+    </>
+  );
+}
+
+function FogOfWarLayer() {
+  const map = useGameStore((s) => s.map);
+  const units = useGameStore((s) => s.units);
+  const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const smokes = useGameStore((s) => s.smokes);
+  const ts = map.tileSize;
+
+  const fog = useMemo(() => {
+    const visible = buildTeamVisibleTileKeys(map, units, activeTeam, smokes);
+    const shrouded: TileCoord[] = [];
+    const frontier: TileCoord[] = [];
+
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tile = map.grid[y]?.[x];
+        if (!tile?.walkable) continue;
+
+        const key = visibilityTileKey(tile);
+        if (!visible.has(key)) {
+          shrouded.push({ x, y });
+          continue;
+        }
+
+        const touchesUnknown = CARDINAL_DIRECTIONS.some(({ dx, dy }) => {
+          const neighbor = map.grid[y + dy]?.[x + dx];
+          return Boolean(neighbor?.walkable && !visible.has(visibilityTileKey(neighbor)));
+        });
+        if (touchesUnknown) frontier.push({ x, y });
+      }
+    }
+
+    return { shrouded, frontier };
+  }, [activeTeam, map, smokes, units]);
+
+  if (fog.shrouded.length === 0) return null;
+
+  const frontierColor = activeTeam === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+  return (
+    <>
+      <MovementBand
+        tiles={fog.shrouded}
+        color={FOG_COLOR}
+        opacity={0.34}
+        tileSize={ts}
+        y={ART.overlayY.fog}
+        renderOrder={ART.overlayOrder.fog}
+      />
+      <MovementBand
+        tiles={fog.frontier}
+        color={frontierColor}
+        opacity={0.055}
+        tileSize={ts}
+        y={ART.overlayY.fogEdge}
+        renderOrder={ART.overlayOrder.fogEdge}
+      />
+      <MovementBoundary
+        tiles={fog.frontier}
+        color={frontierColor}
+        tileSize={ts}
+        y={ART.overlayY.fogEdge + 0.01}
+        lineWidth={0.9}
+        opacity={0.3}
+        renderOrder={ART.overlayOrder.fogEdge}
+      />
     </>
   );
 }
@@ -2379,6 +2456,7 @@ export function MapRenderer() {
       <PlantedBombMarker />
       <SmokeLayer />
       <FlashLayer />
+      <FogOfWarLayer />
       <UnitTacticalOverlayLayer />
       <WalkableHighlight />
       <ThreatenedMovementOverlay />

@@ -210,6 +210,10 @@ move, trigger contact, and freeze into a trade decision. See
   executes now record ordered utility, movement/swing, contact, shot result, and
   trade/bomb decision events, while Contact Break still renders a compact
   timeline from the same data. Implemented.
+- First-pass tactical fog of war: the active side gets a soft visibility shroud
+  over unseen walkable space and live enemy miniatures/facing overlays are hidden
+  unless revealed by proximity or line of sight. Implemented without changing
+  store state, pathfinding, AP, LOS, or combat math.
 - First-pass player-facing execute rail: clean executes show a compact
   live/debrief beat list from the reusable timeline, while Contact Break
   continues to own interrupted executes. Implemented.
@@ -222,6 +226,9 @@ move, trigger contact, and freeze into a trade decision. See
 - Next visual/audio slice: multi-beat replay timing, richer casualty/targetable
   visual states, and a path toward authored sample assets instead of only
   procedural cues.
+- Next intel slice: last-known enemy ghosts, sound/contact pings, and clearer
+  fog UI language so hidden information feels like Counter-Strike uncertainty
+  instead of missing pieces.
 
 ### Milestone C: Utility Timing
 
