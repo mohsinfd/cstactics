@@ -29,6 +29,7 @@ import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeT
 import { getWatchedLane, hasLineOfSight } from '../game/los';
 import { getShotPresentation } from '../game/shotPresentation';
 import { ART, standardMaterialProps, type ArtMaterialProfile, type ArtPaletteToken } from './artDirection';
+import { InfernoSetDressingLayer } from './diorama/InfernoSetDressing';
 import { LandmarkCoverProp } from './diorama/LandmarkProps';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
@@ -97,10 +98,15 @@ const KEY_CALLOUTS = new Set([
   'Upper Banana',
   'B Site',
   'Mid',
+  'Top Mid',
   'Second Mid',
+  'Boiler',
   'Apartments',
+  'Pit',
   'A Site',
   'Arch',
+  'Construction',
+  'Moto',
   'CT Spawn',
 ]);
 
@@ -137,6 +143,14 @@ const CARDINAL_DIRECTIONS = [
   { dx: 0, dy: 1, shade: 0.84 },
   { dx: 0, dy: -1, shade: 0.96 },
 ] as const;
+
+type WallRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  elevation: number;
+};
 
 function buildCoverFootprintKeys(map: MapData): Set<string> {
   const keys = new Set<string>();
@@ -201,6 +215,57 @@ function isTrueVoidAt(
   y: number,
 ): boolean {
   return !isBoardFootprintTile(map, coverFootprint, x, y);
+}
+
+function buildWallRects(map: MapData, coverFootprint: ReadonlySet<string>): WallRect[] {
+  const used = new Set<string>();
+  const rects: WallRect[] = [];
+
+  const isMergeableWall = (x: number, y: number, elevation: number): boolean => {
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
+    if (used.has(footprintKey(x, y))) return false;
+    const tile = map.grid[y]?.[x];
+    return Boolean(
+      tile &&
+      tile.elevation === elevation &&
+      isRenderedWallFootprintTile(map, coverFootprint, x, y)
+    );
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const key = footprintKey(x, y);
+      if (used.has(key)) continue;
+      const tile = map.grid[y]?.[x];
+      if (!tile || !isRenderedWallFootprintTile(map, coverFootprint, x, y)) continue;
+
+      const elevation = tile.elevation;
+      let width = 1;
+      while (isMergeableWall(x + width, y, elevation)) width += 1;
+
+      let height = 1;
+      let canGrow = true;
+      while (canGrow && y + height < map.height) {
+        for (let dx = 0; dx < width; dx++) {
+          if (!isMergeableWall(x + dx, y + height, elevation)) {
+            canGrow = false;
+            break;
+          }
+        }
+        if (canGrow) height += 1;
+      }
+
+      for (let yy = y; yy < y + height; yy++) {
+        for (let xx = x; xx < x + width; xx++) {
+          used.add(footprintKey(xx, yy));
+        }
+      }
+
+      rects.push({ x, y, width, height, elevation });
+    }
+  }
+
+  return rects;
 }
 
 function buildFloorSlabEdgeGeometry(map: MapData, ts: number): THREE.BufferGeometry | null {
@@ -615,27 +680,17 @@ function WallLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  const wallTiles = useMemo(() => {
-    const p: Array<{ position: [number, number, number]; elevation: number }> = [];
+  const wallRects = useMemo(() => {
     const coverFootprint = buildCoverFootprintKeys(map);
-
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        const tile = map.grid[y]?.[x];
-        if (!tile || !isRenderedWallFootprintTile(map, coverFootprint, x, y)) continue;
-        p.push({ position: tileWorld(x, y, ts), elevation: tile.elevation });
-      }
-    }
-    return p;
-  }, [map, ts]);
+    return buildWallRects(map, coverFootprint);
+  }, [map]);
 
   const meshes = useMemo(() => {
-    if (wallTiles.length === 0) return null;
+    if (wallRects.length === 0) return null;
     const bodyHeight = Math.max(0.01, WALL_HEIGHT - WALL_CAP_H - WALL_PLINTH_H);
-    const size = ts * 1.16 - GRID_GAP;
-    const plinthGeo = new THREE.BoxGeometry(size * 1.12, WALL_PLINTH_H, size * 1.12);
-    const bodyGeo = new THREE.BoxGeometry(size, bodyHeight, size);
-    const capGeo = new THREE.BoxGeometry(size * 1.12, WALL_CAP_H, size * 1.12);
+    const plinthGeo = new THREE.BoxGeometry(1, 1, 1);
+    const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
+    const capGeo = new THREE.BoxGeometry(1, 1, 1);
     const plinthMat = makeBoxMaterials({
       top: WHITEBOX.wallPlinth,
       side: WHITEBOX.wallDark,
@@ -666,23 +721,30 @@ function WallLayer() {
         emissiveIntensity: 0.018,
       },
     });
-    const plinth = new THREE.InstancedMesh(plinthGeo, plinthMat, wallTiles.length);
-    const body = new THREE.InstancedMesh(bodyGeo, bodyMat, wallTiles.length);
-    const cap = new THREE.InstancedMesh(capGeo, capMat, wallTiles.length);
+    const plinth = new THREE.InstancedMesh(plinthGeo, plinthMat, wallRects.length);
+    const body = new THREE.InstancedMesh(bodyGeo, bodyMat, wallRects.length);
+    const cap = new THREE.InstancedMesh(capGeo, capMat, wallRects.length);
     const d = new THREE.Object3D();
 
-    wallTiles.forEach(({ position: [x, , z], elevation }, i) => {
-      const baseY = tileSurfaceY(elevation, ts);
+    wallRects.forEach((rect, i) => {
+      const x = areaCenterWorldX(map.width, rect.x, rect.width, ts);
+      const z = (rect.y + rect.height / 2) * ts;
+      const baseY = tileSurfaceY(rect.elevation, ts);
+      const width = rect.width * ts - GRID_GAP;
+      const depth = rect.height * ts - GRID_GAP;
 
       d.position.set(x, baseY + WALL_PLINTH_H / 2, z);
+      d.scale.set(width + ts * 0.16, WALL_PLINTH_H, depth + ts * 0.16);
       d.updateMatrix();
       plinth.setMatrixAt(i, d.matrix);
 
       d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight / 2, z);
+      d.scale.set(width, bodyHeight, depth);
       d.updateMatrix();
       body.setMatrixAt(i, d.matrix);
 
       d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight + WALL_CAP_H / 2, z);
+      d.scale.set(width + ts * 0.16, WALL_CAP_H, depth + ts * 0.16);
       d.updateMatrix();
       cap.setMatrixAt(i, d.matrix);
     });
@@ -697,7 +759,7 @@ function WallLayer() {
     cap.castShadow = true;
     cap.receiveShadow = true;
     return { plinth, body, cap };
-  }, [wallTiles, ts]);
+  }, [map.width, wallRects, ts]);
 
   if (!meshes) return null;
   return (
@@ -2303,11 +2365,14 @@ function InteractiveFloor() {
 
 // ---- Compose ----
 export function MapRenderer() {
+  const map = useGameStore((s) => s.map);
+
   return (
     <group>
       <FloorLayer />
       <FloorSlabEdgeLayer />
       <WallLayer />
+      <InfernoSetDressingLayer map={map} />
       <CoverLayer />
       <BombsiteMarkers />
       <CalloutLabels />

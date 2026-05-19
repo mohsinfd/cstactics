@@ -220,6 +220,13 @@ verbs that make those nouns matter.
   against selected-but-unavailable units reading as actionable.
 - First-pass authored tactical-map material polish for Banana/B landmarks, while
   keeping map masks, LOS, route timing, and cover data unchanged.
+- Full-map Inferno set dressing now adds primitive-only landmarks for T/CT
+  spawn pads, Banana/B ruins, A pit/balcony/moto, Mid/Top Mid/Boiler, arches,
+  stairs, columns, barrels, and crates against the root `VGp3Yed.png`
+  reference, while keeping gameplay masks and cover truth unchanged.
+- The main wall renderer now merges adjacent wall footprint tiles into longer
+  clay slab masses, reducing the old tile-by-tile sawtooth outline without
+  changing walkability, LOS, AP, or route timing.
 - CS2 stratboard whitebox pass: renderer colors now flow through
   `src/renderer/artDirection.ts`, the board renders as a floating clay tactical
   model over a pale studio void, walls use taller white room-boundary masses,

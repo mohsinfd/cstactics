@@ -32,6 +32,13 @@ construction, and site cover from the board without needing debug labels.
   labels, and richer Banana Car/logs/sandbags/coffins/oranges/fountain/crate
   detailing. This improves screenshot readability without changing map data,
   cover footprints, LOS, route timing, or walkable masks.
+- 2026-05-19 renderer-only full-map pass: `src/renderer/diorama/InfernoSetDressing.tsx`
+  adds primitive-only Inferno landmarks from the root `VGp3Yed.png` reference,
+  including Banana arches/barrels, B ruins/columns/stairs, A pit/moto details,
+  Mid/Top Mid/Boiler props, and T/CT spawn pads. `MapRenderer.tsx` also merges
+  adjacent wall footprint tiles into longer clay slabs so Banana/B reads more
+  like a shaped tactical map and less like one-tile wall teeth. Gameplay cover,
+  walkable masks, LOS, AP, and route timing were intentionally unchanged.
 - `Banana Car` was present at `(38,51)` with a `3x2` footprint. That reads
   smaller than the landmark should and only blocks six full-cover tiles.
 - `Sandbags` are present in data at `(43,68)` with a `2x1` half-cover footprint,
@@ -168,6 +175,9 @@ Checks:
 - Renderer-only prop polish should still run `npm run build`, `npm run lint`,
   and `npm run test:browser`; `npm run map:validate` is required only when
   cover data, walkable masks, LOS, or route-affecting map files change.
+- Full-map renderer set dressing should additionally get a first-load browser
+  screenshot check against `VGp3Yed.png` to ensure added landmarks do not read
+  as gameplay blockers or hide units/overlays.
 
 Acceptance criteria:
 - A screenshot/checklist artifact exists for Banana/B map edits.
