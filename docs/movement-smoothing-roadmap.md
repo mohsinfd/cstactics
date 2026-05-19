@@ -154,3 +154,20 @@ The helper is intentionally pure and small so it can be imported into
   still passes through the pathfinder's tile centers. Stride animation is now
   phase-driven by distance traveled rather than raw wall-clock time, so the body
   does not pop between adjacent tile updates.
+- Direct movement flow now treats each completed move as a handoff moment:
+  selection cycles to the next same-side unit with AP, and the side advances
+  automatically when no active-side unit can act. This reduces the repeated
+  "move one soldier, hunt for the next soldier" friction while keeping AP and
+  legal pathing unchanged.
+
+## Remaining Movement Feel Gap
+
+- The main map still publishes movement to presentation as discrete legal tile
+  centers. The renderer smooths that queue, but it does not yet have an
+  authored full-route animation clip with acceleration, deceleration, lean,
+  strafe/aim poses, foot planting, and stop transitions.
+- To reach "tiny soldier" movement quality, the next slice should expose a
+  route-level presentation event before movement starts and let the renderer
+  animate the whole path as one continuous run. The tactical path must still
+  pass through legal tile centers, but the pose layer needs route-aware
+  blending instead of only reacting to store position changes.

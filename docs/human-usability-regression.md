@@ -92,6 +92,9 @@ For each sequence, assert:
 - The player can return to a known state with `Reset camera` and `Banana Drill`.
 - Banana Drill can queue a watched crossing, run execute, and show the Contact
   Break decision panel without hiding the command bar or trade action.
+- Direct movement should not leave the player manually hunting for the next
+  actor: after a move completes, selection cycles to the next same-side unit
+  with AP; when the active side is spent, control advances to the opposing side.
 - Duel Lab must open as a readable 1v1, hovered tile/risk information must not
   overlap the selected-unit action deck or command bar, and ordinary direct
   movement must not leave a completed execute debrief panel over the duel.

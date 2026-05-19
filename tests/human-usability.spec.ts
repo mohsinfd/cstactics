@@ -688,6 +688,102 @@ test.describe('human usability regression', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test('direct movement cycles to the next mover and advances the side when spent', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+    await page.goto('/');
+
+    const result = await page.evaluate(async () => {
+      const store = window.__CS_TACTICS_STORE__;
+      if (!store) return { ok: false, reason: 'debug store unavailable' };
+
+      const pickMoveTarget = () => {
+        const state = store.getState();
+        const mover = state.units.find((unit) => unit.id === state.selectedUnitId);
+        if (!mover) return null;
+
+        const occupied = new Set(
+          state.units
+            .filter((unit) => unit.alive && unit.id !== mover.id)
+            .map((unit) => `${unit.position.x},${unit.position.y}`)
+        );
+
+        return [...state.movementTiles]
+          .filter((tile) => !occupied.has(`${tile.x},${tile.y}`))
+          .sort((a, b) => (
+            Math.abs(a.x - mover.position.x) + Math.abs(a.y - mover.position.y) -
+            (Math.abs(b.x - mover.position.x) + Math.abs(b.y - mover.position.y))
+          ))[0] ?? null;
+      };
+
+      store.getState().initGame();
+      let state = store.getState();
+      const activeTeam = state.round.activeTeam;
+      const firstMover = state.units.find((unit) => unit.alive && unit.team === activeTeam && unit.ap > 0);
+      if (!firstMover) return { ok: false, reason: 'first mover unavailable' };
+
+      store.getState().selectUnit(firstMover.id);
+      let moveTarget = pickMoveTarget();
+      if (!moveTarget) return { ok: false, reason: 'first move target unavailable' };
+      await store.getState().moveUnit(moveTarget);
+
+      state = store.getState();
+      const nextMover = state.units.find((unit) => unit.id === state.selectedUnitId);
+      const cycledToFreshMover =
+        state.round.activeTeam === activeTeam &&
+        state.selectedUnitId !== firstMover.id &&
+        nextMover?.team === activeTeam &&
+        nextMover.ap > 0 &&
+        state.lastExecuteTimeline?.source === 'direct_move' &&
+        state.lastExecuteTimeline.status === 'completed';
+      if (!cycledToFreshMover) {
+        return {
+          ok: false,
+          reason: `expected next ${activeTeam} mover, got team=${state.round.activeTeam} selected=${state.selectedUnitId} ap=${nextMover?.ap ?? 'none'}`,
+        };
+      }
+
+      store.getState().initGame();
+      state = store.getState();
+      const soloTeam = state.round.activeTeam;
+      const soloMover = state.units.find((unit) => unit.alive && unit.team === soloTeam && unit.ap > 0);
+      if (!soloMover) return { ok: false, reason: 'solo mover unavailable' };
+
+      store.setState({
+        units: state.units.map((unit) => (
+          unit.team === soloTeam
+            ? { ...unit, ap: unit.id === soloMover.id ? 1 : 0 }
+            : unit
+        )),
+      });
+      store.getState().selectUnit(soloMover.id);
+      moveTarget = pickMoveTarget();
+      if (!moveTarget) return { ok: false, reason: 'solo move target unavailable' };
+      await store.getState().moveUnit(moveTarget);
+
+      state = store.getState();
+      const selectedAfterTurnAdvance = state.units.find((unit) => unit.id === state.selectedUnitId);
+      const advancedToOpponent =
+        state.round.activeTeam !== soloTeam &&
+        selectedAfterTurnAdvance?.team === state.round.activeTeam &&
+        selectedAfterTurnAdvance.ap > 0;
+
+      return {
+        ok: advancedToOpponent,
+        reason: advancedToOpponent
+          ? ''
+          : `expected side advance from ${soloTeam}, got team=${state.round.activeTeam} selectedTeam=${selectedAfterTurnAdvance?.team ?? 'none'} selectedAp=${selectedAfterTurnAdvance?.ap ?? 'none'}`,
+      };
+    });
+
+    expect(result.ok, result.reason).toBe(true);
+    expect(consoleErrors).toEqual([]);
+  });
+
   test('HUD footprint stays usable after compact zoom stress', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (message) => {

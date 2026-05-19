@@ -49,6 +49,9 @@ verbs that make those nouns matter.
   when the planned route/destination is risky.
 - Command bar with clearer Plan Execute, Banana Drill, Run Execute, and End Turn controls.
 - Basic team turn switching and auto-advance between usable units.
+- Direct movement now auto-selects the next same-side unit with AP when a move
+  finishes; if no active-side unit can still act, the turn advances to the
+  opposing side and selects their first usable unit.
 - Line-of-sight helper for grid-based visibility.
 - Hold Angle action foundation.
 - Watched-lane overlay for held angles.

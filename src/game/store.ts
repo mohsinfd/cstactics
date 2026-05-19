@@ -1046,8 +1046,6 @@ export const useGameStore = create<GameStore>((set, get) => {
         nextSelectedUnitId = nextUnits[finalUnitIdx].alive
           ? unit.id
           : getFirstAvailableUnitId(nextUnits, round.activeTeam);
-      } else if (newAp > 0) {
-        nextSelectedUnitId = unit.id;
       } else {
         nextSelectedUnitId = getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
         if (nextSelectedUnitId === null) {
@@ -1070,12 +1068,9 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       const preferredSelectedUnitId = nextRound.phase === 'roundend'
         ? null
-        : getPreferredSelection(
-          nextUnits,
-          nextRound,
-          contactEvent ? nextSelectedUnitId : get().selectedUnitId,
-          nextSelectedUnitId
-        );
+        : contactEvent
+          ? getPreferredSelection(nextUnits, nextRound, nextSelectedUnitId, nextSelectedUnitId)
+          : nextSelectedUnitId;
       const movement = getMovementForSelection(nextUnits, preferredSelectedUnitId, mapData, nextRound);
       movementTiles = movement.movementTiles;
       walkableTiles = movement.walkableTiles;
