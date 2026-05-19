@@ -29,7 +29,7 @@ import { useGameStore } from '../game/store';
 import type { Unit, RoleId, WeaponCategory } from '../game/types';
 import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
-import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds, getSegmentProgress } from './movementEasing';
+import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds } from './movementEasing';
 import {
   getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
@@ -117,10 +117,31 @@ const DEFAULT_CAMERA_READABLE_YAW = 2.45;
 const MINIATURE_ROOT_SCALE = 1.88;
 const WEAPON_REST_Z = 0.5;
 const WEAPON_PRESENTATION_SCALE = 0.94;
+const MAX_MOVEMENT_FRAME_SECONDS = 0.05;
+const MOVEMENT_QUEUE_CATCHUP = 0.18;
 const UNIT_SPRITE_URLS = {
   CT: '/board2d5/units/ct-rifle.svg',
   T: '/board2d5/units/t-rifle.svg',
 } satisfies Record<Unit['team'], string>;
+
+type QueuedMovementTarget = {
+  key: string;
+  position: THREE.Vector3;
+};
+
+type ContinuousMovementState = {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  targetKey: string;
+  activeKey: string;
+  elapsed: number;
+  duration: number;
+  queue: QueuedMovementTarget[];
+  isRunning: boolean;
+  lastMovedAt: number;
+  lastPosition: THREE.Vector3;
+  strideDistance: number;
+};
 
 type RoleMiniatureProfile = {
   torsoWidth: number;
@@ -1179,12 +1200,18 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     wasCritical: false,
     weaponCategory: unit.weapon.category as WeaponCategory,
   });
-  const movementRef = useRef({
+  const movementRef = useRef<ContinuousMovementState>({
     from: new THREE.Vector3(),
     to: new THREE.Vector3(),
-    startedAt: 0,
-    duration: DEFAULT_MOVEMENT_TIMING.tileSeconds,
     targetKey: '',
+    activeKey: '',
+    elapsed: 0,
+    duration: DEFAULT_MOVEMENT_TIMING.tileSeconds,
+    queue: [],
+    isRunning: false,
+    lastMovedAt: 0,
+    lastPosition: new THREE.Vector3(),
+    strideDistance: 0,
   });
 
   const isSelected = selectedUnitId === unit.id;
@@ -1231,6 +1258,12 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       movementRef.current.from.copy(targetPosition);
       movementRef.current.to.copy(targetPosition);
       movementRef.current.targetKey = targetKey;
+      movementRef.current.activeKey = targetKey;
+      movementRef.current.queue = [];
+      movementRef.current.elapsed = 0;
+      movementRef.current.duration = 0;
+      movementRef.current.isRunning = false;
+      movementRef.current.lastPosition.copy(targetPosition);
       hasInitialPosition.current = true;
     }
   }, [angle, targetKey, targetPosition]);
@@ -1268,39 +1301,77 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       if (movement.targetKey !== targetKey) {
         const tileDistance = groupRef.current.position.distanceTo(targetPosition) / ts;
         movement.targetKey = targetKey;
-        movement.startedAt = state.clock.elapsedTime;
 
         if (tileDistance > TELEPORT_TILE_DISTANCE) {
           groupRef.current.position.copy(targetPosition);
           movement.from.copy(targetPosition);
           movement.to.copy(targetPosition);
+          movement.activeKey = targetKey;
+          movement.queue = [];
+          movement.elapsed = 0;
           movement.duration = 0;
+          movement.isRunning = false;
+          movement.lastPosition.copy(targetPosition);
         } else {
-          movement.from.copy(groupRef.current.position);
-          movement.to.copy(targetPosition);
-          movement.duration = getMovementSegmentDurationSeconds(Math.min(tileDistance, 1.15));
+          const alreadyQueued = movement.queue.some((entry) => entry.key === targetKey);
+          const alreadyActive = movement.isRunning && movement.activeKey === targetKey;
+          const lastQueuedPosition = movement.queue.at(-1)?.position ?? (movement.isRunning ? movement.to : groupRef.current.position);
+          if (!alreadyQueued && !alreadyActive && lastQueuedPosition.distanceTo(targetPosition) > ts * 0.05) {
+            movement.queue.push({ key: targetKey, position: targetPosition.clone() });
+          }
         }
       }
 
-      if (movement.duration > 0) {
-        const elapsedMovement = state.clock.elapsedTime - movement.startedAt;
-        const progress = THREE.MathUtils.clamp(
-          elapsedMovement / movement.duration,
-          0,
-          1
-        );
-        const easedProgress = getSegmentProgress(
-          elapsedMovement,
-          movement.duration
-        );
-        groupRef.current.position.lerpVectors(movement.from, movement.to, easedProgress);
-        movementIntensity = progress < 1
-          ? 1
-          : elapsedMovement < movement.duration + DEFAULT_MOVEMENT_TIMING.settleSeconds
-            ? 0.35
-            : 0;
+      let remainingDelta = Math.min(delta, MAX_MOVEMENT_FRAME_SECONDS);
+      let movedDistance = 0;
+
+      while (remainingDelta > 0 && (movement.isRunning || movement.queue.length > 0)) {
+        if (!movement.isRunning) {
+          const nextTarget = movement.queue.shift();
+          if (!nextTarget) break;
+          const segmentTiles = groupRef.current.position.distanceTo(nextTarget.position) / ts;
+          movement.from.copy(groupRef.current.position);
+          movement.to.copy(nextTarget.position);
+          movement.activeKey = nextTarget.key;
+          movement.elapsed = 0;
+          movement.duration = getMovementSegmentDurationSeconds(segmentTiles) /
+            (1 + Math.min(0.45, movement.queue.length * MOVEMENT_QUEUE_CATCHUP));
+          movement.isRunning = movement.duration > 0.001;
+          if (!movement.isRunning) {
+            groupRef.current.position.copy(nextTarget.position);
+            continue;
+          }
+        }
+
+        const stepSeconds = Math.min(remainingDelta, movement.duration - movement.elapsed);
+        movement.elapsed += stepSeconds;
+        remainingDelta -= stepSeconds;
+
+        const progress = THREE.MathUtils.clamp(movement.elapsed / movement.duration, 0, 1);
+        // Keep route traversal linear between legal tile centers. The settle/brace
+        // happens in the pose, not by decelerating at every tile.
+        groupRef.current.position.lerpVectors(movement.from, movement.to, progress);
+
+        if (progress >= 1) {
+          groupRef.current.position.copy(movement.to);
+          movement.isRunning = false;
+          movement.elapsed = 0;
+        }
+      }
+
+      movedDistance = movement.lastPosition.distanceTo(groupRef.current.position);
+      movement.strideDistance += movedDistance / ts;
+      movement.lastPosition.copy(groupRef.current.position);
+
+      if (movedDistance > 0.0001 || movement.isRunning || movement.queue.length > 0) {
+        movement.lastMovedAt = state.clock.elapsedTime;
+        movementIntensity = 1;
       } else {
-        groupRef.current.position.copy(targetPosition);
+        const sinceMove = state.clock.elapsedTime - movement.lastMovedAt;
+        movementIntensity = sinceMove < DEFAULT_MOVEMENT_TIMING.settleSeconds ? 0.28 : 0;
+        if (!movement.isRunning && movement.queue.length === 0 && groupRef.current.position.distanceTo(targetPosition) < ts * 0.02) {
+          groupRef.current.position.copy(targetPosition);
+        }
       }
 
       groupRef.current.rotation.y = dampAngle(
@@ -1311,7 +1382,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
     }
 
-    const walkPhase = state.clock.elapsedTime * 16;
+    const walkPhase = movementRef.current.strideDistance * Math.PI * 2.25;
     if (bodyRef.current) {
       const rootYaw = groupRef.current?.rotation.y ?? angle;
       bodyRef.current.rotation.y = dampAngle(

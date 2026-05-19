@@ -399,3 +399,8 @@ Progress:
 16. Improve Blender only where it directly feeds the main path: rendered unit
    pose sheets, material reference, or board-layer experiments whose tile
    footprints can be validated against the base map.
+17. Main-board movement smoothing first pass done: `UnitRenderer.tsx` now
+   consumes store-published tile centers through a continuous presentation queue
+   at near-constant speed, preserving legal path centers while removing the
+   per-tile ease-out hop cadence. Next movement slice should add authored
+   strafe/stop/aim pose frames on top of this route runner.

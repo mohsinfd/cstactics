@@ -122,11 +122,13 @@ The helper is intentionally pure and small so it can be imported into
    scrub hover across adjacent destination tiles, run execute, and watch for
    continuous unit velocity through the route.
 
-## Non-Goals For This Pass
+## Non-Goals For The Movement Presentation Track
 
-- No edits to `UnitRenderer.tsx`.
-- No broad store refactor.
+- No broad store refactor unless the movement resolver itself becomes the
+  bottleneck.
 - No change to pathfinding correctness or tactical tile/AP rules.
+- No diagonal corner cutting: renderer smoothing must consume legal tile centers
+  from the store rather than inventing a shorter visual route through blockers.
 
 ## Completed Timing Follow-Up
 
@@ -144,3 +146,11 @@ The helper is intentionally pure and small so it can be imported into
   progressively slower, and the stride/brace pose has a longer settle window for
   less tile-shuffle motion. Gameplay state, AP, pathfinding, LOS, and execute
   resolution remain unchanged.
+- Main-board movement now uses a continuous presentation queue in
+  `UnitRenderer.tsx`: every store-published tile remains the tactical truth, but
+  the miniature consumes those tile centers as a route at near-constant speed
+  instead of restarting an ease-out curve per tile. This removes the visible
+  hop/pause cadence while preserving obstacle legality, because the renderer
+  still passes through the pathfinder's tile centers. Stride animation is now
+  phase-driven by distance traveled rather than raw wall-clock time, so the body
+  does not pop between adjacent tile updates.

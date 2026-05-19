@@ -7,11 +7,11 @@ export interface MovementTimingConfig {
 }
 
 export const DEFAULT_MOVEMENT_TIMING: MovementTimingConfig = {
-  tileSeconds: 0.115,
-  minSegmentSeconds: 0.08,
-  maxSegmentSeconds: 0.17,
-  cadenceOverlap: 1.06,
-  settleSeconds: 0.11,
+  tileSeconds: 0.095,
+  minSegmentSeconds: 0.07,
+  maxSegmentSeconds: 0.13,
+  cadenceOverlap: 0.92,
+  settleSeconds: 0.16,
 };
 
 export const TACTICAL_MOVEMENT_TICK_MS = 95;

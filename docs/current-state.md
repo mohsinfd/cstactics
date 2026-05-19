@@ -452,3 +452,10 @@ The immediate browser route is now: keep the tile-true Three.js map playable,
 make its unit sprites and movement presentation approach the 2.5D target, then
 only promote Blender board layers if their authored tile/occlusion contract can
 match the base renderer without visual approximation.
+
+Base-map movement presentation now runs through a continuous route queue in
+`UnitRenderer.tsx`. Store/pathfinding still publish legal tile centers, but the
+renderer consumes those centers at steady speed instead of easing to a stop on
+every tile. This is the first pass aimed specifically at eliminating the visible
+hop-hop-hop movement cadence without allowing visual corner cuts through
+obstacles.
