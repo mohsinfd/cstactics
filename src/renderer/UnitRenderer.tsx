@@ -26,7 +26,7 @@ import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
-import type { Unit, RoleId, WeaponCategory } from '../game/types';
+import type { MovementPresentationRoute, TileCoord, Unit, RoleId, WeaponCategory } from '../game/types';
 import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds } from './movementEasing';
@@ -119,6 +119,7 @@ const WEAPON_REST_Z = 0.5;
 const WEAPON_PRESENTATION_SCALE = 0.94;
 const MAX_MOVEMENT_FRAME_SECONDS = 0.05;
 const MOVEMENT_QUEUE_CATCHUP = 0.18;
+const SEEDED_ROUTE_QUEUE_CATCHUP = 0.015;
 const UNIT_SPRITE_URLS = {
   CT: '/board2d5/units/ct-rifle.svg',
   T: '/board2d5/units/t-rifle.svg',
@@ -127,6 +128,7 @@ const UNIT_SPRITE_URLS = {
 type QueuedMovementTarget = {
   key: string;
   position: THREE.Vector3;
+  routeId?: string;
 };
 
 type ContinuousMovementState = {
@@ -138,10 +140,37 @@ type ContinuousMovementState = {
   duration: number;
   queue: QueuedMovementTarget[];
   isRunning: boolean;
+  routeId: string;
+  runBlend: number;
   lastMovedAt: number;
   lastPosition: THREE.Vector3;
   strideDistance: number;
 };
+
+function tileKey(tile: TileCoord): string {
+  return `${tile.x}:${tile.y}`;
+}
+
+function tileToUnitWorld(mapWidth: number, tileSize: number, tile: TileCoord): THREE.Vector3 {
+  return new THREE.Vector3(
+    (mapWidth - 1 - tile.x) * tileSize + tileSize / 2,
+    0,
+    tile.y * tileSize + tileSize / 2
+  );
+}
+
+function getMovementRouteTargets(
+  route: MovementPresentationRoute | null,
+  mapWidth: number,
+  tileSize: number
+): QueuedMovementTarget[] {
+  if (!route) return [];
+  return route.path.map((tile) => ({
+    key: tileKey(tile),
+    position: tileToUnitWorld(mapWidth, tileSize, tile),
+    routeId: route.id,
+  }));
+}
 
 type RoleMiniatureProfile = {
   torsoWidth: number;
@@ -1172,6 +1201,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const phase = useGameStore((s) => s.round.phase);
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
+  const movementRoute = useGameStore((s) => (
+    s.movementRoutes.find((route) => route.unitId === unit.id) ?? null
+  ));
   const latestCombatEvent = useGameStore((s) =>
     s.combatLog.find((event) => event.attackerId === unit.id || event.targetId === unit.id)
   );
@@ -1209,6 +1241,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     duration: DEFAULT_MOVEMENT_TIMING.tileSeconds,
     queue: [],
     isRunning: false,
+    routeId: '',
+    runBlend: 0,
     lastMovedAt: 0,
     lastPosition: new THREE.Vector3(),
     strideDistance: 0,
@@ -1250,6 +1284,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const angle = Math.atan2(-unit.facing.x, unit.facing.y);
   const targetPosition = useMemo(() => new THREE.Vector3(wx, 0, wz), [wx, wz]);
   const targetKey = `${unit.position.x}:${unit.position.y}`;
+  const movementRouteTargets = useMemo(
+    () => getMovementRouteTargets(movementRoute, map.width, ts),
+    [map.width, movementRoute, ts]
+  );
 
   useLayoutEffect(() => {
     if (groupRef.current && !hasInitialPosition.current) {
@@ -1263,6 +1301,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       movementRef.current.elapsed = 0;
       movementRef.current.duration = 0;
       movementRef.current.isRunning = false;
+      movementRef.current.routeId = '';
+      movementRef.current.runBlend = 0;
       movementRef.current.lastPosition.copy(targetPosition);
       hasInitialPosition.current = true;
     }
@@ -1297,6 +1337,23 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     let movementIntensity = 0;
     if (groupRef.current) {
       const movement = movementRef.current;
+      const routeReady = movementRoute
+        ? Date.now() >= movementRoute.createdAt + movementRoute.delayMs
+        : false;
+
+      if (movementRoute && routeReady && movement.routeId !== movementRoute.id) {
+        const routeQueue = movementRouteTargets
+          .filter((entry) => groupRef.current!.position.distanceTo(entry.position) > ts * 0.05)
+          .map((entry) => ({
+            ...entry,
+            position: entry.position.clone(),
+          }));
+
+        movement.routeId = movementRoute.id;
+        if (routeQueue.length > 0) {
+          movement.queue = routeQueue;
+        }
+      }
 
       if (movement.targetKey !== targetKey) {
         const tileDistance = groupRef.current.position.distanceTo(targetPosition) / ts;
@@ -1311,6 +1368,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.elapsed = 0;
           movement.duration = 0;
           movement.isRunning = false;
+          movement.routeId = '';
           movement.lastPosition.copy(targetPosition);
         } else {
           const alreadyQueued = movement.queue.some((entry) => entry.key === targetKey);
@@ -1334,8 +1392,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.to.copy(nextTarget.position);
           movement.activeKey = nextTarget.key;
           movement.elapsed = 0;
-          movement.duration = getMovementSegmentDurationSeconds(segmentTiles) /
-            (1 + Math.min(0.45, movement.queue.length * MOVEMENT_QUEUE_CATCHUP));
+          const catchup = nextTarget.routeId
+            ? Math.min(0.08, movement.queue.length * SEEDED_ROUTE_QUEUE_CATCHUP)
+            : Math.min(0.45, movement.queue.length * MOVEMENT_QUEUE_CATCHUP);
+          movement.duration = getMovementSegmentDurationSeconds(segmentTiles) / (1 + catchup);
           movement.isRunning = movement.duration > 0.001;
           if (!movement.isRunning) {
             groupRef.current.position.copy(nextTarget.position);
@@ -1365,10 +1425,13 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
       if (movedDistance > 0.0001 || movement.isRunning || movement.queue.length > 0) {
         movement.lastMovedAt = state.clock.elapsedTime;
-        movementIntensity = 1;
+        movement.runBlend = THREE.MathUtils.damp(movement.runBlend, 1, 18, delta);
+        movementIntensity = movement.runBlend;
       } else {
         const sinceMove = state.clock.elapsedTime - movement.lastMovedAt;
-        movementIntensity = sinceMove < DEFAULT_MOVEMENT_TIMING.settleSeconds ? 0.28 : 0;
+        const settleTarget = sinceMove < DEFAULT_MOVEMENT_TIMING.settleSeconds ? 0.28 : 0;
+        movement.runBlend = THREE.MathUtils.damp(movement.runBlend, settleTarget, 11, delta);
+        movementIntensity = movement.runBlend;
         if (!movement.isRunning && movement.queue.length === 0 && groupRef.current.position.distanceTo(targetPosition) < ts * 0.02) {
           groupRef.current.position.copy(targetPosition);
         }

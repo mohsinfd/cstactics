@@ -462,3 +462,9 @@ renderer consumes those centers at steady speed instead of easing to a stop on
 every tile. This is the first pass aimed specifically at eliminating the visible
 hop-hop-hop movement cadence without allowing visual corner cuts through
 obstacles.
+
+The store now also publishes route-level movement presentation hints before
+direct moves and planned execute moves begin. The renderer seeds its movement
+queue from the full legal path, then consumes those tile centers continuously
+while the tactical state still resolves in discrete tiles. This is the current
+bridge toward "tiny soldier" movement without weakening obstacle/path truth.

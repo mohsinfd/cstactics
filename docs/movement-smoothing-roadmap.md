@@ -159,15 +159,20 @@ The helper is intentionally pure and small so it can be imported into
   automatically when no active-side unit can act. This reduces the repeated
   "move one soldier, hunt for the next soldier" friction while keeping AP and
   legal pathing unchanged.
+- The store now exposes route-level movement presentation hints through
+  `movementRoutes`. Direct moves and planned execute moves publish their full
+  legal tile path before the resolver starts stepping unit positions. The unit
+  renderer seeds its continuous queue from that path and uses gentler route
+  catch-up plus damped run-blend pose transitions, so movement reads more like
+  one continuous run than a sequence of separate tile arrivals.
 
 ## Remaining Movement Feel Gap
 
-- The main map still publishes movement to presentation as discrete legal tile
-  centers. The renderer smooths that queue, but it does not yet have an
-  authored full-route animation clip with acceleration, deceleration, lean,
-  strafe/aim poses, foot planting, and stop transitions.
-- To reach "tiny soldier" movement quality, the next slice should expose a
-  route-level presentation event before movement starts and let the renderer
-  animate the whole path as one continuous run. The tactical path must still
-  pass through legal tile centers, but the pose layer needs route-aware
-  blending instead of only reacting to store position changes.
+- The presentation layer still lacks authored soldier pose assets: acceleration,
+  deceleration, lean, strafe/aim poses, foot planting, and stop transitions are
+  approximated procedurally rather than animated as a real sprite/model set.
+- To reach "tiny soldier" quality, the next slice should add a route-aware pose
+  state machine and/or authored sprite frames for idle, run, strafe, aim, stop,
+  hit, and casualty states. The movement path should continue passing through
+  legal tile centers, but the visual body needs higher-fidelity animation on top
+  of the route-level handoff.

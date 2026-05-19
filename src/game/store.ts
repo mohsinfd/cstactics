@@ -33,6 +33,8 @@ import type {
   ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
+  MovementPresentationRoute,
+  MovementPresentationSource,
   SmokeCloud,
   FlashBurst,
 } from './types';
@@ -75,6 +77,7 @@ const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
 
 let feedbackSequence = 0;
+let movementRouteSequence = 0;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -96,6 +99,24 @@ function appendFeedback(
     },
     ...events,
   ].slice(0, FEEDBACK_LOG_LIMIT);
+}
+
+function createMovementPresentationRoute(
+  unitId: number,
+  path: TileCoord[],
+  source: MovementPresentationSource,
+  delayMs = 0
+): MovementPresentationRoute {
+  movementRouteSequence += 1;
+  const createdAt = Date.now();
+  return {
+    id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
+    unitId,
+    source,
+    createdAt,
+    delayMs: Math.max(0, delayMs),
+    path: path.map((tile) => ({ ...tile })),
+  };
 }
 
 function appendBombTickFeedback(events: FeedbackEvent[], previousRound: RoundState, nextRound: RoundState): FeedbackEvent[] {
@@ -743,6 +764,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     executeInterrupt: null,
     currentExecuteTimeline: null,
     lastExecuteTimeline: null,
+    movementRoutes: [],
     feedbackEvents: [],
     aiStatus: null,
 
@@ -883,6 +905,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         ? path.findIndex((tile) => tile.x === contactTile.x && tile.y === contactTile.y)
         : -1;
       const pathToTravel = contactIndex >= 0 ? path.slice(0, contactIndex + 1) : path;
+      const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move');
 
       let nextUnits = [...units];
       let tilesMoved = 0;
@@ -916,6 +939,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         isExecuting: true,
         executeInterrupt: null,
         currentExecuteTimeline: executeTimeline,
+        movementRoutes: [movementRoute],
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -1013,6 +1037,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         set({
           isExecuting: false,
           currentExecuteTimeline: null,
+          movementRoutes: [],
           lastExecuteTimeline: {
             ...executeTimeline,
             status: 'completed',
@@ -1110,6 +1135,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: contactEvent ? 'shoot' : 'move',
         plannedActions: [],
         currentExecuteTimeline: null,
+        movementRoutes: [],
         lastExecuteTimeline: finalExecuteTimeline,
         heldAngles: state.heldAngles.filter((angle) => (
           angle.unitId !== unit.id &&
@@ -2142,6 +2168,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           isExecuting: false,
           executeInterrupt: null,
           currentExecuteTimeline: null,
+          movementRoutes: [],
           lastExecuteTimeline: {
             ...executeTimeline,
             status: 'completed',
@@ -2156,12 +2183,20 @@ export const useGameStore = create<GameStore>((set, get) => {
         return;
       }
 
+      const movementRoutes = runtimes.map((runtime) => createMovementPresentationRoute(
+        runtime.action.unitId,
+        runtime.pathToTravel,
+        'planned_execute',
+        Math.max(0, runtime.startAtMs - executeClockMs)
+      ));
+
       set({
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
         pathPreview: [],
         inputMode: 'move',
+        movementRoutes,
         feedbackEvents: appendFeedback(state.feedbackEvents, 'move_step', {
           team: round.activeTeam,
           intensity: 0.8,
@@ -2378,6 +2413,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         plannedActions: [],
         isExecuting: false,
         currentExecuteTimeline: null,
+        movementRoutes: [],
         lastExecuteTimeline: finalExecuteTimeline,
         inputMode: contactEvent ? 'shoot' : 'move',
         heldAngles: state.heldAngles.filter((angle) => (
@@ -2746,6 +2782,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog,
         aiStatus: null,
+        movementRoutes: [],
         feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'ai_end', {
           team: 'CT',
           intensity: 1,
@@ -2796,6 +2833,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         executeInterrupt: null,
         currentExecuteTimeline: null,
         lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2847,6 +2885,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         executeInterrupt: null,
         currentExecuteTimeline: null,
         lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -2927,6 +2966,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         executeInterrupt: null,
         currentExecuteTimeline: null,
         lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
         aiStatus: null,
       });
@@ -3014,6 +3054,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         executeInterrupt: null,
         currentExecuteTimeline: null,
         lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
         aiStatus: null,
       });

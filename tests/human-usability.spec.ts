@@ -729,7 +729,10 @@ test.describe('human usability regression', () => {
       store.getState().selectUnit(firstMover.id);
       let moveTarget = pickMoveTarget();
       if (!moveTarget) return { ok: false, reason: 'first move target unavailable' };
-      await store.getState().moveUnit(moveTarget);
+      const firstMovePromise = store.getState().moveUnit(moveTarget);
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+      const routeDuringMove = store.getState().movementRoutes.find((route) => route.unitId === firstMover.id);
+      await firstMovePromise;
 
       state = store.getState();
       const nextMover = state.units.find((unit) => unit.id === state.selectedUnitId);
@@ -738,12 +741,17 @@ test.describe('human usability regression', () => {
         state.selectedUnitId !== firstMover.id &&
         nextMover?.team === activeTeam &&
         nextMover.ap > 0 &&
+        routeDuringMove?.source === 'direct_move' &&
+        routeDuringMove.path.length > 0 &&
+        routeDuringMove.path.at(-1)?.x === moveTarget.x &&
+        routeDuringMove.path.at(-1)?.y === moveTarget.y &&
+        state.movementRoutes.length === 0 &&
         state.lastExecuteTimeline?.source === 'direct_move' &&
         state.lastExecuteTimeline.status === 'completed';
       if (!cycledToFreshMover) {
         return {
           ok: false,
-          reason: `expected next ${activeTeam} mover, got team=${state.round.activeTeam} selected=${state.selectedUnitId} ap=${nextMover?.ap ?? 'none'}`,
+          reason: `expected next ${activeTeam} mover with route handoff, got team=${state.round.activeTeam} selected=${state.selectedUnitId} ap=${nextMover?.ap ?? 'none'} route=${routeDuringMove?.source ?? 'none'} remainingRoutes=${state.movementRoutes.length}`,
         };
       }
 

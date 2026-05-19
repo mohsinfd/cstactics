@@ -200,6 +200,17 @@ export interface FeedbackEvent {
   intensity?: number;
 }
 
+export type MovementPresentationSource = 'direct_move' | 'planned_execute' | 'ct_ai';
+
+export interface MovementPresentationRoute {
+  id: string;
+  unitId: number;
+  source: MovementPresentationSource;
+  createdAt: number;
+  delayMs: number;
+  path: TileCoord[];
+}
+
 export interface AiStatus {
   team: Team;
   message: string;
@@ -416,6 +427,7 @@ export interface GameState {
   executeInterrupt: ExecuteInterrupt | null;
   currentExecuteTimeline: ExecuteTimeline | null;
   lastExecuteTimeline: ExecuteTimeline | null;
+  movementRoutes: MovementPresentationRoute[];
   feedbackEvents: FeedbackEvent[];
   aiStatus: AiStatus | null;
 }
