@@ -220,6 +220,7 @@ export function HUD() {
       <ExecuteTimelinePanel />
       <BombObjectivePanel />
       <ExecutePlanner />
+      <NextActionPanel />
       <CommandBar />
       <AiStatusPanel />
       <ViewControlPanel />
@@ -227,6 +228,216 @@ export function HUD() {
       <PhaseAnnouncement />
       <TileInfo />
       <MapLabel />
+    </div>
+  );
+}
+
+function NextActionPanel() {
+  const round = useGameStore((s) => s.round);
+  const map = useGameStore((s) => s.map);
+  const units = useGameStore((s) => s.units);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const movementTiles = useGameStore((s) => s.movementTiles);
+  const planningMode = useGameStore((s) => s.planningMode);
+  const plannedActions = useGameStore((s) => s.plannedActions);
+  const isExecuting = useGameStore((s) => s.isExecuting);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const executeInterrupt = useGameStore((s) => s.executeInterrupt);
+  const smokes = useGameStore((s) => s.smokes);
+  const aiStatus = useGameStore((s) => s.aiStatus);
+  const guidanceEvent = useGameStore((s) => s.guidanceEvent);
+  const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!guidanceEvent) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 300);
+    return () => window.clearInterval(timer);
+  }, [guidanceEvent]);
+
+  if (dense && executeInterrupt) return null;
+
+  const selectedUnit = selectedUnitId === null
+    ? null
+    : units.find((unit) => unit.id === selectedUnitId) ?? null;
+  const activeUnitsWithAp = units.filter((unit) => (
+    unit.alive &&
+    unit.team === round.activeTeam &&
+    unit.ap > 0
+  ));
+  const shootableTargets = selectedUnit
+    ? units.filter((target) => {
+      if (!target.alive || target.team === selectedUnit.team) return false;
+      if (round.phase === 'setup' && !RULES.setupFiringAllowed) return false;
+      if (selectedUnit.ap < getWeaponShotApCost(selectedUnit.weapon) || selectedUnit.ammoInClip <= 0) return false;
+      const preview = getShotPreview(map, selectedUnit, target, 0, target.position, smokes);
+      return preview.hasLineOfSight && preview.inRange;
+    })
+    : [];
+
+  const recentWarning = guidanceEvent?.tone === 'warning' && now - guidanceEvent.createdAt < 3800
+    ? guidanceEvent
+    : null;
+  const teamLabel = round.activeTeam === 'T' ? 'T side' : 'CT side';
+  const nextPlayer = activeUnitsWithAp.find((unit) => unit.id !== selectedUnitId) ?? activeUnitsWithAp[0] ?? null;
+  const copy = recentWarning
+    ? {
+      kicker: 'Input blocked',
+      title: recentWarning.title,
+      detail: recentWarning.detail,
+      accent: '#ff6b82',
+    }
+    : executeInterrupt
+      ? {
+        kicker: 'Contact break',
+        title: 'Make the trade call',
+        detail: 'Use the Contact Break panel or the highlighted target to punish the holder.',
+        accent: '#ff6b82',
+      }
+      : isExecuting
+        ? {
+          kicker: 'Resolving',
+          title: 'Watch the execute beat',
+          detail: 'Movement, utility, and contact resolve in order; the game freezes on meaningful danger.',
+          accent: '#68e6a1',
+        }
+        : aiStatus
+          ? {
+            kicker: 'Opponent turn',
+            title: 'CT response running',
+            detail: aiStatus.message,
+            accent: '#65b7ff',
+          }
+          : round.phase === 'roundend'
+            ? {
+              kicker: 'Round over',
+              title: 'Start the next round',
+              detail: 'Use New Round from the objective panel to keep the match moving.',
+              accent: '#d8c170',
+            }
+            : !selectedUnit
+              ? {
+                kicker: `${teamLabel} command`,
+                title: round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
+                detail: round.phase === 'setup'
+                  ? 'Use Meta Setup for a common default, or select a roster portrait to place manual pressure.'
+                  : 'Pick a friendly miniature or roster portrait with AP.',
+                accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
+              }
+              : selectedUnit.ap <= 0
+                ? {
+                  kicker: `${selectedUnit.name} spent`,
+                  title: nextPlayer ? `Switch to ${nextPlayer.name}` : 'End the turn',
+                  detail: nextPlayer
+                    ? 'This unit has no AP. Pick the next player with AP.'
+                    : 'Every active player is spent; pass control to the other side.',
+                  accent: '#8b95a8',
+                }
+                : inputMode === 'shoot'
+                  ? {
+                    kicker: `${selectedUnit.name} aiming`,
+                    title: shootableTargets.length > 0 ? 'Click a target' : 'No clean shot',
+                    detail: shootableTargets.length > 0
+                      ? `${shootableTargets.length} visible target${shootableTargets.length === 1 ? '' : 's'} can be fired on.`
+                      : 'Swap actions, move for line of sight, or hold an angle.',
+                    accent: shootableTargets.length > 0 ? '#ff6b82' : '#d8c170',
+                  }
+                  : inputMode === 'hold_angle'
+                    ? {
+                      kicker: `${selectedUnit.name} holding`,
+                      title: 'Pick a watched lane',
+                      detail: 'Click a corridor or choke point to create a reaction-fire angle.',
+                      accent: '#65b7ff',
+                    }
+                    : inputMode === 'smoke' || inputMode === 'flash'
+                      ? {
+                        kicker: `${selectedUnit.name} utility`,
+                        title: inputMode === 'smoke' ? 'Place smoke' : 'Place flash',
+                        detail: 'Click a reachable walkable tile to commit the utility throw.',
+                        accent: '#d8c170',
+                      }
+                      : planningMode
+                        ? {
+                          kicker: 'Plan execute',
+                          title: plannedActions.length > 0 ? 'Queue more or run it' : 'Pick an execute tile',
+                          detail: plannedActions.length > 0
+                            ? `${plannedActions.length} order${plannedActions.length === 1 ? '' : 's'} queued. Run Execute when the timing is ready.`
+                            : 'Click a highlighted destination to queue this player, then build the hit.',
+                          accent: '#68e6a1',
+                        }
+                        : plannedActions.length > 0
+                          ? {
+                            kicker: 'Orders ready',
+                            title: 'Run the execute',
+                            detail: 'You can resolve queued orders now, or keep planning the next timing piece.',
+                            accent: '#68e6a1',
+                          }
+                          : {
+                            kicker: `${selectedUnit.name} ready`,
+                            title: movementTiles.length > 0 ? 'Choose movement or action' : 'Choose an action',
+                            detail: movementTiles.length > 0
+                              ? 'Click a highlighted tile, enter Shoot, hold an angle, or queue a Plan Execute.'
+                              : 'No movement tiles are available; shoot, hold, utility, reload, or finish the unit.',
+                            accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
+                          };
+
+  return (
+    <div data-testid="hud-next-action-panel" style={{
+      position: 'absolute',
+      top: dense ? 118 : compact ? 122 : 126,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: compact ? 'min(360px, calc(100vw - 18px))' : 'min(460px, calc(100vw - 40px))',
+      padding: dense ? '7px 10px' : '9px 12px',
+      pointerEvents: 'none',
+      border: `1px solid ${copy.accent}55`,
+      borderLeft: `3px solid ${copy.accent}`,
+      borderRadius: 8,
+      background: 'rgba(8, 10, 15, 0.76)',
+      boxShadow: `0 10px 30px rgba(0,0,0,0.34), 0 0 18px ${copy.accent}1f`,
+      backdropFilter: 'blur(14px) saturate(1.15)',
+      WebkitBackdropFilter: 'blur(14px) saturate(1.15)',
+      display: 'grid',
+      gridTemplateColumns: dense ? '1fr' : 'auto minmax(0, 1fr)',
+      gap: dense ? 2 : 9,
+      alignItems: 'center',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{
+        color: copy.accent,
+        fontSize: dense ? 8 : 9,
+        fontWeight: 950,
+        letterSpacing: dense ? 0.7 : 1,
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+      }}>
+        {copy.kicker}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          color: '#f2f5fb',
+          fontSize: dense ? 10 : 12,
+          fontWeight: 950,
+          letterSpacing: 0.2,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {copy.title}
+        </div>
+        <div style={{
+          color: '#9aa4b5',
+          fontSize: dense ? 8 : 10,
+          fontWeight: 750,
+          lineHeight: 1.25,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {copy.detail}
+        </div>
+      </div>
     </div>
   );
 }

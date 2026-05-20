@@ -172,6 +172,10 @@ move, trigger contact, and freeze into a trade decision. See
   randomize spawn-area starts, then place both sides into one of several common
   Inferno meta shapes (`2-1-2`, `2-2-1`, `3-2`, `1-3-1`). The command bar can
   reroll the active side during setup with `Meta Setup`.
+- First-pass action discoverability is implemented: a compact next-action panel
+  explains the current expected player input, wrong map clicks surface a
+  specific denial reason, and invalid actions now have a short procedural UI
+  sound cue.
 - Landmark cover silhouettes and destination risk card. Implemented.
 - First-pass Banana/B renderer fidelity: contact shadows, material variation,
   quieter cover labels, and richer landmark prop details for car, logs,

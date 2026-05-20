@@ -174,6 +174,7 @@ export interface ExecuteInterrupt {
 
 export type FeedbackEventType =
   | 'select_unit'
+  | 'invalid_action'
   | 'plan_add'
   | 'move_step'
   | 'move_complete'
@@ -198,6 +199,16 @@ export interface FeedbackEvent {
   team?: Team;
   unitId?: number;
   intensity?: number;
+}
+
+export type GuidanceTone = 'hint' | 'warning';
+
+export interface GuidanceEvent {
+  id: string;
+  createdAt: number;
+  tone: GuidanceTone;
+  title: string;
+  detail: string;
 }
 
 export type MovementPresentationSource = 'direct_move' | 'planned_execute' | 'ct_ai';
@@ -429,5 +440,6 @@ export interface GameState {
   lastExecuteTimeline: ExecuteTimeline | null;
   movementRoutes: MovementPresentationRoute[];
   feedbackEvents: FeedbackEvent[];
+  guidanceEvent: GuidanceEvent | null;
   aiStatus: AiStatus | null;
 }

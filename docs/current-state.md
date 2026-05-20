@@ -204,6 +204,11 @@ verbs that make those nouns matter.
   side pistols.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
+- First-pass next-action guidance: the HUD now gives a compact "what to do
+  next" read for setup, selected units, planning, aiming, utility, execution,
+  contact breaks, AI turns, and round end.
+- Invalid map clicks now explain why the input failed and trigger a short
+  procedural denied-action cue instead of silently doing nothing.
 - First-pass combat contact presentation foundation: recent combat/feedback
   events can play as short ordered cue bursts, and unit weapon silhouettes are
   no longer tied only to role defaults.

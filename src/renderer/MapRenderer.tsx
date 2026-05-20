@@ -2371,11 +2371,13 @@ function InteractiveFloor() {
   const map = useGameStore((s) => s.map);
   const moveUnit = useGameStore((s) => s.moveUnit);
   const queueMove = useGameStore((s) => s.queueMove);
+  const shootUnit = useGameStore((s) => s.shootUnit);
   const holdAngle = useGameStore((s) => s.holdAngle);
   const throwSmoke = useGameStore((s) => s.throwSmoke);
   const throwFlash = useGameStore((s) => s.throwFlash);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const hoverTile = useGameStore((s) => s.hoverTile);
+  const pushGuidance = useGameStore((s) => s.pushGuidance);
   const planningMode = useGameStore((s) => s.planningMode);
   const inputMode = useGameStore((s) => s.inputMode);
   const ts = map.tileSize;
@@ -2386,31 +2388,117 @@ function InteractiveFloor() {
       if (e.delta > CLICK_DRAG_THRESHOLD_PX) return;
       const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
-      if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {
-        // Check if a unit is on this tile — if so, select it
-        const { units, round } = useGameStore.getState();
-        const unitOnTile = units.find(
-          (u) => u.alive && u.position.x === tileX && u.position.y === tileY
-        );
-        if (inputMode === 'hold_angle') {
-          holdAngle({ x: tileX, y: tileY });
-        } else if (inputMode === 'smoke') {
-          throwSmoke({ x: tileX, y: tileY });
-        } else if (inputMode === 'flash') {
-          throwFlash({ x: tileX, y: tileY });
-        } else if (unitOnTile && unitOnTile.team === round.activeTeam) {
-          selectUnit(unitOnTile.id);
-        } else {
-          const target = { x: tileX, y: tileY };
-          if (planningMode) {
-            queueMove(target);
-          } else {
-            moveUnit(target);
-          }
+      if (tileX < 0 || tileX >= map.width || tileY < 0 || tileY >= map.height) {
+        pushGuidance('Off board', 'Drag or wheel-pan the map, then click a visible tile.', 'warning');
+        return;
+      }
+
+      // Check if a unit is on this tile — if so, select it
+      const target = { x: tileX, y: tileY };
+      const state = useGameStore.getState();
+      const { units, round } = state;
+      const selectedUnit = state.selectedUnitId === null
+        ? null
+        : units.find((unit) => unit.id === state.selectedUnitId) ?? null;
+      const tile = state.map.grid[tileY]?.[tileX];
+      const unitOnTile = units.find(
+        (u) => u.alive && u.position.x === tileX && u.position.y === tileY
+      );
+
+      if (inputMode === 'shoot') {
+        if (unitOnTile && selectedUnit && unitOnTile.team !== selectedUnit.team) {
+          shootUnit(unitOnTile.id);
+          return;
         }
+        pushGuidance('Pick an enemy', 'Shoot mode needs a visible target, not empty floor.', 'warning');
+        return;
+      }
+
+      if (unitOnTile && unitOnTile.team === round.activeTeam) {
+        selectUnit(unitOnTile.id);
+        return;
+      }
+
+      if (unitOnTile && selectedUnit && unitOnTile.team !== selectedUnit.team) {
+        pushGuidance('Enemy on tile', 'Use Shoot first, then click the enemy miniature or target card.', 'warning');
+        return;
+      }
+
+      if (state.selectedUnitId === null || !selectedUnit) {
+        pushGuidance('Select a unit first', 'Pick an active roster portrait or a friendly miniature before choosing a tile.', 'warning');
+        return;
+      }
+
+      if (!selectedUnit.alive || selectedUnit.team !== round.activeTeam) {
+        pushGuidance('Wrong side', `It is ${round.activeTeam} side's turn. Select an active ${round.activeTeam} player.`, 'warning');
+        return;
+      }
+
+      if (selectedUnit.ap <= 0) {
+        pushGuidance('Unit spent', 'Select another player with AP, or use End Turn when the side is done.', 'warning');
+        return;
+      }
+
+      if (inputMode === 'hold_angle') {
+        holdAngle(target);
+        return;
+      }
+
+      if (inputMode === 'smoke') {
+        throwSmoke(target);
+        return;
+      }
+
+      if (inputMode === 'flash') {
+        throwFlash(target);
+        return;
+      }
+
+      if (!tile?.walkable) {
+        pushGuidance('Blocked tile', 'Choose a lit movement tile or a visible corridor space.', 'warning');
+        return;
+      }
+
+      const isInRange = state.walkableTiles.some((tileInRange) => (
+        tileInRange.x === tileX && tileInRange.y === tileY
+      ));
+      if (!isInRange) {
+        pushGuidance('Out of range', 'Move to one of the highlighted AP tiles, or use Plan Execute for staged movement.', 'warning');
+        return;
+      }
+
+      const occupied = units.some(
+        (unit) => unit.alive &&
+          unit.id !== selectedUnit.id &&
+          unit.position.x === tileX &&
+          unit.position.y === tileY
+      );
+      if (occupied) {
+        pushGuidance('Tile occupied', 'Choose an open tile or select the friendly player already holding that spot.', 'warning');
+        return;
+      }
+
+      if (planningMode) {
+        queueMove(target);
+      } else {
+        moveUnit(target);
       }
     },
-    [ts, map.width, map.height, moveUnit, queueMove, holdAngle, throwSmoke, throwFlash, selectUnit, planningMode, inputMode]
+    [
+      ts,
+      map.width,
+      map.height,
+      moveUnit,
+      queueMove,
+      shootUnit,
+      holdAngle,
+      throwSmoke,
+      throwFlash,
+      selectUnit,
+      pushGuidance,
+      planningMode,
+      inputMode,
+    ]
   );
 
   const handlePointerMove = useCallback(

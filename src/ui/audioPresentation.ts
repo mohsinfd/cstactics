@@ -30,6 +30,7 @@ export const AUDIO_MIX: AudioMixProfile = {
 
 export const FEEDBACK_CUE_BUS: Record<FeedbackEventType, AudioCueBus> = {
   select_unit: 'ui',
+  invalid_action: 'ui',
   plan_add: 'ui',
   move_step: 'movement',
   move_complete: 'movement',

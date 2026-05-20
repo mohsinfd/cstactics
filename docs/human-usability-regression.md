@@ -95,6 +95,12 @@ For each sequence, assert:
 - Direct movement should not leave the player manually hunting for the next
   actor: after a move completes, selection cycles to the next same-side unit
   with AP; when the active side is spent, control advances to the opposing side.
+- The next-action panel should answer "what should I click now?" in the common
+  states: setup/meta defaults, selected unit ready, planning, aiming, utility
+  targeting, execute resolution, contact break, AI response, and round end.
+- Wrong board clicks should not be silent: empty-floor shoot clicks, movement
+  clicks without a selected unit, blocked tiles, occupied tiles, and out-of-range
+  destinations should show a brief denial reason and play the denied-action cue.
 - Duel Lab must open as a readable 1v1, hovered tile/risk information must not
   overlap the selected-unit action deck or command bar, and ordinary direct
   movement must not leave a completed execute debrief panel over the duel.

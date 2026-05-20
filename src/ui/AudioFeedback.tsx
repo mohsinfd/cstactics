@@ -224,6 +224,13 @@ function playFeedbackCue(event: FeedbackEvent, scheduleOffsetSeconds = 0): void 
     return;
   }
 
+  if (event.type === 'invalid_action') {
+    playTone(ctx, now, 190, 0.055, gain(0.018), 'triangle');
+    playTone(ctx, now + 0.038, 124, 0.085, gain(0.014), 'sine');
+    playFilteredNoiseBurst(ctx, now + 0.012, 0.035, gain(0.01), 'bandpass', 760);
+    return;
+  }
+
   if (event.type === 'plan_add') {
     playUiTick(ctx, now, 280, gain(0.016));
     playUiTick(ctx, now + 0.045, 410, gain(0.011));

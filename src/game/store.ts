@@ -33,6 +33,8 @@ import type {
   ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
+  GuidanceEvent,
+  GuidanceTone,
   MovementPresentationRoute,
   MovementPresentationSource,
   SmokeCloud,
@@ -78,6 +80,7 @@ const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
 
 let feedbackSequence = 0;
+let guidanceSequence = 0;
 let movementRouteSequence = 0;
 
 function wait(ms: number): Promise<void> {
@@ -100,6 +103,18 @@ function appendFeedback(
     },
     ...events,
   ].slice(0, FEEDBACK_LOG_LIMIT);
+}
+
+function createGuidanceEvent(title: string, detail: string, tone: GuidanceTone): GuidanceEvent {
+  guidanceSequence += 1;
+  const createdAt = Date.now();
+  return {
+    id: `${createdAt}:${guidanceSequence}:guidance`,
+    createdAt,
+    tone,
+    title,
+    detail,
+  };
 }
 
 function createMovementPresentationRoute(
@@ -707,6 +722,7 @@ interface GameStore extends GameState {
   setPlannedActionTiming: (actionId: string, executeAtMs: number) => void;
   setPlanningMode: (enabled: boolean) => void;
   applyMetaDefaultSetup: () => void;
+  pushGuidance: (title: string, detail: string, tone?: GuidanceTone) => void;
   finishUnit: () => void;
   endTurn: () => void;
   runCtAiTurn: () => Promise<void>;
@@ -776,7 +792,22 @@ export const useGameStore = create<GameStore>((set, get) => {
     lastExecuteTimeline: null,
     movementRoutes: [],
     feedbackEvents: [],
+    guidanceEvent: null,
     aiStatus: null,
+
+    pushGuidance: (title, detail, tone = 'hint') => {
+      const state = get();
+      const guidanceEvent = createGuidanceEvent(title, detail, tone);
+      set({
+        guidanceEvent,
+        feedbackEvents: tone === 'warning'
+          ? appendFeedback(state.feedbackEvents, 'invalid_action', {
+            team: state.round.activeTeam,
+            intensity: 0.9,
+          })
+          : state.feedbackEvents,
+      });
+    },
 
     selectUnit: (id) => {
       const state = get();
@@ -2877,6 +2908,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         lastExecuteTimeline: null,
         movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
@@ -2929,6 +2961,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         lastExecuteTimeline: null,
         movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
@@ -3010,6 +3043,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         lastExecuteTimeline: null,
         movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
@@ -3098,6 +3132,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         lastExecuteTimeline: null,
         movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
