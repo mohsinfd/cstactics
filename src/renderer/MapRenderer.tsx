@@ -90,7 +90,7 @@ const MOVE_BOUNDARY_COLOR = ART.palette.selected;
 const THREAT_COLOR = ART.palette.danger;
 const SMOKE_PREVIEW_COLOR = ART.palette.smoke;
 const FLASH_PREVIEW_COLOR = ART.palette.flash;
-const FOG_COLOR = '#34414d';
+const FOG_COLOR = '#26313b';
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS_TILES = 2;
 const FLASH_THROW_RANGE = 12;
@@ -648,7 +648,7 @@ function FogOfWarLayer() {
       <MovementBand
         tiles={fog.shrouded}
         color={FOG_COLOR}
-        opacity={0.34}
+        opacity={0.46}
         tileSize={ts}
         y={ART.overlayY.fog}
         renderOrder={ART.overlayOrder.fog}

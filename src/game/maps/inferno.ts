@@ -175,12 +175,12 @@ export function createInfernoMap(): MapData {
     coverObjects: COVER,
     spawns: {
       T: [
-        { x: 8, y: 31 }, { x: 10, y: 31 }, { x: 8, y: 34 },
-        { x: 10, y: 34 }, { x: 9, y: 37 },
+        { x: 7, y: 28 }, { x: 12, y: 29 }, { x: 6, y: 34 },
+        { x: 12, y: 34 }, { x: 9, y: 39 },
       ],
       CT: [
-        { x: 80, y: 62 }, { x: 82, y: 62 }, { x: 80, y: 66 },
-        { x: 82, y: 66 }, { x: 81, y: 70 },
+        { x: 78, y: 58 }, { x: 83, y: 59 }, { x: 78, y: 65 },
+        { x: 83, y: 68 }, { x: 80, y: 72 },
       ],
     },
     bombsites: {

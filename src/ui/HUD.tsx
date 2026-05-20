@@ -199,10 +199,6 @@ function getPlantSite(map: MapData, tile: TileCoord): 'A' | 'B' | null {
   return null;
 }
 
-function getMetaPresetIds(team: 'T' | 'CT'): string {
-  return META_DEFAULTS[team].map((meta) => meta.id).join(', ');
-}
-
 function getMetaPresetTitle(team: 'T' | 'CT'): string {
   return META_DEFAULTS[team].map((meta) => `${meta.id}: ${meta.label}`).join(' | ');
 }
@@ -331,7 +327,7 @@ function NextActionPanel() {
                 kicker: `${teamLabel} command`,
                 title: round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
                 detail: round.phase === 'setup'
-                  ? `${teamLabel} starts in spawn. Optional presets: ${getMetaPresetIds(round.activeTeam)}.`
+                  ? `No meta applied. ${teamLabel} starts in spawn; Random Meta is optional.`
                   : 'Pick a friendly miniature or roster portrait with AP.',
                 accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
               }
@@ -485,7 +481,7 @@ function MetaSetupGuide() {
         letterSpacing: 1,
         textTransform: 'uppercase',
       }}>
-        Optional meta presets
+        Spawn start active
       </div>
       <div style={{
         color: '#eef3ff',
@@ -494,7 +490,16 @@ function MetaSetupGuide() {
         lineHeight: 1.28,
         marginTop: 4,
       }}>
-        Default is {round.activeTeam === 'T' ? 'T Spawn' : 'CT Spawn'}
+        No preset applied: {round.activeTeam === 'T' ? 'T Spawn' : 'CT Spawn'}
+      </div>
+      <div style={{
+        color: '#8d97a8',
+        fontSize: dense ? 8 : 9,
+        fontWeight: 760,
+        lineHeight: 1.25,
+        marginTop: 2,
+      }}>
+        Random Meta assigns spawn slots by:
       </div>
       <div style={{
         display: 'grid',
@@ -2685,7 +2690,7 @@ function CommandBar() {
           data-testid="hud-command-meta-setup"
           onClick={() => !isExecuting && applyMetaDefaultSetup()}
           disabled={isExecuting}
-          title={`Optional. Default is spawn. Randomly applies one ${activeTeam} preset: ${getMetaPresetTitle(activeTeam)}.`}
+          title={`Optional. Default is spawn. Randomly applies one ${activeTeam} preset as spawn-slot weighting, not a lane teleport: ${getMetaPresetTitle(activeTeam)}.`}
           aria-label={`Apply random ${activeTeam} meta setup`}
           style={{
             border: '1px solid #374252',

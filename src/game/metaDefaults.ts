@@ -13,39 +13,51 @@ export const META_DEFAULTS: Record<Team, MetaDefault[]> = {
   T: [
     { id: '2-1-2', team: 'T', label: '2 Banana / 1 Mid / 2 Apps', slots: ['banana', 'banana', 'mid', 'apps', 'apps'] },
     { id: '2-2-1', team: 'T', label: '2 Banana / 2 Mid / 1 Apps', slots: ['banana', 'banana', 'mid', 'mid', 'apps'] },
-    { id: '3-2', team: 'T', label: '3 Banana / 2 Mid', slots: ['banana', 'banana', 'banana', 'mid', 'apps'] },
+    { id: '3-2', team: 'T', label: '3 Banana / 2 Mid', slots: ['banana', 'banana', 'banana', 'mid', 'mid'] },
     { id: '1-3-1', team: 'T', label: '1 Banana / 3 Mid / 1 Apps', slots: ['banana', 'mid', 'mid', 'mid', 'apps'] },
   ],
   CT: [
     { id: '2-1-2', team: 'CT', label: '2 A / 1 Rotator / 2 B', slots: ['a', 'a', 'rotator', 'b', 'b'] },
     { id: '2-2-1', team: 'CT', label: '2 A / 2 Rotator / 1 B', slots: ['a', 'a', 'rotator', 'rotator', 'b'] },
-    { id: '3-2', team: 'CT', label: '3 A / 2 B', slots: ['a', 'a', 'rotator', 'b', 'b'] },
+    { id: '3-2', team: 'CT', label: '3 A / 2 B', slots: ['a', 'a', 'a', 'b', 'b'] },
     { id: '1-3-1', team: 'CT', label: '1 A / 3 Rotator / 1 B', slots: ['a', 'rotator', 'rotator', 'rotator', 'b'] },
   ],
 };
 
-const LANE_ANCHORS: Record<Team, Record<MetaLane, TileCoord[]>> = {
+export interface AppliedMetaDefault {
+  units: Unit[];
+  metaDefault: MetaDefault;
+  spawnSummary: string;
+  awperBestPeek: boolean;
+}
+
+const AWP_BEST_PEEK_CHANCE = 0.2;
+
+// Meta defaults are spawn assignments, not lane teleports. These preference
+// lists keep opening shape tied to the actual spawn roll: fast Banana/A players
+// get the spawn slots nearest their lane, but everyone still starts in spawn.
+const SPAWN_SLOT_PREFERENCES: Record<Team, Record<MetaLane, TileCoord[]>> = {
   T: {
     banana: [
-      { x: 34, y: 45 },
-      { x: 37, y: 50 },
-      { x: 40, y: 56 },
-      { x: 43, y: 62 },
-      { x: 44, y: 66 },
+      { x: 12, y: 34 },
+      { x: 12, y: 29 },
+      { x: 9, y: 39 },
+      { x: 6, y: 34 },
+      { x: 7, y: 28 },
     ],
     mid: [
-      { x: 36, y: 35 },
-      { x: 43, y: 39 },
-      { x: 50, y: 45 },
-      { x: 55, y: 50 },
-      { x: 62, y: 53 },
+      { x: 9, y: 39 },
+      { x: 12, y: 34 },
+      { x: 12, y: 29 },
+      { x: 6, y: 34 },
+      { x: 7, y: 28 },
     ],
     apps: [
-      { x: 29, y: 25 },
-      { x: 38, y: 26 },
-      { x: 50, y: 25 },
-      { x: 58, y: 24 },
-      { x: 64, y: 28 },
+      { x: 7, y: 28 },
+      { x: 6, y: 34 },
+      { x: 12, y: 29 },
+      { x: 9, y: 39 },
+      { x: 12, y: 34 },
     ],
     a: [],
     b: [],
@@ -53,30 +65,41 @@ const LANE_ANCHORS: Record<Team, Record<MetaLane, TileCoord[]>> = {
   },
   CT: {
     a: [
-      { x: 70, y: 27 },
-      { x: 73, y: 32 },
-      { x: 76, y: 36 },
-      { x: 79, y: 42 },
-      { x: 76, y: 50 },
+      { x: 78, y: 58 },
+      { x: 83, y: 59 },
+      { x: 78, y: 65 },
+      { x: 83, y: 68 },
+      { x: 80, y: 72 },
     ],
     b: [
-      { x: 43, y: 74 },
-      { x: 45, y: 79 },
-      { x: 48, y: 75 },
-      { x: 50, y: 80 },
-      { x: 57, y: 75 },
+      { x: 80, y: 72 },
+      { x: 83, y: 68 },
+      { x: 78, y: 65 },
+      { x: 83, y: 59 },
+      { x: 78, y: 58 },
     ],
     rotator: [
-      { x: 62, y: 55 },
-      { x: 68, y: 53 },
-      { x: 73, y: 50 },
-      { x: 76, y: 57 },
-      { x: 80, y: 64 },
+      { x: 83, y: 68 },
+      { x: 78, y: 65 },
+      { x: 83, y: 59 },
+      { x: 80, y: 72 },
+      { x: 78, y: 58 },
     ],
     banana: [],
     mid: [],
     apps: [],
   },
+};
+
+const AWP_BEST_PEEK_SPAWNS: Record<Team, TileCoord[]> = {
+  T: [
+    { x: 12, y: 29 },
+    { x: 12, y: 34 },
+  ],
+  CT: [
+    { x: 80, y: 72 },
+    { x: 78, y: 65 },
+  ],
 };
 
 const DEFAULT_FACING: Record<Team, Record<MetaLane, TileCoord>> = {
@@ -114,6 +137,10 @@ function isAvailableWalkable(map: MapData, tile: TileCoord, occupied: ReadonlySe
   return Boolean(map.grid[tile.y]?.[tile.x]?.walkable && !occupied.has(positionKey(tile)));
 }
 
+function isSpawnSlot(tile: TileCoord, spawnSlots: readonly TileCoord[]): boolean {
+  return spawnSlots.some((spawn) => spawn.x === tile.x && spawn.y === tile.y);
+}
+
 function nearbyCandidates(origin: TileCoord, radius: number): TileCoord[] {
   const candidates: TileCoord[] = [];
   for (let y = origin.y - radius; y <= origin.y + radius; y++) {
@@ -143,20 +170,48 @@ function findAvailableWalkableNear(map: MapData, preferred: TileCoord, occupied:
   return preferred;
 }
 
+function findAvailableSpawnSlot(
+  map: MapData,
+  preferred: TileCoord,
+  spawnSlots: readonly TileCoord[],
+  occupied: Set<string>,
+): TileCoord | null {
+  for (const candidate of nearbyCandidates(preferred, 2)) {
+    if (isSpawnSlot(candidate, spawnSlots) && isAvailableWalkable(map, candidate, occupied)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function chooseSpawnSlot(
+  map: MapData,
+  team: Team,
+  slot: MetaLane,
+  occupied: Set<string>,
+  preferAwperPeek: boolean,
+): TileCoord {
+  const spawnSlots = map.spawns[team];
+  const preferences = [
+    ...(preferAwperPeek ? AWP_BEST_PEEK_SPAWNS[team] : []),
+    ...SPAWN_SLOT_PREFERENCES[team][slot],
+    ...shuffled(spawnSlots),
+  ];
+
+  for (const preferred of preferences) {
+    const spawn = findAvailableSpawnSlot(map, preferred, spawnSlots, occupied);
+    if (spawn) return spawn;
+  }
+
+  return findAvailableWalkableNear(map, spawnSlots[0] ?? { x: 0, y: 0 }, occupied);
+}
+
 export function applyRandomSpawnPositions(map: MapData, units: Unit[]): Unit[] {
   let nextUnits = units.map((unit) => ({ ...unit, position: { ...unit.position }, facing: { ...unit.facing } }));
 
   (['T', 'CT'] as const).forEach((team) => {
-    const spawnType = team === 'T' ? 'spawn_t' : 'spawn_ct';
-    const spawnTiles: TileCoord[] = [];
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        const tile = map.grid[y]?.[x];
-        if (tile?.walkable && tile.type === spawnType) spawnTiles.push({ x, y });
-      }
-    }
-
-    const shuffledSpawns = shuffled(spawnTiles);
+    const shuffledSpawns = shuffled(map.spawns[team]);
     const teamUnits = nextUnits.filter((unit) => unit.team === team);
     teamUnits.forEach((unit, index) => {
       const spawn = shuffledSpawns[index % shuffledSpawns.length] ?? map.spawns[team][index % map.spawns[team].length];
@@ -180,7 +235,7 @@ export function applyMetaDefault(
   units: Unit[],
   team: Team,
   metaDefault: MetaDefault = pickRandomMetaDefault(team),
-): { units: Unit[]; metaDefault: MetaDefault } {
+): AppliedMetaDefault {
   const occupied = new Set(
     units
       .filter((unit) => unit.alive && unit.team !== team)
@@ -188,13 +243,17 @@ export function applyMetaDefault(
   );
   let nextUnits = units.map((unit) => ({ ...unit, position: { ...unit.position }, facing: { ...unit.facing } }));
   const teamUnits = nextUnits.filter((unit) => unit.team === team && unit.alive);
+  const assignments = teamUnits.map((unit, index) => ({
+    unit,
+    slot: metaDefault.slots[index % metaDefault.slots.length],
+    preferAwperPeek: unit.role.id === 'awper' && Math.random() < AWP_BEST_PEEK_CHANCE,
+  })).sort((a, b) => Number(b.preferAwperPeek) - Number(a.preferAwperPeek));
+  let awperBestPeek = false;
 
-  teamUnits.forEach((unit, index) => {
-    const slot = metaDefault.slots[index % metaDefault.slots.length];
-    const anchors = LANE_ANCHORS[team][slot];
-    const preferred = anchors.length > 0 ? pick(anchors) : unit.position;
-    const position = findAvailableWalkableNear(map, preferred, occupied);
+  assignments.forEach(({ unit, slot, preferAwperPeek }) => {
+    const position = chooseSpawnSlot(map, team, slot, occupied, preferAwperPeek);
     occupied.add(positionKey(position));
+    awperBestPeek = awperBestPeek || preferAwperPeek;
 
     nextUnits = nextUnits.map((candidate) => (
       candidate.id === unit.id
@@ -204,10 +263,15 @@ export function applyMetaDefault(
           facing: { ...DEFAULT_FACING[team][slot] },
         }
         : candidate
-    ));
+      ));
   });
 
-  return { units: nextUnits, metaDefault };
+  return {
+    units: nextUnits,
+    metaDefault,
+    spawnSummary: `${metaDefault.label}. Spawn slots weighted by lane; no free lane teleport.${awperBestPeek ? ' AWPer got the best-peek spawn roll.' : ''}`,
+    awperBestPeek,
+  };
 }
 
 export function applyRandomMetaDefaults(

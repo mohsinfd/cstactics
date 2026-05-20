@@ -138,10 +138,10 @@ Banana/B is a priority because utility, LOS, and gameplay fairness depend on it.
 
 Recent validation route sanity:
 
-- `T_to_Banana_Car`: 46
-- `T_to_Banana_Logs`: 63
-- `T_to_Banana_Sandbags`: 67
-- `T_to_B`: 80
+- `T_to_Banana_Car`: 44
+- `T_to_Banana_Logs`: 61
+- `T_to_Banana_Sandbags`: 65
+- `T_to_B`: 84
 - `coverPlacementWarnings`: 0
 - `coverAdjacencyWarnings`: 0
 - `routeSanityWarnings`: 0

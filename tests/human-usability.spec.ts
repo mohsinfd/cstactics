@@ -95,6 +95,64 @@ test('Banana/B 2.5D board package stays valid and connected', () => {
   expect(findBoardPath(bananaBDuelBoardPackage, 'ct-start', 'logs')).toEqual(['ct-start', 'short-1', 'logs']);
 });
 
+test('fresh load and refresh start T side at authored spawn before optional meta', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('hud-next-action-panel')).toContainText('T side starts in spawn');
+
+  const initial = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    if (!state) return null;
+    const tUnits = state.units
+      .filter((unit) => unit.team === 'T')
+      .map((unit) => ({ x: unit.position.x, y: unit.position.y }));
+    return {
+      activeTeam: state.round.activeTeam,
+      phase: state.round.phase,
+      tUnits,
+      tSpawns: state.map.spawns.T,
+    };
+  });
+
+  expect(initial).not.toBeNull();
+  expect(initial?.activeTeam).toBe('T');
+  expect(initial?.phase).toBe('setup');
+  expect(initial?.tUnits).toEqual(initial?.tSpawns);
+
+  await page.getByTestId('hud-command-meta-setup').click();
+  await expect(page.getByTestId('hud-next-action-panel')).toContainText('Applied');
+  await expect(page.getByTestId('hud-next-action-panel')).toContainText('Spawn slots weighted');
+
+  const afterMeta = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    if (!state) return null;
+    return {
+      tUnits: state.units
+        .filter((unit) => unit.team === 'T')
+        .map((unit) => ({ x: unit.position.x, y: unit.position.y })),
+      tSpawns: state.map.spawns.T,
+    };
+  });
+
+  expect(afterMeta).not.toBeNull();
+  const spawnKeys = new Set(afterMeta?.tSpawns.map((tile) => `${tile.x},${tile.y}`));
+  const metaPositionKeys = afterMeta?.tUnits.map((tile) => `${tile.x},${tile.y}`) ?? [];
+  expect(metaPositionKeys.every((key) => spawnKeys.has(key))).toBe(true);
+  expect(new Set(metaPositionKeys).size).toBe(metaPositionKeys.length);
+
+  await page.reload();
+  await expect(page.getByTestId('hud-next-action-panel')).toContainText('T side starts in spawn');
+
+  const afterRefresh = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    if (!state) return null;
+    return state.units
+      .filter((unit) => unit.team === 'T')
+      .map((unit) => ({ x: unit.position.x, y: unit.position.y }));
+  });
+
+  expect(afterRefresh).toEqual(initial?.tSpawns);
+});
+
 async function expectHudReachable(page: Page, ids: readonly string[]) {
   await page.waitForSelector(`[data-testid="${ids[0]}"]`, { timeout: 10_000 });
   const results = await page.evaluate(({ ids, clickTargetIds }) => {

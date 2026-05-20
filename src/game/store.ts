@@ -2523,7 +2523,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         movementRoutes: [],
         guidanceEvent: createGuidanceEvent(
           `Applied ${result.metaDefault.id}`,
-          result.metaDefault.label,
+          result.spawnSummary,
           'hint'
         ),
         feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {

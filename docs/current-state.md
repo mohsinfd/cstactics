@@ -52,10 +52,12 @@ verbs that make those nouns matter.
 - Direct movement now auto-selects the next same-side unit with AP when a move
   finishes; if no active-side unit can still act, the turn advances to the
   opposing side and selects their first usable unit.
-- New full rounds start both sides at their fixed T/CT spawn positions by
-  default. During setup, the command bar exposes an optional `Random Meta`
-  button and a visible preset guide for `2-1-2`, `2-2-1`, `3-2`, and `1-3-1`
-  so players can skip manual opening shuffles only when they choose to.
+- New full rounds start both sides at their widened authored T/CT spawn
+  positions by default. During setup, the command bar exposes an optional
+  `Random Meta` button and a visible preset guide for `2-1-2`, `2-2-1`,
+  `3-2`, and `1-3-1`. Those presets now weight spawn-slot assignments by
+  lane intent instead of teleporting units down the map; the AWPer has a small
+  best-peek spawn roll so opening shape still depends on spawn quality.
 - Line-of-sight helper for grid-based visibility.
 - Hold Angle action foundation.
 - Watched-lane overlay for held angles.

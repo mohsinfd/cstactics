@@ -98,6 +98,8 @@ For each sequence, assert:
 - The next-action panel should answer "what should I click now?" in the common
   states: setup/meta defaults, selected unit ready, planning, aiming, utility
   targeting, execute resolution, contact break, AI response, and round end.
+  Fresh loads must clearly say the side is still in spawn; optional meta should
+  only reassign spawn slots by lane intent, not move units down the map.
 - Wrong board clicks should not be silent: empty-floor shoot clicks, movement
   clicks without a selected unit, blocked tiles, occupied tiles, and out-of-range
   destinations should show a brief denial reason and play the denied-action cue.
