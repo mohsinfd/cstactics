@@ -44,7 +44,7 @@ import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
 import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
-import { applyMetaDefault, applyRandomMetaDefaults, applyRandomSpawnPositions } from './metaDefaults';
+import { applyMetaDefault, applyRandomSpawnPositions } from './metaDefaults';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
@@ -699,8 +699,7 @@ function createUnits(map: GameState['map'] = createInfernoMap(), options: Create
 }
 
 function createRoundUnits(map: GameState['map']): Unit[] {
-  const spawnedUnits = createUnits(map, { randomizeSpawns: true });
-  return applyRandomMetaDefaults(map, spawnedUnits).units;
+  return createUnits(map);
 }
 
 interface GameStore extends GameState {
@@ -2522,6 +2521,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         currentExecuteTimeline: null,
         lastExecuteTimeline: null,
         movementRoutes: [],
+        guidanceEvent: createGuidanceEvent(
+          `Applied ${result.metaDefault.id}`,
+          result.metaDefault.label,
+          'hint'
+        ),
         feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {
           team: state.round.activeTeam,
           unitId: selectedUnitId ?? undefined,

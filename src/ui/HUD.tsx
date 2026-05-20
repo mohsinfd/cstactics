@@ -20,6 +20,7 @@ import { getShotPreview, type ShotPreview } from '../game/combat';
 import { RULES } from '../game/config/rules';
 import { AudioFeedback } from './AudioFeedback';
 import { getShotPresentation } from '../game/shotPresentation';
+import { META_DEFAULTS } from '../game/metaDefaults';
 import {
   EXECUTE_TIMING_STEP_MS,
   formatExecuteTime,
@@ -198,6 +199,14 @@ function getPlantSite(map: MapData, tile: TileCoord): 'A' | 'B' | null {
   return null;
 }
 
+function getMetaPresetIds(team: 'T' | 'CT'): string {
+  return META_DEFAULTS[team].map((meta) => meta.id).join(', ');
+}
+
+function getMetaPresetTitle(team: 'T' | 'CT'): string {
+  return META_DEFAULTS[team].map((meta) => `${meta.id}: ${meta.label}`).join(' | ');
+}
+
 function tileDistance(a: TileCoord, b: TileCoord): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -221,6 +230,7 @@ export function HUD() {
       <BombObjectivePanel />
       <ExecutePlanner />
       <NextActionPanel />
+      <MetaSetupGuide />
       <CommandBar />
       <AiStatusPanel />
       <ViewControlPanel />
@@ -276,17 +286,17 @@ function NextActionPanel() {
     })
     : [];
 
-  const recentWarning = guidanceEvent?.tone === 'warning' && now - guidanceEvent.createdAt < 3800
+  const recentGuidance = guidanceEvent && now - guidanceEvent.createdAt < 3800
     ? guidanceEvent
     : null;
   const teamLabel = round.activeTeam === 'T' ? 'T side' : 'CT side';
   const nextPlayer = activeUnitsWithAp.find((unit) => unit.id !== selectedUnitId) ?? activeUnitsWithAp[0] ?? null;
-  const copy = recentWarning
+  const copy = recentGuidance
     ? {
-      kicker: 'Input blocked',
-      title: recentWarning.title,
-      detail: recentWarning.detail,
-      accent: '#ff6b82',
+      kicker: recentGuidance.tone === 'warning' ? 'Input blocked' : 'Setup applied',
+      title: recentGuidance.title,
+      detail: recentGuidance.detail,
+      accent: recentGuidance.tone === 'warning' ? '#ff6b82' : '#68e6a1',
     }
     : executeInterrupt
       ? {
@@ -321,7 +331,7 @@ function NextActionPanel() {
                 kicker: `${teamLabel} command`,
                 title: round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
                 detail: round.phase === 'setup'
-                  ? 'Use Meta Setup for a common default, or select a roster portrait to place manual pressure.'
+                  ? `${teamLabel} starts in spawn. Optional presets: ${getMetaPresetIds(round.activeTeam)}.`
                   : 'Pick a friendly miniature or roster portrait with AP.',
                 accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
               }
@@ -437,6 +447,88 @@ function NextActionPanel() {
         }}>
           {copy.detail}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MetaSetupGuide() {
+  const round = useGameStore((s) => s.round);
+  const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
+  if (round.phase !== 'setup') return null;
+
+  const presets = META_DEFAULTS[round.activeTeam];
+  const accent = round.activeTeam === 'T' ? '#d8c170' : '#65b7ff';
+
+  return (
+    <div data-testid="hud-meta-setup-guide" style={{
+      position: 'absolute',
+      top: dense ? 170 : 184,
+      right: compact ? 8 : 20,
+      width: dense ? 'min(246px, calc(100vw - 16px))' : 284,
+      padding: dense ? '7px 8px' : '9px 10px',
+      pointerEvents: 'none',
+      border: `1px solid ${accent}40`,
+      borderLeft: `3px solid ${accent}`,
+      borderRadius: 8,
+      background: 'rgba(8, 10, 15, 0.72)',
+      boxShadow: '0 12px 30px rgba(0,0,0,0.3)',
+      backdropFilter: 'blur(14px) saturate(1.12)',
+      WebkitBackdropFilter: 'blur(14px) saturate(1.12)',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{
+        color: accent,
+        fontSize: dense ? 8 : 9,
+        fontWeight: 950,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+      }}>
+        Optional meta presets
+      </div>
+      <div style={{
+        color: '#eef3ff',
+        fontSize: dense ? 10 : 11,
+        fontWeight: 900,
+        lineHeight: 1.28,
+        marginTop: 4,
+      }}>
+        Default is {round.activeTeam === 'T' ? 'T Spawn' : 'CT Spawn'}
+      </div>
+      <div style={{
+        display: 'grid',
+        gap: 3,
+        marginTop: dense ? 5 : 7,
+      }}>
+        {presets.map((preset) => (
+          <div key={preset.id} style={{
+            display: 'grid',
+            gridTemplateColumns: dense ? '38px minmax(0, 1fr)' : '44px minmax(0, 1fr)',
+            gap: dense ? 5 : 7,
+            alignItems: 'baseline',
+            minWidth: 0,
+          }}>
+            <span style={{
+              color: accent,
+              fontSize: dense ? 8 : 9,
+              fontWeight: 950,
+              fontFamily: "'Courier New', monospace",
+            }}>
+              {preset.id}
+            </span>
+            <span style={{
+              color: '#9aa4b5',
+              fontSize: dense ? 8 : 9,
+              fontWeight: 760,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {preset.label}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2593,8 +2685,8 @@ function CommandBar() {
           data-testid="hud-command-meta-setup"
           onClick={() => !isExecuting && applyMetaDefaultSetup()}
           disabled={isExecuting}
-          title="Reroll the active side into a common Inferno opening shape."
-          aria-label={`Apply ${activeTeam} meta setup`}
+          title={`Optional. Default is spawn. Randomly applies one ${activeTeam} preset: ${getMetaPresetTitle(activeTeam)}.`}
+          aria-label={`Apply random ${activeTeam} meta setup`}
           style={{
             border: '1px solid #374252',
             background: 'rgba(117, 185, 255, 0.14)',
@@ -2610,7 +2702,7 @@ function CommandBar() {
             ...commandButtonStyle,
           }}
         >
-          Meta Setup
+          Random Meta
         </button>
       )}
 

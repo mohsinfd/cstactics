@@ -169,9 +169,9 @@ move, trigger contact, and freeze into a trade decision. See
   tile updates while a full presentation path is active, fixing the
   move-forward/pull-back/replay cadence without changing tile truth.
 - Opening setup defaults are implemented as first-pass usability: full rounds
-  randomize spawn-area starts, then place both sides into one of several common
-  Inferno meta shapes (`2-1-2`, `2-2-1`, `3-2`, `1-3-1`). The command bar can
-  reroll the active side during setup with `Meta Setup`.
+  now start from fixed T/CT spawn positions by default, while the setup HUD
+  exposes optional random Inferno meta presets (`2-1-2`, `2-2-1`, `3-2`,
+  `1-3-1`) with visible labels so players know what the button can apply.
 - First-pass action discoverability is implemented: a compact next-action panel
   explains the current expected player input, wrong map clicks surface a
   specific denial reason, and invalid actions now have a short procedural UI
