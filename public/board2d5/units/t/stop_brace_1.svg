@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <filter id="softShadow" x="28" y="166" width="200" height="64" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <linearGradient id="body" x1="100" y1="78.5" x2="156" y2="142" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d94a2e"/>
+      <stop offset="1" stop-color="#6d130c"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="205" rx="58" ry="22" fill="#160301" opacity="0.42" filter="url(#softShadow)"/>
+  <path d="M 106.6 143 L 98 195.1" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 149.4 143 L 159 190.6" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 88 198.1 L 113 196.1" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 147 193.6 L 174 191.6" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <polygon points="104.5,78.5 154.5,79.4 150.2,142 107.4,142" fill="url(#body)"/>
+  <polygon points="114.8,95.5 142.8,95.5 138,118.5 118,118.5" fill="#431006" opacity="0.8"/>
+  <path d="M 104.5 88 L 116.5 119.4" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 154.5 88 L 148.5 114.8" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 109 118.9 L 185.9 103.2" stroke="#120605" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 132.5 114.1 L 185.9 103.2" stroke="#020304" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 129.5 122.1 L 140.5 139.1" stroke="#120605" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="129.9" cy="57.5" rx="20" ry="21" fill="#bb7948"/>
+  <path d="M 105.9 53.5 C 113.9 32.5, 145.9 32.5, 153.9 53.5 C 139.9 45.5, 119.9 45.5, 105.9 53.5 Z" fill="#f4aa52"/>
+  <path d="M 110 129 L 146 129 L 140 143 L 116 143 Z" fill="#9f2518" opacity="0.86"/>
+  <path d="M 105 128.5 L 151 128.5" stroke="#ffd166" stroke-width="5" stroke-linecap="round" opacity="0.82"/>
+
+</svg>

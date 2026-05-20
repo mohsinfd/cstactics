@@ -19,6 +19,7 @@ export interface MovementClip {
   totalTileDistance: number;
   elapsedSeconds: number;
   durationSeconds: number;
+  profileDurationSeconds: number;
   maxSpeedTilesPerSecond: number;
   accelTilesPerSecond2: number;
   decelTilesPerSecond2: number;
@@ -190,6 +191,7 @@ export function createMovementClip({
   maxSpeedTilesPerSecond = ROUTE_LOCOMOTION.maxSpeedTilesPerSecond,
   accelTilesPerSecond2 = ROUTE_LOCOMOTION.accelTilesPerSecond2,
   decelTilesPerSecond2 = ROUTE_LOCOMOTION.decelTilesPerSecond2,
+  durationSeconds: requestedDurationSeconds,
 }: {
   id: string;
   unitId: number;
@@ -198,15 +200,19 @@ export function createMovementClip({
   maxSpeedTilesPerSecond?: number;
   accelTilesPerSecond2?: number;
   decelTilesPerSecond2?: number;
+  durationSeconds?: number;
 }): MovementClip {
   const smoothedPoints = getSmoothedRoutePoints(points, tileSize);
   const cumulativeWorld = getCumulativeWorldDistances(smoothedPoints);
   const totalWorldDistance = cumulativeWorld.at(-1) ?? 0;
   const totalTileDistance = tileSize > 0 ? totalWorldDistance / tileSize : totalWorldDistance;
-  const durationSeconds = Math.max(
+  const profileDurationSeconds = Math.max(
     ROUTE_LOCOMOTION.minMoveSeconds,
     getTrapezoidDuration(totalTileDistance, maxSpeedTilesPerSecond, accelTilesPerSecond2, decelTilesPerSecond2)
   );
+  const syncedDurationSeconds = requestedDurationSeconds && Number.isFinite(requestedDurationSeconds)
+    ? Math.max(ROUTE_LOCOMOTION.minMoveSeconds, requestedDurationSeconds)
+    : profileDurationSeconds;
 
   return {
     id,
@@ -216,7 +222,8 @@ export function createMovementClip({
     totalWorldDistance,
     totalTileDistance,
     elapsedSeconds: 0,
-    durationSeconds,
+    durationSeconds: syncedDurationSeconds,
+    profileDurationSeconds,
     maxSpeedTilesPerSecond,
     accelTilesPerSecond2,
     decelTilesPerSecond2,
@@ -261,8 +268,11 @@ export function advanceMovementClip(
 ): MovementClipSample {
   clip.elapsedSeconds += Math.max(0, deltaSeconds);
 
+  const durationScale = clip.profileDurationSeconds > 0
+    ? Math.max(0.001, clip.durationSeconds / clip.profileDurationSeconds)
+    : 1;
   const { distance, speed } = getDistanceAndSpeedAtTime(
-    clip.elapsedSeconds,
+    clip.elapsedSeconds / durationScale,
     clip.totalTileDistance,
     clip.maxSpeedTilesPerSecond,
     clip.accelTilesPerSecond2,
@@ -286,14 +296,16 @@ export function advanceMovementClip(
     ? sample.position.distanceTo(clip.endpoint) / tileSize
     : sample.position.distanceTo(clip.endpoint);
   const progress = clip.totalTileDistance > 0 ? clamp01(distance / clip.totalTileDistance) : 1;
-  const isDone = progress >= 0.999 || endpointErrorTiles <= ROUTE_LOCOMOTION.endpointSnapTiles;
+  const isDone = clip.elapsedSeconds >= clip.durationSeconds ||
+    progress >= 0.999 ||
+    endpointErrorTiles <= ROUTE_LOCOMOTION.endpointSnapTiles;
   const position = isDone ? clip.endpoint.clone() : sample.position;
 
   return {
     position,
     moveDirection,
     distanceTiles: Math.min(distance, clip.totalTileDistance),
-    speedTilesPerSecond: speed,
+    speedTilesPerSecond: speed / durationScale,
     progress: isDone ? 1 : progress,
     endpointErrorTiles: isDone ? 0 : endpointErrorTiles,
     phase: isDone ? 'done' : endpointErrorTiles <= ROUTE_LOCOMOTION.stopDistanceTiles ? 'stop' : 'move',

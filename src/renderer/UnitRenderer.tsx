@@ -39,7 +39,11 @@ import {
   type LocomotionPose,
   type MovementClip,
 } from './locomotion/LocomotionController';
-import { sampleUnitAnimationFrame, type UnitAnimationPose } from './locomotion/unitAnimationManifest';
+import {
+  getAllUnitAnimationUrls,
+  resolveUnitAnimationUrl,
+  type UnitAnimationPose,
+} from './locomotion/unitAnimationManifest';
 import {
   getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
@@ -128,15 +132,6 @@ const MINIATURE_ROOT_SCALE = 1.88;
 const WEAPON_REST_Z = 0.5;
 const WEAPON_PRESENTATION_SCALE = 0.94;
 const MAX_MOVEMENT_FRAME_SECONDS = 0.05;
-const UNIT_SPRITE_URLS = {
-  CT: '/board2d5/units/ct-rifle.svg',
-  T: '/board2d5/units/t-rifle.svg',
-} satisfies Record<Unit['team'], string>;
-const UNIT_DOWN_SPRITE_URLS = {
-  CT: '/board2d5/units/ct-rifle-down.svg',
-  T: '/board2d5/units/t-rifle-down.svg',
-} satisfies Record<Unit['team'], string>;
-
 type QueuedMovementTarget = {
   key: string;
   position: THREE.Vector3;
@@ -233,29 +228,6 @@ function getAimWorldDirection(unit: Unit): THREE.Vector3 {
   const aim = new THREE.Vector3(-unit.facing.x, 0, unit.facing.y);
   if (aim.lengthSq() <= 0.000001) return new THREE.Vector3(0, 0, unit.team === 'T' ? 1 : -1);
   return aim.normalize();
-}
-
-function getPoseSide(pose: LocomotionPose): number {
-  if (pose === 'strafe_left') return -1;
-  if (pose === 'strafe_right') return 1;
-  if (pose === 'diagonal_left') return -0.55;
-  if (pose === 'diagonal_right') return 0.55;
-  return 0;
-}
-
-function getPoseForwardLean(pose: LocomotionPose): number {
-  if (pose === 'run_forward') return 0.1;
-  if (pose === 'diagonal_left' || pose === 'diagonal_right') return 0.055;
-  if (pose === 'backpedal') return -0.07;
-  if (pose === 'stop_brace') return 0.025;
-  return 0;
-}
-
-function getPoseStrideScale(pose: LocomotionPose): number {
-  if (pose === 'backpedal') return 0.58;
-  if (pose === 'stop_brace') return 0.22;
-  if (pose === 'strafe_left' || pose === 'strafe_right') return 0.74;
-  return 1;
 }
 
 type RoleMiniatureProfile = {
@@ -1156,7 +1128,12 @@ function AnimatedUnitSpriteBody({
   scale: number;
   animationStateRef: MutableRefObject<UnitSpriteAnimationState>;
 }) {
-  const texture = useLoader(THREE.TextureLoader, UNIT_SPRITE_URLS[unit.team]);
+  const animationUrls = useMemo(() => getAllUnitAnimationUrls(unit.team), [unit.team]);
+  const textures = useLoader(THREE.TextureLoader, animationUrls) as THREE.Texture[];
+  const textureByUrl = useMemo(
+    () => new Map(animationUrls.map((url, index) => [url, textures[index]] as const)),
+    [animationUrls, textures]
+  );
   const spriteRef = useRef<THREE.Sprite>(null);
   const spriteMaterialRef = useRef<THREE.SpriteMaterial>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
@@ -1171,37 +1148,34 @@ function AnimatedUnitSpriteBody({
       poseStartedAtRef.current = state.clock.elapsedTime;
     }
 
-    const frame = sampleUnitAnimationFrame({
+    const textureUrl = resolveUnitAnimationUrl({
       team: unit.team,
       pose: animation.pose,
       strideDistance: animation.strideDistance,
       elapsedSeconds: state.clock.elapsedTime - poseStartedAtRef.current,
+      isAlive: unit.alive,
+      hitPulse: animation.hitPulse,
     });
-    const hitKick = animation.hitPulse > 0 ? Math.sin(state.clock.elapsedTime * 54) * animation.hitPulse * 0.022 : 0;
+    const texture = textureByUrl.get(textureUrl);
 
     if (spriteRef.current) {
-      spriteRef.current.position.set(
-        frame.offsetX * scale + hitKick,
-        (1.42 + frame.offsetY) * scale,
-        0.14 * scale
-      );
-      spriteRef.current.scale.set(
-        2.08 * scale * frame.scaleX,
-        2.62 * scale * frame.scaleY,
-        1
-      );
+      spriteRef.current.position.set(0, 1.42 * scale, 0.14 * scale);
+      spriteRef.current.scale.set(2.08 * scale, 2.62 * scale, 1);
     }
     if (spriteMaterialRef.current) {
-      spriteMaterialRef.current.rotation = THREE.MathUtils.degToRad(frame.rotationDeg);
-      spriteMaterialRef.current.color.set(frame.tint);
+      if (texture && spriteMaterialRef.current.map !== texture) {
+        spriteMaterialRef.current.map = texture;
+        spriteMaterialRef.current.needsUpdate = true;
+      }
+      spriteMaterialRef.current.color.set('#ffffff');
       spriteMaterialRef.current.opacity = isSpent ? 0.72 : 1;
     }
     if (shadowRef.current) {
-      shadowRef.current.position.x = frame.shadowOffsetX * scale;
-      shadowRef.current.scale.set(frame.shadowScaleX, frame.shadowScaleY, 1);
+      shadowRef.current.position.x = 0;
+      shadowRef.current.scale.set(1, 0.46, 1);
     }
     if (shadowMaterialRef.current) {
-      shadowMaterialRef.current.opacity = frame.shadowOpacity + animation.movementIntensity * 0.06;
+      shadowMaterialRef.current.opacity = 0.32 + animation.movementIntensity * 0.05;
     }
   });
 
@@ -1234,7 +1208,7 @@ function AnimatedUnitSpriteBody({
       >
         <spriteMaterial
           ref={spriteMaterialRef}
-          map={texture}
+          map={textures[0]}
           transparent
           color="#ffffff"
           opacity={1}
@@ -1512,6 +1486,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             unitId: unit.id,
             points: routePoints,
             tileSize: ts,
+            durationSeconds: Math.max(ROUTE_LOCOMOTION.minMoveSeconds, movementRoute.durationMs / 1000),
           });
         }
       }
@@ -1632,10 +1607,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
     const walkPhase = movementRef.current.strideDistance * Math.PI * 2.25;
     const locomotionPose = movementRef.current.pose;
-    const poseSide = getPoseSide(locomotionPose);
-    const poseForwardLean = getPoseForwardLean(locomotionPose);
-    const poseStrideScale = getPoseStrideScale(locomotionPose);
-    const poseRoll = poseSide * movementIntensity * 0.13;
+    const poseStrideScale = 1;
     animationStateRef.current.pose = hitPulse > 0.04 ? 'hit' : locomotionPose;
     animationStateRef.current.strideDistance = movementRef.current.strideDistance;
     animationStateRef.current.movementIntensity = movementIntensity;
@@ -1650,19 +1622,19 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
       bodyRef.current.position.x = THREE.MathUtils.damp(
         bodyRef.current.position.x,
-        poseSide * movementIntensity * 0.095,
+        0,
         15,
         delta
       );
       bodyRef.current.position.y = THREE.MathUtils.damp(
         bodyRef.current.position.y,
-        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.125,
+        0,
         16,
         delta
       );
       bodyRef.current.rotation.x = THREE.MathUtils.damp(
         bodyRef.current.rotation.x,
-        rm.lean + movementIntensity * (poseForwardLean + Math.sin(walkPhase) * 0.06 * poseStrideScale),
+        rm.lean,
         14,
         delta
       );
@@ -1721,9 +1693,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     }
 
     if (bodyRef.current && hitPulse > 0) {
-      bodyRef.current.rotation.z = poseRoll + Math.sin(state.clock.elapsedTime * 54) * hitPulse * 0.055;
+      bodyRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 54) * hitPulse * 0.055;
     } else if (bodyRef.current) {
-      bodyRef.current.rotation.z = THREE.MathUtils.damp(bodyRef.current.rotation.z, poseRoll, 18, delta);
+      bodyRef.current.rotation.z = THREE.MathUtils.damp(bodyRef.current.rotation.z, 0, 18, delta);
     }
 
     if (muzzleFlashRef.current) {
@@ -2352,46 +2324,44 @@ function StaticUnitSpritePose({
   pose: UnitAnimationPose;
   scale: number;
 }) {
-  const texture = useLoader(
-    THREE.TextureLoader,
-    pose === 'dead' ? UNIT_DOWN_SPRITE_URLS[unit.team] : UNIT_SPRITE_URLS[unit.team]
-  );
-  const frame = sampleUnitAnimationFrame({
+  const textureUrl = resolveUnitAnimationUrl({
     team: unit.team,
     pose,
     strideDistance: 0,
     elapsedSeconds: 0,
+    isAlive: pose !== 'dead',
+    hitPulse: 0,
   });
+  const texture = useLoader(THREE.TextureLoader, textureUrl);
 
   return (
     <group raycast={() => null}>
       <mesh
-        position={[frame.shadowOffsetX * scale, 0.04 * scale, -0.05 * scale]}
+        position={[0, 0.04 * scale, -0.05 * scale]}
         rotation={[-Math.PI / 2, 0, 0]}
-        scale={[frame.shadowScaleX, frame.shadowScaleY, 1]}
+        scale={[1.28, 0.62, 1]}
         renderOrder={42}
       >
         <circleGeometry args={[0.76 * scale, 36]} />
         <meshBasicMaterial
           color="#020810"
           transparent
-          opacity={frame.shadowOpacity}
+          opacity={0.44}
           depthWrite={false}
           depthTest={false}
         />
       </mesh>
       <sprite
-        position={[frame.offsetX * scale, (0.95 + frame.offsetY) * scale, 0.1 * scale]}
-        scale={[2.08 * scale * frame.scaleX, 2.62 * scale * frame.scaleY, 1]}
+        position={[0, 0.72 * scale, 0.1 * scale]}
+        scale={[2.08 * scale, 2.62 * scale, 1]}
         renderOrder={82}
         raycast={() => null}
       >
         <spriteMaterial
           map={texture}
           transparent
-          color={frame.tint}
+          color="#ffffff"
           opacity={0.96}
-          rotation={THREE.MathUtils.degToRad(frame.rotationDeg)}
           alphaTest={0.04}
           depthWrite={false}
           depthTest={false}

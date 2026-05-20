@@ -121,16 +121,20 @@ function createMovementPresentationRoute(
   unitId: number,
   path: TileCoord[],
   source: MovementPresentationSource,
-  delayMs = 0
+  delayMs = 0,
+  stepMs = EXECUTION_STEP_MS
 ): MovementPresentationRoute {
   movementRouteSequence += 1;
   const createdAt = Date.now();
+  const normalizedStepMs = Math.max(1, stepMs);
   return {
     id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
     unitId,
     source,
     createdAt,
     delayMs: Math.max(0, delayMs),
+    stepMs: normalizedStepMs,
+    durationMs: Math.max(normalizedStepMs, path.length * normalizedStepMs),
     path: path.map((tile) => ({ ...tile })),
   };
 }
@@ -2742,7 +2746,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
-          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai');
+          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, AI_EXECUTION_STEP_MS);
           set({ movementRoutes: [movementRoute] });
 
           for (const step of pathToTravel) {

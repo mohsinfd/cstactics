@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <filter id="softShadow" x="28" y="166" width="200" height="64" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <linearGradient id="body" x1="100" y1="80.1" x2="156" y2="147.1" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d94a2e"/>
+      <stop offset="1" stop-color="#6d130c"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="205" rx="58" ry="22" fill="#160301" opacity="0.42" filter="url(#softShadow)"/>
+  <path d="M 108 148.1 L 118.1 193.1" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 148 148.1 L 138.9 195.6" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 108.1 196.1 L 133.1 194.1" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 126.9 198.6 L 153.9 196.6" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <polygon points="105.3,80.1 155.9,80.1 149.4,147.1 109.4,147.1" fill="url(#body)"/>
+  <polygon points="115.4,97.1 143.4,97.1 138,120.1 118,120.1" fill="#431006" opacity="0.8"/>
+  <path d="M 105.3 93.1 L 104.8 124.6" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 155.9 93.1 L 160.6 119.7" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 109 123.1 L 189.9 109.7" stroke="#120605" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 132.7 119.2 L 189.9 109.7" stroke="#020304" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 129.7 127.2 L 140.7 144.2" stroke="#120605" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="131.3" cy="61.1" rx="20" ry="21" fill="#bb7948"/>
+  <path d="M 107.3 57.1 C 115.3 36.1, 147.3 36.1, 155.3 57.1 C 141.3 49.1, 121.3 49.1, 107.3 57.1 Z" fill="#f4aa52"/>
+  <path d="M 110 134.1 L 146 134.1 L 140 148.1 L 116 148.1 Z" fill="#9f2518" opacity="0.86"/>
+  <path d="M 105 130.1 L 151 130.1" stroke="#ffd166" stroke-width="5" stroke-linecap="round" opacity="0.82"/>
+
+</svg>

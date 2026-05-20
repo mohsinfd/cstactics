@@ -219,6 +219,8 @@ export interface MovementPresentationRoute {
   source: MovementPresentationSource;
   createdAt: number;
   delayMs: number;
+  stepMs: number;
+  durationMs: number;
   path: TileCoord[];
 }
 

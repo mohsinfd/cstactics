@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <filter id="softShadow" x="28" y="166" width="200" height="64" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <linearGradient id="body" x1="100" y1="78" x2="156" y2="145" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d94a2e"/>
+      <stop offset="1" stop-color="#6d130c"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="205" rx="58" ry="22" fill="#160301" opacity="0.42" filter="url(#softShadow)"/>
+  <path d="M 108 146 L 106 189" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 148 146 L 151 195" stroke="#6d130c" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 96 192 L 121 190" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 139 198 L 166 196" stroke="#030407" stroke-width="9" stroke-linecap="round"/>
+  <polygon points="104,78 148,78 146.9,145 107,145" fill="url(#body)"/>
+  <polygon points="113,95 140.9,95 138,118 118,118" fill="#431006" opacity="0.8"/>
+  <path d="M 104 91 L 108.7 122" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 148 91 L 150.7 118" stroke="#6d130c" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 105.8 119.1 L 179.5 112.6" stroke="#120605" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 129.7 117 L 179.5 112.6" stroke="#020304" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 126.7 125 L 137.7 142" stroke="#120605" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="125.5" cy="61" rx="20" ry="21" fill="#bb7948"/>
+  <path d="M 101.5 57 C 109.5 36, 141.6 36, 149.6 57 C 135.6 49, 115.5 49, 101.5 57 Z" fill="#f4aa52"/>
+  <path d="M 110 132 L 146 132 L 140 146 L 116 146 Z" fill="#9f2518" opacity="0.86"/>
+  <path d="M 105 128 L 151 128" stroke="#ffd166" stroke-width="5" stroke-linecap="round" opacity="0.82"/>
+
+</svg>

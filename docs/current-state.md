@@ -353,11 +353,11 @@ verbs that make those nouns matter.
   `/duel-2-5d` and the Blender clay board remain valuable visual R&D and asset
   pipeline proofs, but they are not the main gameplay route until their tile
   contract can match the base renderer without approximation.
-- The base Three.js map now uses the `board2d5` CT/T rifle SVG art as enlarged
-  camera-facing unit sprites in `UnitRenderer.tsx`, with a primitive fallback
-  while image textures load. This ports the best part of the 2.5D visual spike
-  back onto the tile-true map without touching gameplay graph, AP, LOS, or
-  movement resolution.
+- The base Three.js map now uses generated `board2d5` CT/T SVG pose frames as
+  enlarged camera-facing unit sprites in `UnitRenderer.tsx`, with a primitive
+  fallback while image textures load. This ports the best part of the 2.5D
+  visual spike back onto the tile-true map without touching gameplay graph, AP,
+  LOS, or movement resolution.
 - A dual-track Luanti visual spike now exists under
   `spikes/luanti-banana-b-site/`. It does not port gameplay; it generates a
   30x30 Banana -> B-site whitebox slice from JSON data with clay floors, taller
@@ -502,3 +502,7 @@ bridge toward "tiny soldier" movement without weakening obstacle/path truth.
 The renderer now ignores duplicated store-published intermediate tile targets
 while a seeded full-route clip is already active, removing the visible
 move-forward/pull-back/replay cadence that appeared after route handoff.
+Those route hints now carry a duration derived from the same tactical tick
+cadence that advances store tile truth, and the visible sprite samples real SVG
+pose-frame URLs for run/strafe/backpedal/stop/hit/dead instead of animating one
+static card with whole-sprite transforms.

@@ -183,19 +183,22 @@ The helper is intentionally pure and small so it can be imported into
 - Immediate follow-up after human rejection: revealing the procedural leg/arm
   rig while moving was the wrong fix because it mixed two unit art systems.
   The renderer now keeps that legacy rig hidden and drives the visible 2.5D
-  unit sprite through authored pose-frame metadata for idle, run, diagonal,
-  strafe, backpedal, stop-brace, hit, and dead states. The route-aware
-  locomotion controller still supplies the legal path, speed, pose intent, and
-  stride phase; gameplay truth remains tile-based.
+  unit through generated SVG pose-frame assets for idle, run, diagonal, strafe,
+  backpedal, stop-brace, hit, and dead states. Consecutive generated frames
+  change actual limb/head/torso/rifle geometry rather than applying only a
+  whole-sprite transform. The route-aware locomotion controller still supplies
+  the legal path, speed, pose intent, and stride phase; gameplay truth remains
+  tile-based.
+- Movement presentation routes now include a duration hint derived from the
+  same tactical tick cadence that advances store tile truth. `createMovementClip`
+  stretches its route-level speed profile to that duration so the visible run
+  lands with the tactical route instead of lagging into the next selection or
+  turn handoff.
 
 ## Remaining Movement Feel Gap
 
-- The presentation layer now has a code-authored pose-frame seam, but it still
-  needs real exported sprite/atlas art for foot planting, stop transitions,
-  strafe silhouettes, and directional weapon/body reads. The manifest is a
-  bridge so future artist or Blender-exported frames can be swapped in without
-  changing AP, pathfinding, LOS, or route sampling.
-- To reach "tiny soldier" quality, the next slice should replace the current
-  transform-authored frames with a small pose sheet or rigged sprite export for
-  the same pose names while keeping the route clip as the movement source of
-  truth.
+- The presentation layer now has generated SVG pose assets and a URL-based
+  manifest, but it still needs real artist/Blender-exported sprite or atlas art
+  for premium foot planting, stop transitions, strafe silhouettes, and
+  directional weapon/body reads. The manifest is a bridge so those frames can
+  be swapped in without changing AP, pathfinding, LOS, or route sampling.
