@@ -180,6 +180,13 @@ The helper is intentionally pure and small so it can be imported into
   stats for active route id, progress, speed, pose, and endpoint error. CT AI
   movement now also publishes route-level presentation hints instead of only
   per-tile store updates.
+- Immediate follow-up after human rejection: the first locomotion constants
+  were still too fast and the visible body still read like a sliding sprite.
+  The controller now uses a slower readable max speed, stronger acceleration/
+  stop distances, and small in-cell rounded corners for visual direction
+  continuity. `UnitRenderer.tsx` also reveals the procedural leg/arm rig only
+  while movement is active so stride motion is visible without replacing the
+  idle sprite identity.
 
 ## Remaining Movement Feel Gap
 

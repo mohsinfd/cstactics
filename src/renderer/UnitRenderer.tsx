@@ -1284,6 +1284,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const ts = map.tileSize;
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
+  const locomotionRigRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
   const leftArmRef = useRef<THREE.Mesh>(null);
@@ -1579,16 +1580,20 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
       bodyRef.current.position.y = THREE.MathUtils.damp(
         bodyRef.current.position.y,
-        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.085,
+        movementIntensity * Math.abs(Math.sin(walkPhase)) * 0.125,
         16,
         delta
       );
       bodyRef.current.rotation.x = THREE.MathUtils.damp(
         bodyRef.current.rotation.x,
-        rm.lean + movementIntensity * (poseForwardLean + Math.sin(walkPhase) * 0.035 * poseStrideScale),
+        rm.lean + movementIntensity * (poseForwardLean + Math.sin(walkPhase) * 0.06 * poseStrideScale),
         14,
         delta
       );
+    }
+    if (locomotionRigRef.current) {
+      locomotionRigRef.current.visible = movementIntensity > 0.04;
+      locomotionRigRef.current.scale.setScalar(0.96 + movementIntensity * 0.04);
     }
     if (leftLegRef.current) {
       leftLegRef.current.rotation.x = THREE.MathUtils.damp(
@@ -1870,7 +1875,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           </Suspense>
         </group>
 
-        <group visible={false} raycast={() => null}>
+        <group ref={locomotionRigRef} visible={false} raycast={() => null}>
         {/* === BOOTS === */}
         <mesh position={[-rm.stanceWidth * s, 0.075, 0.1 * s]} rotation={[0, 0.18, -0.08]} castShadow material={mats.boot}>
           <boxGeometry args={[0.28 * s, 0.11, 0.34 * s]} />

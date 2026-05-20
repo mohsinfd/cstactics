@@ -36,13 +36,15 @@ export interface MovementClipSample {
 }
 
 export const ROUTE_LOCOMOTION = {
-  maxSpeedTilesPerSecond: 8.8,
-  accelTilesPerSecond2: 46,
-  decelTilesPerSecond2: 62,
-  lookaheadTiles: 0.58,
-  stopDistanceTiles: 0.62,
+  maxSpeedTilesPerSecond: 5.6,
+  accelTilesPerSecond2: 28,
+  decelTilesPerSecond2: 42,
+  lookaheadTiles: 0.78,
+  stopDistanceTiles: 0.82,
   endpointSnapTiles: 0.03,
-  minMoveSeconds: 0.16,
+  minMoveSeconds: 0.22,
+  cornerRadiusTiles: 0.32,
+  cornerSamples: 5,
 } as const;
 
 const ZERO_DIR = new THREE.Vector3(0, 0, 1);
@@ -58,6 +60,58 @@ function getCumulativeWorldDistances(points: THREE.Vector3[]): number[] {
     cumulative[i] = cumulative[i - 1] + points[i - 1].distanceTo(points[i]);
   }
   return cumulative;
+}
+
+function pushPoint(points: THREE.Vector3[], point: THREE.Vector3, minDistance = 0.001): void {
+  const last = points.at(-1);
+  if (!last || last.distanceTo(point) > minDistance) points.push(point);
+}
+
+function getSmoothedRoutePoints(points: THREE.Vector3[], tileSize: number): THREE.Vector3[] {
+  if (points.length < 3 || tileSize <= 0) return points.map((point) => point.clone());
+
+  const radius = ROUTE_LOCOMOTION.cornerRadiusTiles * tileSize;
+  const smoothed: THREE.Vector3[] = [points[0].clone()];
+
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = points[i - 1];
+    const current = points[i];
+    const next = points[i + 1];
+    const incoming = prev.clone().sub(current);
+    const outgoing = next.clone().sub(current);
+    const incomingLength = incoming.length();
+    const outgoingLength = outgoing.length();
+
+    if (incomingLength <= 0.0001 || outgoingLength <= 0.0001) {
+      pushPoint(smoothed, current.clone());
+      continue;
+    }
+
+    incoming.normalize();
+    outgoing.normalize();
+    const isCorner = Math.abs(incoming.dot(outgoing)) < 0.12;
+    if (!isCorner) {
+      pushPoint(smoothed, current.clone());
+      continue;
+    }
+
+    const cornerRadius = Math.min(radius, incomingLength * 0.42, outgoingLength * 0.42);
+    const before = current.clone().addScaledVector(incoming, cornerRadius);
+    const after = current.clone().addScaledVector(outgoing, cornerRadius);
+    pushPoint(smoothed, before);
+
+    for (let sample = 1; sample <= ROUTE_LOCOMOTION.cornerSamples; sample += 1) {
+      const t = sample / (ROUTE_LOCOMOTION.cornerSamples + 1);
+      const a = before.clone().lerp(current, t);
+      const b = current.clone().lerp(after, t);
+      pushPoint(smoothed, a.lerp(b, t));
+    }
+
+    pushPoint(smoothed, after);
+  }
+
+  pushPoint(smoothed, points[points.length - 1].clone());
+  return smoothed;
 }
 
 function getTrapezoidDuration(
@@ -145,7 +199,8 @@ export function createMovementClip({
   accelTilesPerSecond2?: number;
   decelTilesPerSecond2?: number;
 }): MovementClip {
-  const cumulativeWorld = getCumulativeWorldDistances(points);
+  const smoothedPoints = getSmoothedRoutePoints(points, tileSize);
+  const cumulativeWorld = getCumulativeWorldDistances(smoothedPoints);
   const totalWorldDistance = cumulativeWorld.at(-1) ?? 0;
   const totalTileDistance = tileSize > 0 ? totalWorldDistance / tileSize : totalWorldDistance;
   const durationSeconds = Math.max(
@@ -156,7 +211,7 @@ export function createMovementClip({
   return {
     id,
     unitId,
-    points,
+    points: smoothedPoints,
     cumulativeWorld,
     totalWorldDistance,
     totalTileDistance,
