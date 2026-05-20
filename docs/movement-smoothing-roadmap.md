@@ -171,14 +171,22 @@ The helper is intentionally pure and small so it can be imported into
   those same intermediate state targets into the queue a second time. This fixes
   the observed "moves forward, gets pulled back, then replays the smooth route"
   bug without changing AP, pathfinding, LOS, or resolver timing.
+- May 20 locomotion pass: movement presentation now has a renderer-only
+  `src/renderer/locomotion/LocomotionController.ts`. It turns a full legal path
+  into one `MovementClip`, samples cumulative distance along the route, applies
+  a single accelerate/coast/decelerate profile across the whole run, classifies
+  forward/diagonal/strafe/backpedal/stop poses from movement direction versus
+  aim direction, and exposes dev-only `window.__CS_TACTICS_MOVEMENT_DEBUG__`
+  stats for active route id, progress, speed, pose, and endpoint error. CT AI
+  movement now also publishes route-level presentation hints instead of only
+  per-tile store updates.
 
 ## Remaining Movement Feel Gap
 
-- The presentation layer still lacks authored soldier pose assets: acceleration,
-  deceleration, lean, strafe/aim poses, foot planting, and stop transitions are
-  approximated procedurally rather than animated as a real sprite/model set.
-- To reach "tiny soldier" quality, the next slice should add a route-aware pose
-  state machine and/or authored sprite frames for idle, run, strafe, aim, stop,
-  hit, and casualty states. The movement path should continue passing through
-  legal tile centers, but the visual body needs higher-fidelity animation on top
-  of the route-level handoff.
+- The presentation layer still lacks authored soldier pose assets: foot
+  planting, stop transitions, strafe silhouettes, and hit/casualty pose frames
+  are currently procedural transforms over a static sprite.
+- To reach "tiny soldier" quality, the next slice should replace static
+  `ct-rifle.svg` / `t-rifle.svg` with a small pose sheet or rigged sprite pass
+  for idle, run, strafe, backpedal, stop, aim, hit, and casualty states while
+  keeping the route clip as the movement source of truth.

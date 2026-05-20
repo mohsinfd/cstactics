@@ -184,6 +184,8 @@ Useful commands:
 - `src/renderer/IsometricScene.tsx`: camera, controls, lighting.
 - `src/renderer/MapRenderer.tsx`: map, cover props, overlays, input plane.
 - `src/renderer/UnitRenderer.tsx`: unit miniatures, sprites, combat VFX.
+- `src/renderer/locomotion/LocomotionController.ts`: renderer-only route clips,
+  speed profile, and movement/aim pose classification.
 - `src/renderer/unitVisualIdentity.ts`: shared team/role visual identity.
 - `src/renderer/movementEasing.ts`: movement timing/easing helpers.
 - `src/ui/HUD.tsx`: command bar, roster, selected unit panel, objective panels.

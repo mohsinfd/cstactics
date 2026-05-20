@@ -482,12 +482,12 @@ make its unit sprites and movement presentation approach the 2.5D target, then
 only promote Blender board layers if their authored tile/occlusion contract can
 match the base renderer without visual approximation.
 
-Base-map movement presentation now runs through a continuous route queue in
-`UnitRenderer.tsx`. Store/pathfinding still publish legal tile centers, but the
-renderer consumes those centers at steady speed instead of easing to a stop on
-every tile. This is the first pass aimed specifically at eliminating the visible
-hop-hop-hop movement cadence without allowing visual corner cuts through
-obstacles.
+Base-map movement presentation now runs through a renderer-only locomotion
+controller. Store/pathfinding still publish legal tile centers, but the renderer
+builds a full-route `MovementClip`, samples cumulative distance along that
+polyline, accelerates once, coasts, decelerates near the endpoint, and classifies
+forward/strafe/backpedal/stop pose intent without allowing visual corner cuts
+through obstacles.
 
 The store now also publishes route-level movement presentation hints before
 direct moves and planned execute moves begin. The renderer seeds its movement
@@ -495,5 +495,5 @@ queue from the full legal path, then consumes those tile centers continuously
 while the tactical state still resolves in discrete tiles. This is the current
 bridge toward "tiny soldier" movement without weakening obstacle/path truth.
 The renderer now ignores duplicated store-published intermediate tile targets
-while a seeded full-route queue is already active, removing the visible
+while a seeded full-route clip is already active, removing the visible
 move-forward/pull-back/replay cadence that appeared after route handoff.

@@ -2742,6 +2742,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
+          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai');
+          set({ movementRoutes: [movementRoute] });
 
           for (const step of pathToTravel) {
             unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);

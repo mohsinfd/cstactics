@@ -30,7 +30,15 @@ import type { MovementPresentationRoute, TileCoord, Unit, RoleId, WeaponCategory
 import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { isUnitVisibleToTeam } from '../game/visibility';
-import { DEFAULT_MOVEMENT_TIMING, getMovementSegmentDurationSeconds } from './movementEasing';
+import { DEFAULT_MOVEMENT_TIMING } from './movementEasing';
+import {
+  ROUTE_LOCOMOTION,
+  advanceMovementClip,
+  classifyLocomotionPose,
+  createMovementClip,
+  type LocomotionPose,
+  type MovementClip,
+} from './locomotion/LocomotionController';
 import {
   getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
@@ -119,8 +127,6 @@ const MINIATURE_ROOT_SCALE = 1.88;
 const WEAPON_REST_Z = 0.5;
 const WEAPON_PRESENTATION_SCALE = 0.94;
 const MAX_MOVEMENT_FRAME_SECONDS = 0.05;
-const MOVEMENT_QUEUE_CATCHUP = 0.18;
-const SEEDED_ROUTE_QUEUE_CATCHUP = 0.015;
 const UNIT_SPRITE_URLS = {
   CT: '/board2d5/units/ct-rifle.svg',
   T: '/board2d5/units/t-rifle.svg',
@@ -142,6 +148,12 @@ type ContinuousMovementState = {
   queue: QueuedMovementTarget[];
   isRunning: boolean;
   routeId: string;
+  clip: MovementClip | null;
+  pose: LocomotionPose;
+  speedTilesPerSecond: number;
+  routeProgress: number;
+  endpointErrorTiles: number;
+  moveDirection: THREE.Vector3;
   runBlend: number;
   lastMovedAt: number;
   lastPosition: THREE.Vector3;
@@ -171,6 +183,67 @@ function getMovementRouteTargets(
     position: tileToUnitWorld(mapWidth, tileSize, tile),
     routeId: route.id,
   }));
+}
+
+function getRouteClipPointsFromCurrent(
+  targets: QueuedMovementTarget[],
+  currentPosition: THREE.Vector3,
+  tileSize: number
+): THREE.Vector3[] {
+  if (targets.length === 0) return [];
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  targets.forEach((target, index) => {
+    const distance = currentPosition.distanceTo(target.position);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  const startIndex = nearestDistance < tileSize * 0.48
+    ? nearestIndex + 1
+    : nearestIndex;
+  const points = [currentPosition.clone()];
+
+  for (const target of targets.slice(startIndex)) {
+    const last = points.at(-1);
+    if (!last || last.distanceTo(target.position) > tileSize * 0.04) {
+      points.push(target.position.clone());
+    }
+  }
+
+  return points;
+}
+
+function getAimWorldDirection(unit: Unit): THREE.Vector3 {
+  const aim = new THREE.Vector3(-unit.facing.x, 0, unit.facing.y);
+  if (aim.lengthSq() <= 0.000001) return new THREE.Vector3(0, 0, unit.team === 'T' ? 1 : -1);
+  return aim.normalize();
+}
+
+function getPoseSide(pose: LocomotionPose): number {
+  if (pose === 'strafe_left') return -1;
+  if (pose === 'strafe_right') return 1;
+  if (pose === 'diagonal_left') return -0.55;
+  if (pose === 'diagonal_right') return 0.55;
+  return 0;
+}
+
+function getPoseForwardLean(pose: LocomotionPose): number {
+  if (pose === 'run_forward') return 0.1;
+  if (pose === 'diagonal_left' || pose === 'diagonal_right') return 0.055;
+  if (pose === 'backpedal') return -0.07;
+  if (pose === 'stop_brace') return 0.025;
+  return 0;
+}
+
+function getPoseStrideScale(pose: LocomotionPose): number {
+  if (pose === 'backpedal') return 0.58;
+  if (pose === 'stop_brace') return 0.22;
+  if (pose === 'strafe_left' || pose === 'strafe_right') return 0.74;
+  return 1;
 }
 
 type RoleMiniatureProfile = {
@@ -1243,6 +1316,12 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     queue: [],
     isRunning: false,
     routeId: '',
+    clip: null,
+    pose: 'idle',
+    speedTilesPerSecond: 0,
+    routeProgress: 0,
+    endpointErrorTiles: 0,
+    moveDirection: new THREE.Vector3(0, 0, 1),
     runBlend: 0,
     lastMovedAt: 0,
     lastPosition: new THREE.Vector3(),
@@ -1338,27 +1417,35 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     let movementIntensity = 0;
     if (groupRef.current) {
       const movement = movementRef.current;
+      const aimDir = getAimWorldDirection(unit);
+      const cappedDelta = Math.min(delta, MAX_MOVEMENT_FRAME_SECONDS);
       const routeReady = movementRoute
         ? Date.now() >= movementRoute.createdAt + movementRoute.delayMs
         : false;
 
       if (movementRoute && routeReady && movement.routeId !== movementRoute.id) {
-        const routeQueue = movementRouteTargets
-          .filter((entry) => groupRef.current!.position.distanceTo(entry.position) > ts * 0.05)
-          .map((entry) => ({
-            ...entry,
-            position: entry.position.clone(),
-          }));
+        const routePoints = getRouteClipPointsFromCurrent(
+          movementRouteTargets,
+          groupRef.current.position,
+          ts
+        );
 
         movement.routeId = movementRoute.id;
-        if (routeQueue.length > 0) {
-          movement.queue = routeQueue;
+        movement.queue = [];
+        movement.isRunning = false;
+        if (routePoints.length >= 2) {
+          movement.clip = createMovementClip({
+            id: movementRoute.id,
+            unitId: unit.id,
+            points: routePoints,
+            tileSize: ts,
+          });
         }
       }
 
       if (movement.targetKey !== targetKey) {
         const tileDistance = groupRef.current.position.distanceTo(targetPosition) / ts;
-        const isFollowingSeededRoute = Boolean(movement.routeId && (movement.isRunning || movement.queue.length > 0));
+        const isFollowingSeededRoute = Boolean(movement.clip && movement.routeId);
         movement.targetKey = targetKey;
 
         if (tileDistance > TELEPORT_TILE_DISTANCE) {
@@ -1367,74 +1454,75 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.to.copy(targetPosition);
           movement.activeKey = targetKey;
           movement.queue = [];
+          movement.clip = null;
           movement.elapsed = 0;
           movement.duration = 0;
           movement.isRunning = false;
           movement.routeId = '';
+          movement.pose = 'idle';
+          movement.speedTilesPerSecond = 0;
+          movement.routeProgress = 0;
+          movement.endpointErrorTiles = 0;
           movement.lastPosition.copy(targetPosition);
-        } else if (!isFollowingSeededRoute) {
-          const alreadyQueued = movement.queue.some((entry) => entry.key === targetKey);
-          const alreadyActive = movement.isRunning && movement.activeKey === targetKey;
-          const lastQueuedPosition = movement.queue.at(-1)?.position ?? (movement.isRunning ? movement.to : groupRef.current.position);
-          if (!alreadyQueued && !alreadyActive && lastQueuedPosition.distanceTo(targetPosition) > ts * 0.05) {
-            movement.queue.push({ key: targetKey, position: targetPosition.clone() });
-          }
-        }
-      }
-
-      let remainingDelta = Math.min(delta, MAX_MOVEMENT_FRAME_SECONDS);
-      let movedDistance = 0;
-
-      while (remainingDelta > 0 && (movement.isRunning || movement.queue.length > 0)) {
-        if (!movement.isRunning) {
-          const nextTarget = movement.queue.shift();
-          if (!nextTarget) break;
-          const segmentTiles = groupRef.current.position.distanceTo(nextTarget.position) / ts;
-          movement.from.copy(groupRef.current.position);
-          movement.to.copy(nextTarget.position);
-          movement.activeKey = nextTarget.key;
-          movement.elapsed = 0;
-          const catchup = nextTarget.routeId
-            ? Math.min(0.08, movement.queue.length * SEEDED_ROUTE_QUEUE_CATCHUP)
-            : Math.min(0.45, movement.queue.length * MOVEMENT_QUEUE_CATCHUP);
-          movement.duration = getMovementSegmentDurationSeconds(segmentTiles) / (1 + catchup);
-          movement.isRunning = movement.duration > 0.001;
-          if (!movement.isRunning) {
-            groupRef.current.position.copy(nextTarget.position);
-            continue;
-          }
-        }
-
-        const stepSeconds = Math.min(remainingDelta, movement.duration - movement.elapsed);
-        movement.elapsed += stepSeconds;
-        remainingDelta -= stepSeconds;
-
-        const progress = THREE.MathUtils.clamp(movement.elapsed / movement.duration, 0, 1);
-        // Keep route traversal linear between legal tile centers. The settle/brace
-        // happens in the pose, not by decelerating at every tile.
-        groupRef.current.position.lerpVectors(movement.from, movement.to, progress);
-
-        if (progress >= 1) {
-          groupRef.current.position.copy(movement.to);
+        } else if (!isFollowingSeededRoute && tileDistance > ROUTE_LOCOMOTION.endpointSnapTiles) {
+          movement.clip = createMovementClip({
+            id: `fallback:${unit.id}:${targetKey}:${state.clock.elapsedTime.toFixed(3)}`,
+            unitId: unit.id,
+            points: [groupRef.current.position.clone(), targetPosition.clone()],
+            tileSize: ts,
+          });
+          movement.routeId = '';
+          movement.queue = [];
           movement.isRunning = false;
-          movement.elapsed = 0;
         }
       }
 
-      movedDistance = movement.lastPosition.distanceTo(groupRef.current.position);
+      if (movement.clip) {
+        const sample = advanceMovementClip(movement.clip, cappedDelta, ts);
+        groupRef.current.position.copy(sample.position);
+        movement.moveDirection.copy(sample.moveDirection);
+        movement.speedTilesPerSecond = sample.speedTilesPerSecond;
+        movement.routeProgress = sample.progress;
+        movement.endpointErrorTiles = sample.endpointErrorTiles;
+        movement.pose = classifyLocomotionPose(
+          sample.moveDirection,
+          aimDir,
+          sample.phase,
+          sample.speedTilesPerSecond
+        );
+
+        if (sample.phase === 'done') {
+          movement.clip = null;
+          movement.routeId = '';
+          movement.isRunning = false;
+          movement.queue = [];
+        }
+      } else {
+        movement.speedTilesPerSecond = 0;
+        movement.routeProgress = 0;
+        movement.endpointErrorTiles = groupRef.current.position.distanceTo(targetPosition) / ts;
+        movement.pose = movement.endpointErrorTiles < ROUTE_LOCOMOTION.endpointSnapTiles ? 'idle' : movement.pose;
+      }
+
+      const movedDistance = movement.lastPosition.distanceTo(groupRef.current.position);
       movement.strideDistance += movedDistance / ts;
       movement.lastPosition.copy(groupRef.current.position);
 
-      if (movedDistance > 0.0001 || movement.isRunning || movement.queue.length > 0) {
+      if (movedDistance > 0.0001 || movement.clip) {
         movement.lastMovedAt = state.clock.elapsedTime;
-        movement.runBlend = THREE.MathUtils.damp(movement.runBlend, 1, 18, delta);
+        const speedBlend = THREE.MathUtils.clamp(
+          movement.speedTilesPerSecond / ROUTE_LOCOMOTION.maxSpeedTilesPerSecond,
+          0,
+          1
+        );
+        movement.runBlend = THREE.MathUtils.damp(movement.runBlend, Math.max(0.28, speedBlend), 18, delta);
         movementIntensity = movement.runBlend;
       } else {
         const sinceMove = state.clock.elapsedTime - movement.lastMovedAt;
-        const settleTarget = sinceMove < DEFAULT_MOVEMENT_TIMING.settleSeconds ? 0.28 : 0;
+        const settleTarget = sinceMove < DEFAULT_MOVEMENT_TIMING.settleSeconds ? 0.24 : 0;
         movement.runBlend = THREE.MathUtils.damp(movement.runBlend, settleTarget, 11, delta);
         movementIntensity = movement.runBlend;
-        if (!movement.isRunning && movement.queue.length === 0 && groupRef.current.position.distanceTo(targetPosition) < ts * 0.02) {
+        if (groupRef.current.position.distanceTo(targetPosition) < ts * 0.02) {
           groupRef.current.position.copy(targetPosition);
         }
       }
@@ -1445,15 +1533,48 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         movementIntensity > 0 ? 15 : 10,
         delta
       );
+
+      if (import.meta.env.DEV) {
+        const debugWindow = window as unknown as {
+          __CS_TACTICS_MOVEMENT_DEBUG__?: Record<number, {
+            activeRouteId: string;
+            progress: number;
+            speedTilesPerSecond: number;
+            pose: LocomotionPose;
+            endpointErrorTiles: number;
+          }>;
+        };
+        debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ = {
+          ...(debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ ?? {}),
+          [unit.id]: {
+            activeRouteId: movement.routeId,
+            progress: movement.routeProgress,
+            speedTilesPerSecond: movement.speedTilesPerSecond,
+            pose: movement.pose,
+            endpointErrorTiles: movement.endpointErrorTiles,
+          },
+        };
+      }
     }
 
     const walkPhase = movementRef.current.strideDistance * Math.PI * 2.25;
+    const locomotionPose = movementRef.current.pose;
+    const poseSide = getPoseSide(locomotionPose);
+    const poseForwardLean = getPoseForwardLean(locomotionPose);
+    const poseStrideScale = getPoseStrideScale(locomotionPose);
+    const poseRoll = poseSide * movementIntensity * 0.13;
     if (bodyRef.current) {
       const rootYaw = groupRef.current?.rotation.y ?? angle;
       bodyRef.current.rotation.y = dampAngle(
         bodyRef.current.rotation.y,
         DEFAULT_CAMERA_READABLE_YAW - rootYaw,
         movementIntensity > 0 ? 8 : 12,
+        delta
+      );
+      bodyRef.current.position.x = THREE.MathUtils.damp(
+        bodyRef.current.position.x,
+        poseSide * movementIntensity * 0.095,
+        15,
         delta
       );
       bodyRef.current.position.y = THREE.MathUtils.damp(
@@ -1464,7 +1585,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       );
       bodyRef.current.rotation.x = THREE.MathUtils.damp(
         bodyRef.current.rotation.x,
-        rm.lean + movementIntensity * (0.08 + Math.sin(walkPhase) * 0.035),
+        rm.lean + movementIntensity * (poseForwardLean + Math.sin(walkPhase) * 0.035 * poseStrideScale),
         14,
         delta
       );
@@ -1472,7 +1593,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (leftLegRef.current) {
       leftLegRef.current.rotation.x = THREE.MathUtils.damp(
         leftLegRef.current.rotation.x,
-        -0.06 + movementIntensity * Math.sin(walkPhase) * 0.62,
+        -0.06 + movementIntensity * Math.sin(walkPhase) * 0.62 * poseStrideScale,
         18,
         delta
       );
@@ -1480,7 +1601,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (rightLegRef.current) {
       rightLegRef.current.rotation.x = THREE.MathUtils.damp(
         rightLegRef.current.rotation.x,
-        -0.06 + movementIntensity * -Math.sin(walkPhase) * 0.62,
+        -0.06 + movementIntensity * -Math.sin(walkPhase) * 0.62 * poseStrideScale,
         18,
         delta
       );
@@ -1488,7 +1609,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (leftArmRef.current) {
       leftArmRef.current.rotation.x = THREE.MathUtils.damp(
         leftArmRef.current.rotation.x,
-        -0.58 + movementIntensity * -Math.sin(walkPhase) * 0.24,
+        -0.58 + movementIntensity * -Math.sin(walkPhase) * 0.24 * poseStrideScale,
         18,
         delta
       );
@@ -1496,7 +1617,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     if (rightArmRef.current) {
       rightArmRef.current.rotation.x = THREE.MathUtils.damp(
         rightArmRef.current.rotation.x,
-        -0.52 + movementIntensity * Math.sin(walkPhase) * 0.24,
+        -0.52 + movementIntensity * Math.sin(walkPhase) * 0.24 * poseStrideScale,
         18,
         delta
       );
@@ -1523,9 +1644,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     }
 
     if (bodyRef.current && hitPulse > 0) {
-      bodyRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 54) * hitPulse * 0.055;
+      bodyRef.current.rotation.z = poseRoll + Math.sin(state.clock.elapsedTime * 54) * hitPulse * 0.055;
     } else if (bodyRef.current) {
-      bodyRef.current.rotation.z = THREE.MathUtils.damp(bodyRef.current.rotation.z, 0, 18, delta);
+      bodyRef.current.rotation.z = THREE.MathUtils.damp(bodyRef.current.rotation.z, poseRoll, 18, delta);
     }
 
     if (muzzleFlashRef.current) {

@@ -168,6 +168,10 @@ move, trigger contact, and freeze into a trade decision. See
 - Route-level movement no longer double-queues store-published intermediate
   tile updates while a full presentation path is active, fixing the
   move-forward/pull-back/replay cadence without changing tile truth.
+- Route-aware locomotion is now a renderer layer, not another easing tweak:
+  full legal paths become sampled movement clips with one accelerate/coast/
+  decelerate profile, pose classification separates movement direction from
+  mechanical facing, and CT AI movement also publishes route hints.
 - Opening setup defaults are implemented as first-pass usability: full rounds
   now start from widened T/CT spawn positions by default, while the setup HUD
   exposes optional random Inferno meta presets (`2-1-2`, `2-2-1`, `3-2`,
