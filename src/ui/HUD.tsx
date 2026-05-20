@@ -94,11 +94,12 @@ function useIsCompactViewport(): boolean {
 
 function useIsDenseHudViewport(): boolean {
   const compactWidth = useViewportBelow(760);
-  const laptopWidth = useViewportBelow(1000);
-  const laptopHeight = useViewportHeightBelow(721);
+  const laptopWidth = useViewportBelow(1180);
+  const laptopHeight = useViewportHeightBelow(921);
+  const mediumHeight = useViewportHeightBelow(760);
   const shortHeight = useViewportHeightBelow(640);
   const zoomed = useVisualViewportScaleAbove(1.1);
-  return compactWidth || (laptopWidth && laptopHeight) || shortHeight || zoomed;
+  return compactWidth || laptopHeight || (laptopWidth && mediumHeight) || shortHeight || zoomed;
 }
 
 function useIsNarrowViewport(): boolean {
@@ -391,19 +392,21 @@ function NextActionPanel() {
   return (
     <div data-testid="hud-next-action-panel" style={{
       position: 'absolute',
-      top: dense ? 118 : compact ? 122 : 126,
+      top: dense ? 96 : compact ? 122 : 126,
       left: '50%',
       transform: 'translateX(-50%)',
-      width: compact ? 'min(360px, calc(100vw - 18px))' : 'min(460px, calc(100vw - 40px))',
-      padding: dense ? '7px 10px' : '9px 12px',
+      width: dense
+        ? 'min(330px, calc(100vw - 20px))'
+        : compact ? 'min(360px, calc(100vw - 18px))' : 'min(460px, calc(100vw - 40px))',
+      padding: dense ? '5px 8px' : '9px 12px',
       pointerEvents: 'none',
       border: `1px solid ${copy.accent}55`,
       borderLeft: `3px solid ${copy.accent}`,
-      borderRadius: 8,
+      borderRadius: dense ? 6 : 8,
       background: 'rgba(8, 10, 15, 0.76)',
-      boxShadow: `0 10px 30px rgba(0,0,0,0.34), 0 0 18px ${copy.accent}1f`,
-      backdropFilter: 'blur(14px) saturate(1.15)',
-      WebkitBackdropFilter: 'blur(14px) saturate(1.15)',
+      boxShadow: dense ? `0 8px 18px rgba(0,0,0,0.28)` : `0 10px 30px rgba(0,0,0,0.34), 0 0 18px ${copy.accent}1f`,
+      backdropFilter: dense ? 'blur(10px) saturate(1.08)' : 'blur(14px) saturate(1.15)',
+      WebkitBackdropFilter: dense ? 'blur(10px) saturate(1.08)' : 'blur(14px) saturate(1.15)',
       display: 'grid',
       gridTemplateColumns: dense ? '1fr' : 'auto minmax(0, 1fr)',
       gap: dense ? 2 : 9,
@@ -412,7 +415,7 @@ function NextActionPanel() {
     }}>
       <div style={{
         color: copy.accent,
-        fontSize: dense ? 8 : 9,
+        fontSize: dense ? 7 : 9,
         fontWeight: 950,
         letterSpacing: dense ? 0.7 : 1,
         textTransform: 'uppercase',
@@ -423,7 +426,7 @@ function NextActionPanel() {
       <div style={{ minWidth: 0 }}>
         <div style={{
           color: '#f2f5fb',
-          fontSize: dense ? 10 : 12,
+          fontSize: dense ? 9 : 12,
           fontWeight: 950,
           letterSpacing: 0.2,
           overflow: 'hidden',
@@ -434,7 +437,7 @@ function NextActionPanel() {
         </div>
         <div style={{
           color: '#9aa4b5',
-          fontSize: dense ? 8 : 10,
+          fontSize: dense ? 7 : 10,
           fontWeight: 750,
           lineHeight: 1.25,
           overflow: 'hidden',
@@ -452,7 +455,7 @@ function MetaSetupGuide() {
   const round = useGameStore((s) => s.round);
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
-  if (round.phase !== 'setup') return null;
+  if (round.phase !== 'setup' || dense) return null;
 
   const presets = META_DEFAULTS[round.activeTeam];
   const accent = round.activeTeam === 'T' ? '#d8c170' : '#65b7ff';
@@ -1092,19 +1095,19 @@ function dispatchCameraCommand(command: 'zoom-in' | 'zoom-out' | 'reset') {
 function ViewControlPanel() {
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
-  const buttonWidth = dense ? 32 : 38;
-  const buttonHeight = dense ? 30 : 34;
+  const buttonWidth = dense ? 26 : 38;
+  const buttonHeight = dense ? 24 : 34;
 
   return (
     <div data-testid="hud-view-controls" style={{
       position: 'absolute',
-      top: dense ? 126 : compact ? 154 : '50%',
+      top: dense ? 96 : compact ? 154 : '50%',
       right: compact ? 10 : 20,
       transform: dense || compact ? undefined : 'translateY(-50%)',
       display: 'grid',
       gridTemplateColumns: compact || dense ? `repeat(3, ${buttonWidth}px)` : `${buttonWidth}px`,
-      gap: dense ? 4 : 6,
-      padding: dense ? 5 : 7,
+      gap: dense ? 3 : 6,
+      padding: dense ? 3 : 7,
       background: 'rgba(8, 8, 12, 0.9)',
       border: '1px solid #2a2f3a',
       borderRadius: 7,
@@ -1164,7 +1167,7 @@ function CameraButton({
         background: 'rgba(255,255,255,0.045)',
         color: '#d8dce4',
         cursor: 'pointer',
-        fontSize: label.length > 1 ? 8 : 15,
+        fontSize: label.length > 1 ? Math.max(7, Math.min(8, height * 0.28)) : Math.max(12, Math.min(15, height * 0.52)),
         fontWeight: 950,
         letterSpacing: label.length > 1 ? 0.4 : 0,
         lineHeight: 1,
@@ -1642,13 +1645,13 @@ function TopBar() {
   const round = useGameStore((s) => s.round);
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
-  const sidePadding = dense ? '4px 7px' : compact ? '6px 8px' : '6px 24px';
-  const sideMinWidth = dense ? 64 : compact ? 78 : 60;
-  const centerPadding = dense ? '4px 8px' : compact ? '6px 10px' : '6px 24px';
-  const centerMinWidth = dense ? 98 : compact ? 116 : 140;
-  const labelSize = dense ? 8 : compact ? 9 : 10;
-  const labelSpacing = dense ? 0.7 : compact ? 1.1 : 1.5;
-  const scoreSize = dense ? 20 : compact ? 24 : 28;
+  const sidePadding = dense ? '2px 6px' : compact ? '6px 8px' : '6px 24px';
+  const sideMinWidth = dense ? 56 : compact ? 78 : 60;
+  const centerPadding = dense ? '2px 8px' : compact ? '6px 10px' : '6px 24px';
+  const centerMinWidth = dense ? 88 : compact ? 116 : 140;
+  const labelSize = dense ? 7 : compact ? 9 : 10;
+  const labelSpacing = dense ? 0.5 : compact ? 1.1 : 1.5;
+  const scoreSize = dense ? 16 : compact ? 24 : 28;
 
   return (
     <div data-testid="hud-top-bar" style={{
@@ -1676,16 +1679,16 @@ function TopBar() {
         minWidth: centerMinWidth,
       }}>
         <div style={{
-          color: PHASE_COLORS[round.phase], fontSize: dense ? 7 : compact ? 8 : 9, fontWeight: 700,
-          letterSpacing: dense ? 1.1 : compact ? 1.8 : 2.5, textTransform: 'uppercase',
+          color: PHASE_COLORS[round.phase], fontSize: dense ? 6 : compact ? 8 : 9, fontWeight: 700,
+          letterSpacing: dense ? 0.8 : compact ? 1.8 : 2.5, textTransform: 'uppercase',
           whiteSpace: 'nowrap',
         }}>
           {PHASE_LABELS[round.phase]}
         </div>
-        <div style={{ color: '#fff', fontSize: dense ? 15 : compact ? 18 : 20, fontWeight: 800, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
+        <div style={{ color: '#fff', fontSize: dense ? 12 : compact ? 18 : 20, fontWeight: 800, fontFamily: "'Courier New', monospace", whiteSpace: 'nowrap' }}>
           Round {match.currentRound}
         </div>
-        <div style={{ color: '#777', fontSize: dense ? 8 : compact ? 9 : 10, letterSpacing: 0.4, whiteSpace: 'nowrap' }}>
+        <div style={{ color: '#777', fontSize: dense ? 7 : compact ? 9 : 10, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
           Turn {round.turn} &middot; {round.activeTeam === 'T' ? 'T Side' : 'CT Side'}
         </div>
       </div>
@@ -1721,7 +1724,7 @@ function TeamRoster() {
 
   return (
     <div data-testid="hud-team-roster" style={{
-      position: 'absolute', top: dense ? 56 : compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
+      position: 'absolute', top: dense ? 44 : compact ? 80 : 80, left: '50%', transform: 'translateX(-50%)',
       display: 'flex', gap: dense ? 3 : compact ? 4 : 6, pointerEvents: 'auto',
       maxWidth: 'calc(100vw - 14px)',
     }}>
@@ -1737,8 +1740,8 @@ function TeamRoster() {
             disabled={!u.alive}
             onClick={() => selectUnit(u.id)}
             style={{
-              width: dense ? 42 : compact ? 48 : 56,
-              padding: dense ? '3px 0' : '4px 0',
+              width: dense ? 34 : compact ? 48 : 56,
+              padding: dense ? '2px 0' : '4px 0',
               textAlign: 'center',
               cursor: u.alive ? 'pointer' : 'not-allowed',
               appearance: 'none',
@@ -1750,7 +1753,7 @@ function TeamRoster() {
               transition: 'all 150ms ease',
             }}
           >
-            <div style={{ color: teamColor, fontSize: dense ? 8 : 9, fontWeight: 700, letterSpacing: 0.5 }}>
+            <div style={{ color: teamColor, fontSize: dense ? 7 : 9, fontWeight: 700, letterSpacing: 0.3 }}>
               {ROLE_ICONS[u.role.id]}
             </div>
             {!dense && <div style={{ color: '#aaa', fontSize: 8, marginTop: 1 }}>{u.name}</div>}
@@ -1759,7 +1762,7 @@ function TeamRoster() {
             }}>
               {Array.from({ length: u.maxAp }, (_, i) => (
                 <div key={i} style={{
-                  width: dense ? 5 : 6, height: dense ? 5 : 6, borderRadius: '50%',
+                  width: dense ? 4 : 6, height: dense ? 4 : 6, borderRadius: '50%',
                   background: i < u.ap ? '#44ee66' : '#333',
                 }} />
               ))}
@@ -1887,9 +1890,9 @@ function SelectedUnitPanel() {
   const targetOptionsToShow = (dense || edgeDeck) ? shotOptions.slice(0, 1) : shotOptions.slice(0, 3);
   const denseActionButtonStyle = (dense || edgeDeck)
     ? {
-      padding: '5px 4px',
-      fontSize: 8,
-      letterSpacing: 0.3,
+      padding: dense ? '4px 3px' : '5px 4px',
+      fontSize: dense ? 7 : 8,
+      letterSpacing: dense ? 0.1 : 0.3,
     }
     : {};
 
@@ -1908,15 +1911,15 @@ function SelectedUnitPanel() {
       background?: string;
     }): CSSProperties => ({
       minWidth: 0,
-      padding: '5px 4px',
+      padding: dense ? '4px 3px' : '5px 4px',
       borderRadius: 4,
       border: `1px solid ${active ? `${accent}aa` : disabled ? '#30313a' : `${accent}66`}`,
       background: background ?? (active ? `${accent}2e` : 'rgba(255,255,255,0.035)'),
       color: disabled ? '#666' : color,
       cursor: disabled ? 'default' : 'pointer',
-      fontSize: 8,
+      fontSize: dense ? 7 : 8,
       fontWeight: 850,
-      letterSpacing: 0.25,
+      letterSpacing: dense ? 0.1 : 0.25,
       lineHeight: 1,
       textTransform: 'uppercase',
       whiteSpace: 'nowrap',
@@ -1927,16 +1930,16 @@ function SelectedUnitPanel() {
     return (
       <div data-testid="hud-selected-unit-panel" style={{
         position: 'absolute',
-        bottom: 72,
-        left: splitForContact ? 'calc(50% + 7px)' : compact ? 8 : 20,
+        bottom: dense ? 48 : 72,
+        left: splitForContact ? 'calc(50% + 7px)' : compact ? 8 : 12,
         right: compact ? 8 : undefined,
-        width: compact ? undefined : 'min(430px, calc(100vw - 40px))',
+        width: compact ? undefined : dense ? 'min(320px, calc(100vw - 24px))' : 'min(430px, calc(100vw - 40px))',
         boxSizing: 'border-box',
         background: 'rgba(8, 8, 12, 0.94)',
         border: `1px solid ${teamColor}33`,
         borderLeft: `3px solid ${teamColor}`,
-        borderRadius: 6,
-        padding: '6px 7px',
+        borderRadius: dense ? 5 : 6,
+        padding: dense ? '4px 5px' : '6px 7px',
         pointerEvents: 'auto',
         overflow: 'hidden',
       }}>
@@ -1945,8 +1948,8 @@ function SelectedUnitPanel() {
           alignItems: 'center',
           gap: 6,
           minWidth: 0,
-          marginBottom: 5,
-          fontSize: 9,
+          marginBottom: dense ? 3 : 5,
+          fontSize: dense ? 8 : 9,
           lineHeight: 1,
         }}>
           <span style={{
@@ -1983,7 +1986,7 @@ function SelectedUnitPanel() {
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 4,
+          gap: dense ? 3 : 4,
         }}>
           <button
             data-testid="hud-action-move"
@@ -2602,34 +2605,35 @@ function CommandBar() {
     ? {
       width: '100%',
       minWidth: 0,
-      padding: dense ? '7px 6px' : '9px 8px',
-      fontSize: dense ? 9 : 10,
-      letterSpacing: dense ? 0.5 : 0.8,
+      padding: dense ? '5px 4px' : '9px 8px',
+      fontSize: dense ? 7 : 10,
+      letterSpacing: dense ? 0.1 : 0.8,
+      minHeight: dense ? 28 : undefined,
     }
     : {};
   const commandGridColumns = compact
     ? 'repeat(2, minmax(0, 1fr))'
     : dense
-      ? 'repeat(4, minmax(0, 1fr))'
+      ? 'repeat(5, minmax(0, 1fr))'
       : undefined;
 
   return (
     <div data-testid="hud-command-bar" style={{
       position: 'absolute',
-      bottom: dense ? 6 : compact ? 14 : 18,
+      bottom: dense ? 5 : compact ? 14 : 18,
       left: compact ? 8 : '50%',
       transform: compact ? 'none' : 'translateX(-50%)',
-      width: compact ? 'min(300px, calc(100vw - 16px))' : dense ? 'min(680px, calc(100vw - 24px))' : 'min(760px, calc(100vw - 40px))',
+      width: compact ? 'min(300px, calc(100vw - 16px))' : dense ? 'min(500px, calc(100vw - 20px))' : 'min(760px, calc(100vw - 40px))',
       background: 'rgba(8, 8, 12, 0.94)',
       border: '1px solid #2a2f3a',
       borderRadius: dense ? 6 : 7,
-      padding: dense ? 5 : compact ? 8 : '9px 10px',
+      padding: dense ? 4 : compact ? 8 : '9px 10px',
       pointerEvents: 'auto',
       display: compact || dense ? 'grid' : 'flex',
       gridTemplateColumns: commandGridColumns,
       flexWrap: compact || dense ? undefined : 'wrap',
       alignItems: 'center',
-      gap: dense ? 5 : 8,
+      gap: dense ? 4 : 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
     }}>
       <div style={{
@@ -2699,7 +2703,7 @@ function CommandBar() {
             borderRadius: 5,
             padding: '9px 9px',
             cursor: isExecuting ? 'default' : 'pointer',
-            fontSize: 10,
+            fontSize: dense ? 8 : 10,
             fontWeight: 900,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
@@ -2827,7 +2831,7 @@ function CommandBar() {
             borderRadius: 5,
             padding: '6px 10px',
             cursor: isExecuting || isRoundOver ? 'default' : 'pointer',
-            fontSize: 9,
+            fontSize: dense ? 8 : 9,
             fontWeight: 850,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
@@ -2853,6 +2857,7 @@ function PhaseAnnouncement() {
   const showCombat = phase === 'combat' && turn === 3; // show on first combat turn
 
   if (!showSetup && !showCombat) return null;
+  if (dense) return null;
   if (dense && interrupt) return null;
 
   return (
@@ -2944,15 +2949,15 @@ function TileInfo() {
     <div data-testid="hud-tile-info" style={{
       position: 'absolute',
       top: compact ? 206 : undefined,
-      right: compact ? 10 : 20,
-      bottom: compact ? undefined : dense ? 104 : 178,
+      right: dense || compact ? 8 : 20,
+      bottom: compact ? undefined : dense ? 50 : 178,
       width: compact
         ? 'min(260px, calc(100vw - 20px))'
         : dense
-          ? 'min(280px, calc(100vw - 40px))'
+          ? 'min(230px, calc(100vw - 20px))'
           : 'min(310px, calc(100vw - 40px))',
       background: 'rgba(8, 8, 12, 0.86)',
-      padding: compact || dense ? '7px 9px' : '8px 11px',
+      padding: dense ? '5px 7px' : compact ? '7px 9px' : '8px 11px',
       borderRadius: 6,
       border: `1px solid ${risk.color}55`,
       boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
@@ -3039,7 +3044,8 @@ function TileBadge({
 // --- Map branding ---
 function MapLabel() {
   const compact = useIsCompactViewport();
-  if (compact) return null;
+  const dense = useIsDenseHudViewport();
+  if (compact || dense) return null;
 
   return (
     <div data-testid="hud-map-label" style={{

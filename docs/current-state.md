@@ -150,6 +150,11 @@ verbs that make those nouns matter.
   roster, view controls, command bar, selected-unit panel, and Contact Break
   state. Under dense contact, lower-priority combat/objective/legend panels
   yield so the board remains visible.
+- Laptop-height dense HUD now hides the setup/meta guide, phase announcement,
+  and map branding, shrinks the top stack/view controls/tile card, compresses
+  the selected-unit deck, and forces the command bar into a compact one-row
+  layout so browser zoom or laptop-height viewports do not turn HUD into the
+  main surface.
 - Browser regression now enforces a HUD viewport-footprint budget after Banana
   Drill contact, including simulated compact browser zoom, so controls being
   "visible" cannot mask a board-occluding layout failure.

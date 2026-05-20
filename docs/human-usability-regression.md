@@ -172,3 +172,14 @@ gate.
 - Compact/browser zoom makes the HUD cover most of the screen even though the
   controls technically remain inside the viewport.
 - Trackpad vertical pan stalls at high zoom.
+
+## May 20 Laptop HUD Regression
+
+- A laptop-height/zoomed viewport can trigger dense HUD while still rendering
+  desktop-sized surfaces. The failure mode is a massive top stack, selected
+  unit deck, command bar, setup guide, tile card, and view controls all visible
+  at once, leaving the board unplayable.
+- Dense/laptop mode should hide nonessential setup/meta guide, phase branding,
+  and map branding; keep the command bar to one compact row; shrink selected
+  unit and tile panels; and prioritize visible board area over explanatory
+  copy.
