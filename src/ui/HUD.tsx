@@ -2285,6 +2285,7 @@ function CommandBar() {
   const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
   const startContactDrill = useGameStore((s) => s.startContactDrill);
   const startDuelLab = useGameStore((s) => s.startDuelLab);
+  const applyMetaDefaultSetup = useGameStore((s) => s.applyMetaDefaultSetup);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
@@ -2375,6 +2376,32 @@ function CommandBar() {
       >
         {planningMode ? 'Planning' : 'Plan Execute'}
       </button>
+
+      {phase === 'setup' && (
+        <button
+          data-testid="hud-command-meta-setup"
+          onClick={() => !isExecuting && applyMetaDefaultSetup()}
+          disabled={isExecuting}
+          title="Reroll the active side into a common Inferno opening shape."
+          aria-label={`Apply ${activeTeam} meta setup`}
+          style={{
+            border: '1px solid #374252',
+            background: 'rgba(117, 185, 255, 0.14)',
+            color: isExecuting ? '#68707b' : '#b9d8ff',
+            borderRadius: 5,
+            padding: '9px 9px',
+            cursor: isExecuting ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+            minWidth: 96,
+            ...commandButtonStyle,
+          }}
+        >
+          Meta Setup
+        </button>
+      )}
 
       <button
         data-testid="hud-command-contact-drill"

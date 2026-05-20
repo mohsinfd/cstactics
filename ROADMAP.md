@@ -165,6 +165,13 @@ move, trigger contact, and freeze into a trade decision. See
   passing nonblank pixel checks.
 - Smoother movement cadence and wheel/trackpad map panning. Implemented as a
   first-pass interaction polish step.
+- Route-level movement no longer double-queues store-published intermediate
+  tile updates while a full presentation path is active, fixing the
+  move-forward/pull-back/replay cadence without changing tile truth.
+- Opening setup defaults are implemented as first-pass usability: full rounds
+  randomize spawn-area starts, then place both sides into one of several common
+  Inferno meta shapes (`2-1-2`, `2-2-1`, `3-2`, `1-3-1`). The command bar can
+  reroll the active side during setup with `Meta Setup`.
 - Landmark cover silhouettes and destination risk card. Implemented.
 - First-pass Banana/B renderer fidelity: contact shadows, material variation,
   quieter cover labels, and richer landmark prop details for car, logs,

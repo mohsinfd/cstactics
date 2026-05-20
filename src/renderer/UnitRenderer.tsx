@@ -1358,6 +1358,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
       if (movement.targetKey !== targetKey) {
         const tileDistance = groupRef.current.position.distanceTo(targetPosition) / ts;
+        const isFollowingSeededRoute = Boolean(movement.routeId && (movement.isRunning || movement.queue.length > 0));
         movement.targetKey = targetKey;
 
         if (tileDistance > TELEPORT_TILE_DISTANCE) {
@@ -1371,7 +1372,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.isRunning = false;
           movement.routeId = '';
           movement.lastPosition.copy(targetPosition);
-        } else {
+        } else if (!isFollowingSeededRoute) {
           const alreadyQueued = movement.queue.some((entry) => entry.key === targetKey);
           const alreadyActive = movement.isRunning && movement.activeKey === targetKey;
           const lastQueuedPosition = movement.queue.at(-1)?.position ?? (movement.isRunning ? movement.to : groupRef.current.position);

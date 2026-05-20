@@ -42,6 +42,7 @@ import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
 import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
+import { applyMetaDefault, applyRandomMetaDefaults, applyRandomSpawnPositions } from './metaDefaults';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
@@ -632,8 +633,11 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   };
 }
 
-function createUnits(): Unit[] {
-  const map = createInfernoMap();
+type CreateUnitsOptions = {
+  randomizeSpawns?: boolean;
+};
+
+function createUnits(map: GameState['map'] = createInfernoMap(), options: CreateUnitsOptions = {}): Unit[] {
   const units: Unit[] = [];
   let id = 0;
 
@@ -676,7 +680,12 @@ function createUnits(): Unit[] {
   // Bomb carrier = first T (entry fragger)
   units[0].hasBomb = true;
 
-  return units;
+  return options.randomizeSpawns ? applyRandomSpawnPositions(map, units) : units;
+}
+
+function createRoundUnits(map: GameState['map']): Unit[] {
+  const spawnedUnits = createUnits(map, { randomizeSpawns: true });
+  return applyRandomMetaDefaults(map, spawnedUnits).units;
 }
 
 interface GameStore extends GameState {
@@ -697,6 +706,7 @@ interface GameStore extends GameState {
   clearPlannedActions: () => void;
   setPlannedActionTiming: (actionId: string, executeAtMs: number) => void;
   setPlanningMode: (enabled: boolean) => void;
+  applyMetaDefaultSetup: () => void;
   finishUnit: () => void;
   endTurn: () => void;
   runCtAiTurn: () => Promise<void>;
@@ -708,7 +718,7 @@ interface GameStore extends GameState {
 
 export const useGameStore = create<GameStore>((set, get) => {
   const map = createInfernoMap();
-  const units = createUnits();
+  const units = createRoundUnits(map);
   const maybeRunCtAiTurn = () => {
     window.setTimeout(() => {
       const state = get();
@@ -2457,6 +2467,38 @@ export const useGameStore = create<GameStore>((set, get) => {
       });
     },
 
+    applyMetaDefaultSetup: () => {
+      const state = get();
+      if (state.isExecuting || state.round.phase !== 'setup') return;
+
+      const result = applyMetaDefault(state.map, state.units, state.round.activeTeam);
+      const selectedUnitId = isUnitSelectable(result.units, state.round.activeTeam, state.selectedUnitId)
+        ? state.selectedUnitId
+        : null;
+      const movement = getMovementForSelection(result.units, selectedUnitId, state.map, state.round);
+
+      set({
+        units: result.units,
+        selectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {
+          team: state.round.activeTeam,
+          unitId: selectedUnitId ?? undefined,
+          intensity: 0.8,
+        }),
+      });
+    },
+
     finishUnit: () => {
       const state = get();
       if (state.isExecuting) return;
@@ -2792,7 +2834,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
     initGame: () => {
       const newMap = createInfernoMap();
-      const newUnits = createUnits();
+      const newUnits = createRoundUnits(newMap);
       set({
         map: newMap,
         units: newUnits,
@@ -2844,7 +2886,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (state.isExecuting) return;
 
       const newMap = createInfernoMap();
-      const newUnits = createUnits();
+      const newUnits = createRoundUnits(newMap);
       const winner = state.round.roundWinner;
 
       set({
@@ -2894,7 +2936,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     startContactDrill: () => {
       if (get().isExecuting) return;
       const mapData = createInfernoMap();
-      const nextUnits = createUnits();
+      const nextUnits = createUnits(mapData);
       const tEntryId = 0;
       const ctAnchorId = 5;
       const tStart = findNearestWalkable(mapData, { x: 43, y: 57 });
@@ -2979,7 +3021,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       const ctDuelistId = 6;
       const tStart = findNearestWalkable(mapData, { x: 43, y: 61 });
       const ctStart = findNearestWalkable(mapData, { x: 43, y: 69 });
-      const baseUnits = createUnits();
+      const baseUnits = createUnits(mapData);
       const tDuelist = baseUnits.find((unit) => unit.id === tDuelistId);
       const ctDuelist = baseUnits.find((unit) => unit.id === ctDuelistId);
       if (!tDuelist || !ctDuelist) return;

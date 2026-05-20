@@ -165,6 +165,12 @@ The helper is intentionally pure and small so it can be imported into
   renderer seeds its continuous queue from that path and uses gentler route
   catch-up plus damped run-blend pose transitions, so movement reads more like
   one continuous run than a sequence of separate tile arrivals.
+- May 19 follow-up: `UnitRenderer.tsx` now treats a seeded full-route queue as
+  authoritative for presentation while it is still running. Store updates still
+  advance through exact legal tile centers, but the renderer no longer appends
+  those same intermediate state targets into the queue a second time. This fixes
+  the observed "moves forward, gets pulled back, then replays the smooth route"
+  bug without changing AP, pathfinding, LOS, or resolver timing.
 
 ## Remaining Movement Feel Gap
 

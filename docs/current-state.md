@@ -52,6 +52,10 @@ verbs that make those nouns matter.
 - Direct movement now auto-selects the next same-side unit with AP when a move
   finishes; if no active-side unit can still act, the turn advances to the
   opposing side and selects their first usable unit.
+- New full rounds seed both sides from Inferno opening defaults (`2-1-2`,
+  `2-2-1`, `3-2`, `1-3-1`) after randomizing spawn-area base positions. The
+  command bar also has a setup-only `Meta Setup` reroll for the active side so
+  players can skip manual opening shuffles.
 - Line-of-sight helper for grid-based visibility.
 - Hold Angle action foundation.
 - Watched-lane overlay for held angles.
@@ -483,3 +487,6 @@ direct moves and planned execute moves begin. The renderer seeds its movement
 queue from the full legal path, then consumes those tile centers continuously
 while the tactical state still resolves in discrete tiles. This is the current
 bridge toward "tiny soldier" movement without weakening obstacle/path truth.
+The renderer now ignores duplicated store-published intermediate tile targets
+while a seeded full-route queue is already active, removing the visible
+move-forward/pull-back/replay cadence that appeared after route handoff.
