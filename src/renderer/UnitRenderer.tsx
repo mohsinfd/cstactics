@@ -21,7 +21,7 @@
 //
 // Missing: final authored rig/model assets.
 // ============================================================
-import { Suspense, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { Suspense, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
 import { useFrame, useLoader } from '@react-three/fiber';
@@ -39,6 +39,7 @@ import {
   type LocomotionPose,
   type MovementClip,
 } from './locomotion/LocomotionController';
+import { sampleUnitAnimationFrame, type UnitAnimationPose } from './locomotion/unitAnimationManifest';
 import {
   getWeaponVisualProfile,
   ROLE_VISUAL_IDENTITIES,
@@ -131,6 +132,10 @@ const UNIT_SPRITE_URLS = {
   CT: '/board2d5/units/ct-rifle.svg',
   T: '/board2d5/units/t-rifle.svg',
 } satisfies Record<Unit['team'], string>;
+const UNIT_DOWN_SPRITE_URLS = {
+  CT: '/board2d5/units/ct-rifle-down.svg',
+  T: '/board2d5/units/t-rifle-down.svg',
+} satisfies Record<Unit['team'], string>;
 
 type QueuedMovementTarget = {
   key: string;
@@ -158,6 +163,13 @@ type ContinuousMovementState = {
   lastMovedAt: number;
   lastPosition: THREE.Vector3;
   strideDistance: number;
+};
+
+type UnitSpriteAnimationState = {
+  pose: UnitAnimationPose;
+  strideDistance: number;
+  movementIntensity: number;
+  hitPulse: number;
 };
 
 function tileKey(tile: TileCoord): string {
@@ -1121,7 +1133,7 @@ function SelectedCommandMarker({
   );
 }
 
-function UnitSpriteBody({
+function AnimatedUnitSpriteBody({
   unit,
   roleAccent,
   roleTagColor,
@@ -1131,6 +1143,7 @@ function UnitSpriteBody({
   stateColor,
   outlineColor,
   scale,
+  animationStateRef,
 }: {
   unit: Unit;
   roleAccent: string;
@@ -1141,12 +1154,61 @@ function UnitSpriteBody({
   stateColor: string;
   outlineColor: string;
   scale: number;
+  animationStateRef: MutableRefObject<UnitSpriteAnimationState>;
 }) {
   const texture = useLoader(THREE.TextureLoader, UNIT_SPRITE_URLS[unit.team]);
+  const spriteRef = useRef<THREE.Sprite>(null);
+  const spriteMaterialRef = useRef<THREE.SpriteMaterial>(null);
+  const shadowRef = useRef<THREE.Mesh>(null);
+  const shadowMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const currentPoseRef = useRef<UnitAnimationPose>('idle');
+  const poseStartedAtRef = useRef(0);
+
+  useFrame((state) => {
+    const animation = animationStateRef.current;
+    if (currentPoseRef.current !== animation.pose) {
+      currentPoseRef.current = animation.pose;
+      poseStartedAtRef.current = state.clock.elapsedTime;
+    }
+
+    const frame = sampleUnitAnimationFrame({
+      team: unit.team,
+      pose: animation.pose,
+      strideDistance: animation.strideDistance,
+      elapsedSeconds: state.clock.elapsedTime - poseStartedAtRef.current,
+    });
+    const hitKick = animation.hitPulse > 0 ? Math.sin(state.clock.elapsedTime * 54) * animation.hitPulse * 0.022 : 0;
+
+    if (spriteRef.current) {
+      spriteRef.current.position.set(
+        frame.offsetX * scale + hitKick,
+        (1.42 + frame.offsetY) * scale,
+        0.14 * scale
+      );
+      spriteRef.current.scale.set(
+        2.08 * scale * frame.scaleX,
+        2.62 * scale * frame.scaleY,
+        1
+      );
+    }
+    if (spriteMaterialRef.current) {
+      spriteMaterialRef.current.rotation = THREE.MathUtils.degToRad(frame.rotationDeg);
+      spriteMaterialRef.current.color.set(frame.tint);
+      spriteMaterialRef.current.opacity = isSpent ? 0.72 : 1;
+    }
+    if (shadowRef.current) {
+      shadowRef.current.position.x = frame.shadowOffsetX * scale;
+      shadowRef.current.scale.set(frame.shadowScaleX, frame.shadowScaleY, 1);
+    }
+    if (shadowMaterialRef.current) {
+      shadowMaterialRef.current.opacity = frame.shadowOpacity + animation.movementIntensity * 0.06;
+    }
+  });
 
   return (
     <group raycast={() => null}>
       <mesh
+        ref={shadowRef}
         position={[0, 0.108 * scale, -0.05 * scale]}
         rotation={[-Math.PI / 2, 0, 0]}
         scale={[1, 0.46, 1]}
@@ -1155,6 +1217,7 @@ function UnitSpriteBody({
       >
         <circleGeometry args={[0.76 * scale, 36]} />
         <meshBasicMaterial
+          ref={shadowMaterialRef}
           color="#020810"
           transparent
           opacity={0.34}
@@ -1163,14 +1226,18 @@ function UnitSpriteBody({
         />
       </mesh>
       <sprite
+        ref={spriteRef}
         position={[0, 1.42 * scale, 0.14 * scale]}
         scale={[2.08 * scale, 2.62 * scale, 1]}
         renderOrder={82}
         raycast={() => null}
       >
         <spriteMaterial
+          ref={spriteMaterialRef}
           map={texture}
           transparent
+          color="#ffffff"
+          opacity={1}
           alphaTest={0.04}
           depthWrite={false}
           depthTest={false}
@@ -1284,7 +1351,6 @@ function SoldierFigure({ unit }: { unit: Unit }) {
   const ts = map.tileSize;
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
-  const locomotionRigRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
   const leftArmRef = useRef<THREE.Mesh>(null);
@@ -1327,6 +1393,12 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     lastMovedAt: 0,
     lastPosition: new THREE.Vector3(),
     strideDistance: 0,
+  });
+  const animationStateRef = useRef<UnitSpriteAnimationState>({
+    pose: 'idle',
+    strideDistance: 0,
+    movementIntensity: 0,
+    hitPulse: 0,
   });
 
   const isSelected = selectedUnitId === unit.id;
@@ -1564,6 +1636,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     const poseForwardLean = getPoseForwardLean(locomotionPose);
     const poseStrideScale = getPoseStrideScale(locomotionPose);
     const poseRoll = poseSide * movementIntensity * 0.13;
+    animationStateRef.current.pose = hitPulse > 0.04 ? 'hit' : locomotionPose;
+    animationStateRef.current.strideDistance = movementRef.current.strideDistance;
+    animationStateRef.current.movementIntensity = movementIntensity;
+    animationStateRef.current.hitPulse = hitPulse;
     if (bodyRef.current) {
       const rootYaw = groupRef.current?.rotation.y ?? angle;
       bodyRef.current.rotation.y = dampAngle(
@@ -1590,10 +1666,6 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         14,
         delta
       );
-    }
-    if (locomotionRigRef.current) {
-      locomotionRigRef.current.visible = movementIntensity > 0.04;
-      locomotionRigRef.current.scale.setScalar(0.96 + movementIntensity * 0.04);
     }
     if (leftLegRef.current) {
       leftLegRef.current.rotation.x = THREE.MathUtils.damp(
@@ -1861,7 +1933,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         <group ref={bodyRef}>
           <Suspense fallback={<UnitSpriteLoadFallback unit={unit} roleAccent={rc.accent} scale={s} />}>
-            <UnitSpriteBody
+            <AnimatedUnitSpriteBody
               unit={unit}
               roleAccent={rc.accent}
               roleTagColor={stateVisual.roleTagColor}
@@ -1871,11 +1943,12 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               stateColor={stateVisual.color}
               outlineColor={stateVisual.outlineColor}
               scale={s}
+              animationStateRef={animationStateRef}
             />
           </Suspense>
         </group>
 
-        <group ref={locomotionRigRef} visible={false} raycast={() => null}>
+        <group visible={false} raycast={() => null}>
         {/* === BOOTS === */}
         <mesh position={[-rm.stanceWidth * s, 0.075, 0.1 * s]} rotation={[0, 0.18, -0.08]} castShadow material={mats.boot}>
           <boxGeometry args={[0.28 * s, 0.11, 0.34 * s]} />
@@ -2210,24 +2283,9 @@ function CasualtyMarker({ unit }: { unit: Unit }) {
         <meshBasicMaterial color={palette.accent} transparent opacity={0.38} side={THREE.DoubleSide} />
       </mesh>
 
-      <mesh position={[0, 0.025, 0]} rotation={[Math.PI / 2, 0, 0.18]} castShadow>
-        <capsuleGeometry args={[0.12, 0.55, 4, 8]} />
-        <meshStandardMaterial
-          color={palette.vestDark}
-          roughness={0.78}
-          metalness={0.02}
-          transparent
-          opacity={0.86}
-        />
-      </mesh>
-      <mesh position={[0.2, 0.03, -0.08]} rotation={[Math.PI / 2, 0, -0.35]} castShadow>
-        <capsuleGeometry args={[0.045, 0.34, 3, 6]} />
-        <meshStandardMaterial color={palette.pants} roughness={0.8} transparent opacity={0.78} />
-      </mesh>
-      <mesh position={[-0.2, 0.03, 0.07]} rotation={[Math.PI / 2, 0, 0.35]} castShadow>
-        <capsuleGeometry args={[0.045, 0.34, 3, 6]} />
-        <meshStandardMaterial color={palette.pants} roughness={0.8} transparent opacity={0.78} />
-      </mesh>
+      <Suspense fallback={null}>
+        <StaticUnitSpritePose unit={unit} pose="dead" scale={0.42} />
+      </Suspense>
 
       <Line
         points={[
@@ -2281,6 +2339,65 @@ export function UnitRenderer() {
       {visibleLiveUnits.map((unit) => (
         <SoldierFigure key={unit.id} unit={unit} />
       ))}
+    </group>
+  );
+}
+
+function StaticUnitSpritePose({
+  unit,
+  pose,
+  scale,
+}: {
+  unit: Unit;
+  pose: UnitAnimationPose;
+  scale: number;
+}) {
+  const texture = useLoader(
+    THREE.TextureLoader,
+    pose === 'dead' ? UNIT_DOWN_SPRITE_URLS[unit.team] : UNIT_SPRITE_URLS[unit.team]
+  );
+  const frame = sampleUnitAnimationFrame({
+    team: unit.team,
+    pose,
+    strideDistance: 0,
+    elapsedSeconds: 0,
+  });
+
+  return (
+    <group raycast={() => null}>
+      <mesh
+        position={[frame.shadowOffsetX * scale, 0.04 * scale, -0.05 * scale]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[frame.shadowScaleX, frame.shadowScaleY, 1]}
+        renderOrder={42}
+      >
+        <circleGeometry args={[0.76 * scale, 36]} />
+        <meshBasicMaterial
+          color="#020810"
+          transparent
+          opacity={frame.shadowOpacity}
+          depthWrite={false}
+          depthTest={false}
+        />
+      </mesh>
+      <sprite
+        position={[frame.offsetX * scale, (0.95 + frame.offsetY) * scale, 0.1 * scale]}
+        scale={[2.08 * scale * frame.scaleX, 2.62 * scale * frame.scaleY, 1]}
+        renderOrder={82}
+        raycast={() => null}
+      >
+        <spriteMaterial
+          map={texture}
+          transparent
+          color={frame.tint}
+          opacity={0.96}
+          rotation={THREE.MathUtils.degToRad(frame.rotationDeg)}
+          alphaTest={0.04}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </sprite>
     </group>
   );
 }

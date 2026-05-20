@@ -180,20 +180,22 @@ The helper is intentionally pure and small so it can be imported into
   stats for active route id, progress, speed, pose, and endpoint error. CT AI
   movement now also publishes route-level presentation hints instead of only
   per-tile store updates.
-- Immediate follow-up after human rejection: the first locomotion constants
-  were still too fast and the visible body still read like a sliding sprite.
-  The controller now uses a slower readable max speed, stronger acceleration/
-  stop distances, and small in-cell rounded corners for visual direction
-  continuity. `UnitRenderer.tsx` also reveals the procedural leg/arm rig only
-  while movement is active so stride motion is visible without replacing the
-  idle sprite identity.
+- Immediate follow-up after human rejection: revealing the procedural leg/arm
+  rig while moving was the wrong fix because it mixed two unit art systems.
+  The renderer now keeps that legacy rig hidden and drives the visible 2.5D
+  unit sprite through authored pose-frame metadata for idle, run, diagonal,
+  strafe, backpedal, stop-brace, hit, and dead states. The route-aware
+  locomotion controller still supplies the legal path, speed, pose intent, and
+  stride phase; gameplay truth remains tile-based.
 
 ## Remaining Movement Feel Gap
 
-- The presentation layer still lacks authored soldier pose assets: foot
-  planting, stop transitions, strafe silhouettes, and hit/casualty pose frames
-  are currently procedural transforms over a static sprite.
-- To reach "tiny soldier" quality, the next slice should replace static
-  `ct-rifle.svg` / `t-rifle.svg` with a small pose sheet or rigged sprite pass
-  for idle, run, strafe, backpedal, stop, aim, hit, and casualty states while
-  keeping the route clip as the movement source of truth.
+- The presentation layer now has a code-authored pose-frame seam, but it still
+  needs real exported sprite/atlas art for foot planting, stop transitions,
+  strafe silhouettes, and directional weapon/body reads. The manifest is a
+  bridge so future artist or Blender-exported frames can be swapped in without
+  changing AP, pathfinding, LOS, or route sampling.
+- To reach "tiny soldier" quality, the next slice should replace the current
+  transform-authored frames with a small pose sheet or rigged sprite export for
+  the same pose names while keeping the route clip as the movement source of
+  truth.
