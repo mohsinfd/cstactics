@@ -226,3 +226,16 @@ The helper is intentionally pure and small so it can be imported into
   content; the current generated SVGs remain placeholder plumbing. The first
   proof target is documented at `art/sprite-proof/ct-rifle/README.md` so CT can
   switch to exported PNG frames independently of T once those assets exist.
+- Route-level presentation aim now exists on `MovementPresentationRoute`.
+  Direct moves and planned execute moves lock visual aim to the unit's starting
+  facing so the locomotion classifier can actually surface diagonal, strafe, and
+  backpedal poses while tactical tile truth continues to face each movement
+  step. CT AI can use a target-tile presentation aim while moving to holds.
+- Dev movement QA now has a deterministic console command:
+  `window.__CS_TACTICS_START_MOVEMENT_PROOF__()`. It creates a one-CT proof,
+  runs a 6+ tile forward leg and a lateral aim-locked leg, and works with
+  `window.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__ = true` to inspect pose, frame URL,
+  progress, speed, endpoint error, stop-brace remaining time, and last completed
+  route id.
+- `npm run sprites:validate` checks that all generated CT/T frames exist and
+  blocks any team set to exported unless its required PNG frames are present.

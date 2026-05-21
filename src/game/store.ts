@@ -35,6 +35,7 @@ import type {
   FeedbackEventType,
   GuidanceEvent,
   GuidanceTone,
+  MovementPresentationAimMode,
   MovementPresentationRoute,
   MovementPresentationSource,
   SmokeCloud,
@@ -78,6 +79,8 @@ const FLASH_RADIUS = 5;
 const FLASH_DURATION_TURNS = 1;
 const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
+const MOVEMENT_PROOF_UNIT_ID = 6;
+const MOVEMENT_PROOF_AIM: TileCoord = { x: 0, y: -1 };
 
 let feedbackSequence = 0;
 let guidanceSequence = 0;
@@ -126,6 +129,9 @@ function createMovementPresentationRoute(
     stepMs?: number;
     timingPath?: TileCoord[];
     syncToVisualTiming?: boolean;
+    visualAimMode?: MovementPresentationAimMode;
+    visualAimDirection?: TileCoord;
+    visualAimTarget?: TileCoord;
   } = {}
 ): MovementPresentationRoute {
   movementRouteSequence += 1;
@@ -146,6 +152,9 @@ function createMovementPresentationRoute(
     stepMs: normalizedStepMs,
     durationMs,
     path: path.map((tile) => ({ ...tile })),
+    visualAimMode: options.visualAimMode ?? 'face_move',
+    visualAimDirection: options.visualAimDirection ? { ...options.visualAimDirection } : undefined,
+    visualAimTarget: options.visualAimTarget ? { ...options.visualAimTarget } : undefined,
   };
 }
 
@@ -373,6 +382,92 @@ function findNearestWalkable(map: GameState['map'], preferred: TileCoord): TileC
   }
 
   return preferred;
+}
+
+type MovementProofPlan = {
+  start: TileCoord;
+  facing: TileCoord;
+  runPath: TileCoord[];
+  strafePath: TileCoord[];
+};
+
+function uniqueTiles(tiles: TileCoord[]): TileCoord[] {
+  const seen = new Set<string>();
+  return tiles.filter((tile) => {
+    const key = `${tile.x},${tile.y}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getWalkableTiles(map: GameState['map']): TileCoord[] {
+  const tiles: TileCoord[] = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      if (map.grid[y]?.[x]?.walkable) tiles.push({ x, y });
+    }
+  }
+  return tiles;
+}
+
+function findMovementProofPlan(map: GameState['map']): MovementProofPlan {
+  const preferredStarts = [
+    { x: 43, y: 76 },
+    { x: 45, y: 74 },
+    { x: 52, y: 70 },
+    { x: 58, y: 58 },
+    { x: 64, y: 55 },
+  ].map((tile) => findNearestWalkable(map, tile));
+  const candidates = uniqueTiles([...preferredStarts, ...getWalkableTiles(map)]);
+  const directions = [
+    { facing: MOVEMENT_PROOF_AIM, run: { x: 0, y: -7 }, strafe: { x: 5, y: 0 } },
+    { facing: MOVEMENT_PROOF_AIM, run: { x: 0, y: -7 }, strafe: { x: -5, y: 0 } },
+    { facing: { x: 1, y: 0 }, run: { x: 7, y: 0 }, strafe: { x: 0, y: -5 } },
+    { facing: { x: -1, y: 0 }, run: { x: -7, y: 0 }, strafe: { x: 0, y: 5 } },
+    { facing: { x: 0, y: 1 }, run: { x: 0, y: 7 }, strafe: { x: -5, y: 0 } },
+  ];
+
+  for (const start of candidates) {
+    for (const direction of directions) {
+      const runTarget = findNearestWalkable(map, {
+        x: start.x + direction.run.x,
+        y: start.y + direction.run.y,
+      });
+      const fullRunPath = findPath(map, start, runTarget);
+      if (fullRunPath.length < 6) continue;
+
+      const runPath = fullRunPath.slice(0, 6);
+      const runEnd = runPath.at(-1);
+      if (!runEnd) continue;
+
+      const strafeTarget = findNearestWalkable(map, {
+        x: runEnd.x + direction.strafe.x,
+        y: runEnd.y + direction.strafe.y,
+      });
+      const fullStrafePath = findPath(map, runEnd, strafeTarget);
+      if (fullStrafePath.length < 4) continue;
+
+      return {
+        start,
+        facing: direction.facing,
+        runPath,
+        strafePath: fullStrafePath.slice(0, 4),
+      };
+    }
+  }
+
+  const fallbackStart = findNearestWalkable(map, { x: 43, y: 76 });
+  const fallbackRunTarget = findNearestWalkable(map, { x: fallbackStart.x, y: fallbackStart.y - 6 });
+  const fallbackRunPath = findPath(map, fallbackStart, fallbackRunTarget).slice(0, 6);
+  const fallbackEnd = fallbackRunPath.at(-1) ?? fallbackStart;
+  const fallbackStrafeTarget = findNearestWalkable(map, { x: fallbackEnd.x + 4, y: fallbackEnd.y });
+  return {
+    start: fallbackStart,
+    facing: MOVEMENT_PROOF_AIM,
+    runPath: fallbackRunPath,
+    strafePath: findPath(map, fallbackEnd, fallbackStrafeTarget).slice(0, 4),
+  };
 }
 
 function isUnitSelectable(units: Unit[], activeTeam: Team, unitId: number | null): boolean {
@@ -743,6 +838,7 @@ interface GameStore extends GameState {
   startNextRound: () => void;
   startContactDrill: () => void;
   startDuelLab: () => void;
+  startMovementProof: () => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => {
@@ -964,6 +1060,8 @@ export const useGameStore = create<GameStore>((set, get) => {
       const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move', 0, {
         timingPath: visualRoutePath,
         syncToVisualTiming: true,
+        visualAimMode: 'lock_start_facing',
+        visualAimDirection: unit.facing,
       });
 
       let nextUnits = [...units];
@@ -2269,6 +2367,8 @@ export const useGameStore = create<GameStore>((set, get) => {
           {
             timingPath,
             syncToVisualTiming: true,
+            visualAimMode: 'lock_start_facing',
+            visualAimDirection: routeUnit?.facing,
           }
         );
       });
@@ -2830,9 +2930,12 @@ export const useGameStore = create<GameStore>((set, get) => {
           const pathToTravel = path.slice(0, moveBudget);
           const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
           const routeTiming = getRouteVisualTiming(visualRoutePath);
+          const aiHoldTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
           const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
             timingPath: visualRoutePath,
             syncToVisualTiming: true,
+            visualAimMode: round.phase === 'setup' ? 'face_move' : 'target_tile',
+            visualAimTarget: aiHoldTarget,
           });
           set({ movementRoutes: [movementRoute] });
 
@@ -3240,15 +3343,179 @@ export const useGameStore = create<GameStore>((set, get) => {
         aiStatus: null,
       });
     },
+
+    startMovementProof: async () => {
+      if (get().isExecuting) return;
+
+      const mapData = createInfernoMap();
+      const proof = findMovementProofPlan(mapData);
+      const baseUnits = createUnits(mapData);
+      const proofUnit = baseUnits.find((unit) => unit.id === MOVEMENT_PROOF_UNIT_ID) ??
+        baseUnits.find((unit) => unit.team === 'CT');
+      if (!proofUnit || proof.runPath.length === 0 || proof.strafePath.length === 0) return;
+
+      let nextUnits: Unit[] = [{
+        ...proofUnit,
+        hp: proofUnit.maxHp,
+        position: { ...proof.start },
+        ap: proofUnit.maxAp,
+        alive: true,
+        shotsFiredThisTurn: 0,
+        hasMoved: false,
+        hasBomb: false,
+        smokeGrenades: 0,
+        flashbangs: 0,
+        flashTurns: 0,
+        ammoInClip: proofUnit.weapon.clipSize,
+        reserveAmmo: proofUnit.weapon.clipSize * 3,
+        facing: { ...proof.facing },
+      }];
+
+      const round: RoundState = {
+        phase: 'combat',
+        turn: RULES.setupPhaseTurns + 1,
+        activeTeam: 'CT',
+        bombPlanted: false,
+        bombDefused: false,
+        bombPosition: null,
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: null,
+        roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
+      };
+      const movement = getMovementForSelection(nextUnits, proofUnit.id, mapData, round);
+      set({
+        map: mapData,
+        units: nextUnits,
+        round,
+        selectedUnitId: proofUnit.id,
+        hoveredTile: null,
+        walkableTiles: movement.walkableTiles,
+        movementTiles: movement.movementTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: true,
+        inputMode: 'move',
+        heldAngles: [],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: appendFeedback([], 'move_step', {
+          team: 'CT',
+          unitId: proofUnit.id,
+          intensity: 0.75,
+        }),
+        guidanceEvent: createGuidanceEvent(
+          'Movement Proof',
+          'Debug route: run forward, then strafe with aim locked.',
+          'hint'
+        ),
+        aiStatus: { team: 'CT', message: 'Movement proof running' },
+      });
+
+      const runProofLeg = async (path: TileCoord[], label: string): Promise<void> => {
+        if (path.length === 0) return;
+        const currentUnit = nextUnits.find((unit) => unit.id === proofUnit.id);
+        if (!currentUnit) return;
+
+        nextUnits = nextUnits.map((unit) => (
+          unit.id === proofUnit.id ? { ...unit, facing: { ...proof.facing } } : unit
+        ));
+        const visualRoutePath = [{ ...currentUnit.position }, ...path.map((tile) => ({ ...tile }))];
+        const routeTiming = getRouteVisualTiming(visualRoutePath);
+        const movementRoute = createMovementPresentationRoute(proofUnit.id, path, 'direct_move', 0, {
+          timingPath: visualRoutePath,
+          syncToVisualTiming: true,
+          visualAimMode: 'lock_start_facing',
+          visualAimDirection: proof.facing,
+        });
+        set({
+          units: nextUnits,
+          movementRoutes: [movementRoute],
+          aiStatus: { team: 'CT', message: `Movement proof: ${label}` },
+        });
+
+        let previousArrivalMs = 0;
+        for (let stepIndex = 0; stepIndex < path.length; stepIndex += 1) {
+          const step = path[stepIndex];
+          const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+            Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, path.length)));
+          const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+          if (waitMs > 0) await wait(waitMs);
+          previousArrivalMs = arrivalMs;
+
+          const unit = nextUnits.find((candidate) => candidate.id === proofUnit.id);
+          if (!unit) return;
+          const dx = step.x - unit.position.x;
+          const dy = step.y - unit.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          nextUnits = nextUnits.map((candidate) => (
+            candidate.id === proofUnit.id
+              ? {
+                  ...candidate,
+                  position: { ...step },
+                  hasMoved: true,
+                  facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+                }
+              : candidate
+          ));
+          set({
+            units: nextUnits,
+            selectedUnitId: proofUnit.id,
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
+              team: 'CT',
+              unitId: proofUnit.id,
+              intensity: 0.65,
+            }),
+          });
+        }
+
+        await wait(260);
+        set({ movementRoutes: [] });
+      };
+
+      await runProofLeg(proof.runPath, 'run forward');
+      await wait(180);
+      await runProofLeg(proof.strafePath, 'strafe with aim locked');
+
+      nextUnits = nextUnits.map((unit) => (
+        unit.id === proofUnit.id
+          ? { ...unit, ap: Math.max(0, unit.ap - 1), facing: { ...proof.facing } }
+          : unit
+      ));
+      const finalMovement = getMovementForSelection(nextUnits, proofUnit.id, mapData, round);
+      set({
+        units: nextUnits,
+        selectedUnitId: proofUnit.id,
+        walkableTiles: finalMovement.walkableTiles,
+        movementTiles: finalMovement.movementTiles,
+        movementRoutes: [],
+        isExecuting: false,
+        aiStatus: { team: 'CT', message: 'Movement proof complete' },
+        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+          team: 'CT',
+          unitId: proofUnit.id,
+          intensity: 0.9,
+        }),
+      });
+    },
   };
 });
 
 declare global {
   interface Window {
     __CS_TACTICS_STORE__?: typeof useGameStore;
+    __CS_TACTICS_START_MOVEMENT_PROOF__?: () => Promise<void>;
   }
 }
 
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   window.__CS_TACTICS_STORE__ = useGameStore;
+  window.__CS_TACTICS_START_MOVEMENT_PROOF__ = () => useGameStore.getState().startMovementProof();
 }

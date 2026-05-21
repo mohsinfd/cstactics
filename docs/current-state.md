@@ -519,3 +519,10 @@ AI movement, and renderer locomotion consume the same arrival-time model. The
 unit renderer also holds a short explicit stop-brace pose after a completed
 route before returning to idle. This improves timing consistency but does not
 replace the need for real authored/Blender-exported unit frames.
+Movement routes now include presentation-only visual aim metadata. Direct and
+planned moves lock the visual aim to the starting facing so strafe/diagonal
+poses are no longer structurally hidden by store-facing updates, while CT AI can
+aim at a hold target during route presentation. A dev-only proof command,
+`window.__CS_TACTICS_START_MOVEMENT_PROOF__()`, creates a one-CT forward/strafe
+route for isolating locomotion, and `npm run sprites:validate` guards generated
+and future exported unit-frame completeness.

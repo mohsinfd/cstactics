@@ -233,6 +233,29 @@ function getAimWorldDirection(unit: Unit): THREE.Vector3 {
   return aim.normalize();
 }
 
+function tileFacingToWorldDirection(facing: TileCoord, team: Unit['team']): THREE.Vector3 {
+  const aim = new THREE.Vector3(-facing.x, 0, facing.y);
+  if (aim.lengthSq() <= 0.000001) return new THREE.Vector3(0, 0, team === 'T' ? 1 : -1);
+  return aim.normalize();
+}
+
+function getPresentationAimWorldDirection(
+  unit: Unit,
+  route: MovementPresentationRoute | null
+): THREE.Vector3 {
+  if (route?.visualAimMode === 'lock_start_facing' && route.visualAimDirection) {
+    return tileFacingToWorldDirection(route.visualAimDirection, unit.team);
+  }
+
+  if (route?.visualAimMode === 'target_tile' && route.visualAimTarget) {
+    const dx = route.visualAimTarget.x - unit.position.x;
+    const dy = route.visualAimTarget.y - unit.position.y;
+    return tileFacingToWorldDirection({ x: Math.sign(dx), y: Math.sign(dy) }, unit.team);
+  }
+
+  return getAimWorldDirection(unit);
+}
+
 type RoleMiniatureProfile = {
   torsoWidth: number;
   torsoHeight: number;
@@ -1328,6 +1351,8 @@ function MovementDebugOverlay({ unitId, angle }: { unitId: number; angle: number
         pose: LocomotionPose;
         endpointErrorTiles: number;
         currentFrameUrl: string;
+        stopPoseRemainingMs: number;
+        lastCompletedRouteId: string;
       }>;
     };
     if (!debugWindow.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__) {
@@ -1347,6 +1372,7 @@ function MovementDebugOverlay({ unitId, angle }: { unitId: number; angle: number
       `${debug.pose} ${frameName}`,
       `p ${debug.progress.toFixed(2)} spd ${debug.speedTilesPerSecond.toFixed(2)}`,
       `err ${debug.endpointErrorTiles.toFixed(3)}`,
+      `stop ${Math.round(debug.stopPoseRemainingMs)}ms last ${debug.lastCompletedRouteId || '-'}`,
     ].join('\n'));
   });
 
@@ -1537,7 +1563,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     let movementIntensity = 0;
     if (groupRef.current) {
       const movement = movementRef.current;
-      const aimDir = getAimWorldDirection(unit);
+      const aimDir = getPresentationAimWorldDirection(unit, movementRoute);
       const cappedDelta = Math.min(delta, MAX_MOVEMENT_FRAME_SECONDS);
       const routeReady = movementRoute
         ? Date.now() >= movementRoute.createdAt + movementRoute.delayMs
@@ -1617,7 +1643,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         if (sample.phase === 'done') {
           const completedRouteId = movement.routeId || movement.clip.id;
-          movement.stopPoseUntil = state.clock.elapsedTime + 0.18;
+          movement.stopPoseUntil = state.clock.elapsedTime + 0.22;
           movement.lastCompletedRouteId = completedRouteId;
           movement.pose = 'stop_brace';
           movement.clip = null;
@@ -1675,8 +1701,11 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             pose: LocomotionPose;
             endpointErrorTiles: number;
             currentFrameUrl: string;
+            stopPoseRemainingMs: number;
+            lastCompletedRouteId: string;
           }>;
         };
+        const stopPoseRemainingMs = Math.max(0, (movement.stopPoseUntil - state.clock.elapsedTime) * 1000);
         debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ = {
           ...(debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ ?? {}),
           [unit.id]: {
@@ -1686,6 +1715,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             pose: movement.pose,
             endpointErrorTiles: movement.endpointErrorTiles,
             currentFrameUrl: animationStateRef.current.currentFrameUrl,
+            stopPoseRemainingMs,
+            lastCompletedRouteId: movement.lastCompletedRouteId,
           },
         };
       }
