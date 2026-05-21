@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MOVEMENT_PRESENTATION_PROFILE } from '../../game/movementTimingProfile';
 
 export type LocomotionPose =
   | 'idle'
@@ -37,15 +38,15 @@ export interface MovementClipSample {
 }
 
 export const ROUTE_LOCOMOTION = {
-  maxSpeedTilesPerSecond: 5.6,
-  accelTilesPerSecond2: 28,
-  decelTilesPerSecond2: 42,
-  lookaheadTiles: 0.78,
-  stopDistanceTiles: 0.82,
-  endpointSnapTiles: 0.03,
-  minMoveSeconds: 0.22,
-  cornerRadiusTiles: 0.32,
-  cornerSamples: 5,
+  maxSpeedTilesPerSecond: MOVEMENT_PRESENTATION_PROFILE.maxSpeedTilesPerSecond,
+  accelTilesPerSecond2: MOVEMENT_PRESENTATION_PROFILE.accelTilesPerSecond2,
+  decelTilesPerSecond2: MOVEMENT_PRESENTATION_PROFILE.decelTilesPerSecond2,
+  lookaheadTiles: MOVEMENT_PRESENTATION_PROFILE.lookaheadTiles,
+  stopDistanceTiles: MOVEMENT_PRESENTATION_PROFILE.stopDistanceTiles,
+  endpointSnapTiles: MOVEMENT_PRESENTATION_PROFILE.endpointSnapTiles,
+  minMoveSeconds: MOVEMENT_PRESENTATION_PROFILE.minMoveSeconds,
+  cornerRadiusTiles: MOVEMENT_PRESENTATION_PROFILE.cornerRadiusTiles,
+  cornerSamples: MOVEMENT_PRESENTATION_PROFILE.cornerSamples,
 } as const;
 
 const ZERO_DIR = new THREE.Vector3(0, 0, 1);

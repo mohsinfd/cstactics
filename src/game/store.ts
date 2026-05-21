@@ -69,7 +69,6 @@ import {
 } from './executeTimeline';
 
 const EXECUTION_STEP_MS = 95;
-const AI_EXECUTION_STEP_MS = 55;
 const AI_THINK_MS = 180;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS = 2;
@@ -1982,6 +1981,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         action: PlannedAction;
         startAtMs: number;
         pathToTravel: TileCoord[];
+        routeTiming: ReturnType<typeof getRouteVisualTiming>;
         crossedAngle: HeldAngle | null;
         contactTile: TileCoord | null;
         rangePerAP: number;
@@ -2198,11 +2198,13 @@ export const useGameStore = create<GameStore>((set, get) => {
         const pathToTravel = contactIndex >= 0
           ? action.path.slice(0, contactIndex + 1)
           : action.path;
+        const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
 
         runtimes.push({
           action,
           startAtMs: getPlannedActionExecuteAtMs(action),
           pathToTravel,
+          routeTiming: getRouteVisualTiming(visualRoutePath),
           crossedAngle,
           contactTile,
           rangePerAP,
@@ -2249,12 +2251,27 @@ export const useGameStore = create<GameStore>((set, get) => {
         return;
       }
 
-      const movementRoutes = runtimes.map((runtime) => createMovementPresentationRoute(
-        runtime.action.unitId,
-        runtime.pathToTravel,
-        'planned_execute',
-        Math.max(0, runtime.startAtMs - executeClockMs)
-      ));
+      for (const runtime of runtimes) {
+        runtime.startAtMs = Math.max(runtime.startAtMs, executeClockMs);
+      }
+
+      const movementRoutes = runtimes.map((runtime) => {
+        const routeUnit = nextUnits.find((unit) => unit.id === runtime.action.unitId);
+        const timingPath = [
+          ...(routeUnit ? [{ ...routeUnit.position }] : []),
+          ...runtime.pathToTravel.map((tile) => ({ ...tile })),
+        ];
+        return createMovementPresentationRoute(
+          runtime.action.unitId,
+          runtime.pathToTravel,
+          'planned_execute',
+          Math.max(0, runtime.startAtMs - executeClockMs),
+          {
+            timingPath,
+            syncToVisualTiming: true,
+          }
+        );
+      });
 
       set({
         hoveredTile: null,
@@ -2272,14 +2289,22 @@ export const useGameStore = create<GameStore>((set, get) => {
       const hasPendingRuntime = () => runtimes.some((runtime) => (
         !runtime.stopped && runtime.tilesMoved < runtime.pathToTravel.length
       ));
+      const getRuntimeStepArrivalMs = (runtime: (typeof runtimes)[number]): number => {
+        const stepNumber = runtime.tilesMoved + 1;
+        const fallbackArrivalMs = Math.round(
+          runtime.routeTiming.durationMs * (stepNumber / Math.max(1, runtime.pathToTravel.length))
+        );
+        return runtime.startAtMs + (runtime.routeTiming.arrivalTimesMs[stepNumber] ?? fallbackArrivalMs);
+      };
       let safetyTicks = 0;
       while (hasPendingRuntime() && safetyTicks < 160) {
         safetyTicks += 1;
+        let startedThisStep = false;
         let movedThisStep = false;
 
         for (const runtime of runtimes) {
           if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
-          if (executeClockMs < runtime.startAtMs) continue;
+          if (runtime.started || executeClockMs < runtime.startAtMs) continue;
 
           const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
           if (unitIdx === -1) {
@@ -2292,15 +2317,65 @@ export const useGameStore = create<GameStore>((set, get) => {
             runtime.stopped = true;
             continue;
           }
+          appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
+          runtime.started = true;
+          startedThisStep = true;
+        }
 
+        let nextEventAtMs = Number.POSITIVE_INFINITY;
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (!runtime.started && runtime.startAtMs > executeClockMs) {
+            nextEventAtMs = Math.min(nextEventAtMs, runtime.startAtMs);
+            continue;
+          }
+          nextEventAtMs = Math.min(nextEventAtMs, getRuntimeStepArrivalMs(runtime));
+        }
+
+        if (Number.isFinite(nextEventAtMs) && nextEventAtMs > executeClockMs) {
+          await wait(nextEventAtMs - executeClockMs);
+          executeClockMs = nextEventAtMs;
+        }
+
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (runtime.started || executeClockMs < runtime.startAtMs) continue;
+
+          const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
+          if (unitIdx === -1) {
+            runtime.stopped = true;
+            continue;
+          }
+
+          const unit = nextUnits[unitIdx];
+          if (!unit.alive) {
+            runtime.stopped = true;
+            continue;
+          }
+          appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
+          runtime.started = true;
+          startedThisStep = true;
+        }
+
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length || !runtime.started) continue;
+          if (getRuntimeStepArrivalMs(runtime) > executeClockMs + 0.5) continue;
+
+          const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
+          if (unitIdx === -1) {
+            runtime.stopped = true;
+            continue;
+          }
+
+          const unit = nextUnits[unitIdx];
+          if (!unit.alive) {
+            runtime.stopped = true;
+            continue;
+          }
           const destination = runtime.pathToTravel[runtime.tilesMoved];
           const dx = destination.x - unit.position.x;
           const dy = destination.y - unit.position.y;
           const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          if (!runtime.started) {
-            appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
-            runtime.started = true;
-          }
 
           nextUnits = [...nextUnits];
           nextUnits[unitIdx] = {
@@ -2320,21 +2395,6 @@ export const useGameStore = create<GameStore>((set, get) => {
           movedThisStep = true;
         }
 
-        if (!movedThisStep) {
-          const nextStartAtMs = runtimes.reduce((next, runtime) => {
-            if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) return next;
-            if (runtime.startAtMs <= executeClockMs) return next;
-            return Math.min(next, runtime.startAtMs);
-          }, Number.POSITIVE_INFINITY);
-
-          if (!Number.isFinite(nextStartAtMs)) break;
-          const delayMs = Math.max(0, nextStartAtMs - executeClockMs);
-          if (delayMs <= 0) break;
-          await wait(delayMs);
-          executeClockMs = nextStartAtMs;
-          continue;
-        }
-
         if (movedThisStep) {
           set({
             units: nextUnits,
@@ -2345,8 +2405,8 @@ export const useGameStore = create<GameStore>((set, get) => {
               intensity: 0.75,
             }),
           });
-          await wait(EXECUTION_STEP_MS);
-          executeClockMs += EXECUTION_STEP_MS;
+        } else if (!startedThisStep && !Number.isFinite(nextEventAtMs)) {
+          break;
         }
 
         for (const runtime of runtimes) {
@@ -2768,12 +2828,23 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
+          const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+          const routeTiming = getRouteVisualTiming(visualRoutePath);
           const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
-            stepMs: AI_EXECUTION_STEP_MS,
+            timingPath: visualRoutePath,
+            syncToVisualTiming: true,
           });
           set({ movementRoutes: [movementRoute] });
 
-          for (const step of pathToTravel) {
+          let previousArrivalMs = 0;
+          for (let stepIndex = 0; stepIndex < pathToTravel.length; stepIndex += 1) {
+            const step = pathToTravel[stepIndex];
+            const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+              Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, pathToTravel.length)));
+            const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+            if (waitMs > 0) await wait(waitMs);
+            previousArrivalMs = arrivalMs;
+
             unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (unitIdx === -1) break;
 
@@ -2802,7 +2873,6 @@ export const useGameStore = create<GameStore>((set, get) => {
                 intensity: 0.55,
               }),
             });
-            await wait(AI_EXECUTION_STEP_MS);
           }
 
           unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);

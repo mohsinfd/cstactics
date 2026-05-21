@@ -12,14 +12,19 @@ export type UnitAnimationClip = {
 
 type UnitAnimationSource = 'generated' | 'exported';
 
-const UNIT_ANIMATION_SOURCE = 'generated' as UnitAnimationSource;
-const UNIT_ANIMATION_EXTENSION = UNIT_ANIMATION_SOURCE === 'exported' ? 'png' : 'svg';
-const UNIT_ANIMATION_BASE = UNIT_ANIMATION_SOURCE === 'exported'
-  ? '/board2d5/units/exported'
-  : '/board2d5/units';
+const UNIT_ANIMATION_SOURCE_BY_TEAM: Record<Team, UnitAnimationSource> = {
+  CT: 'generated',
+  T: 'generated',
+};
 
-const ct = (frame: string) => `${UNIT_ANIMATION_BASE}/ct/${frame}.${UNIT_ANIMATION_EXTENSION}`;
-const t = (frame: string) => `${UNIT_ANIMATION_BASE}/t/${frame}.${UNIT_ANIMATION_EXTENSION}`;
+const teamFolder = (team: Team) => team.toLowerCase();
+
+const getTeamFrameUrl = (team: Team, frame: string): string => {
+  const source = UNIT_ANIMATION_SOURCE_BY_TEAM[team];
+  const extension = source === 'exported' ? 'png' : 'svg';
+  const base = source === 'exported' ? '/board2d5/units/exported' : '/board2d5/units';
+  return `${base}/${teamFolder(team)}/${frame}.${extension}`;
+};
 
 const frames = (prefix: string, count: number, urlFor: (frame: string) => string): string[] => (
   Array.from({ length: count }, (_, index) => urlFor(`${prefix}_${index}`))
@@ -85,8 +90,8 @@ const teamManifest = (urlFor: (frame: string) => string): Record<UnitAnimationPo
 });
 
 export const UNIT_ANIMATION_MANIFEST: Record<Team, Record<UnitAnimationPose, UnitAnimationClip>> = {
-  CT: teamManifest(ct),
-  T: teamManifest(t),
+  CT: teamManifest((frame) => getTeamFrameUrl('CT', frame)),
+  T: teamManifest((frame) => getTeamFrameUrl('T', frame)),
 };
 
 export function getAllUnitAnimationUrls(team: Team): string[] {

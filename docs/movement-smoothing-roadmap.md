@@ -216,3 +216,13 @@ The helper is intentionally pure and small so it can be imported into
 - In dev, setting `window.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__ = true` shows the
   selected unit's route id, pose, route progress, speed, endpoint error, and
   current frame URL on the board.
+- May 21 follow-up: movement timing constants now live in
+  `src/game/movementTimingProfile.ts` and are consumed by both the game-side
+  arrival-time helper and renderer-side locomotion controller. Planned execute
+  movement and CT AI movement now use the same per-route arrival times instead
+  of fixed per-tile waits, so visible routes share one timing model. The renderer
+  also holds `stop_brace` for a short explicit beat after route completion before
+  returning to idle. The remaining quality blocker is still authored CT/T sprite
+  content; the current generated SVGs remain placeholder plumbing. The first
+  proof target is documented at `art/sprite-proof/ct-rifle/README.md` so CT can
+  switch to exported PNG frames independently of T once those assets exist.

@@ -158,6 +158,8 @@ type ContinuousMovementState = {
   lastMovedAt: number;
   lastPosition: THREE.Vector3;
   strideDistance: number;
+  stopPoseUntil: number;
+  lastCompletedRouteId: string;
 };
 
 type UnitSpriteAnimationState = {
@@ -1433,6 +1435,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     lastMovedAt: 0,
     lastPosition: new THREE.Vector3(),
     strideDistance: 0,
+    stopPoseUntil: 0,
+    lastCompletedRouteId: '',
   });
   const animationStateRef = useRef<UnitSpriteAnimationState>({
     pose: 'idle',
@@ -1498,6 +1502,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       movementRef.current.routeId = '';
       movementRef.current.runBlend = 0;
       movementRef.current.lastPosition.copy(targetPosition);
+      movementRef.current.stopPoseUntil = 0;
+      movementRef.current.lastCompletedRouteId = '';
       hasInitialPosition.current = true;
     }
   }, [angle, targetKey, targetPosition]);
@@ -1547,6 +1553,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         movement.routeId = movementRoute.id;
         movement.queue = [];
         movement.isRunning = false;
+        movement.stopPoseUntil = 0;
         if (routePoints.length >= 2) {
           movement.clip = createMovementClip({
             id: movementRoute.id,
@@ -1579,6 +1586,8 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.routeProgress = 0;
           movement.endpointErrorTiles = 0;
           movement.lastPosition.copy(targetPosition);
+          movement.stopPoseUntil = 0;
+          movement.lastCompletedRouteId = '';
         } else if (!isFollowingSeededRoute && tileDistance > ROUTE_LOCOMOTION.endpointSnapTiles) {
           movement.clip = createMovementClip({
             id: `fallback:${unit.id}:${targetKey}:${state.clock.elapsedTime.toFixed(3)}`,
@@ -1607,6 +1616,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         );
 
         if (sample.phase === 'done') {
+          const completedRouteId = movement.routeId || movement.clip.id;
+          movement.stopPoseUntil = state.clock.elapsedTime + 0.18;
+          movement.lastCompletedRouteId = completedRouteId;
+          movement.pose = 'stop_brace';
           movement.clip = null;
           movement.routeId = '';
           movement.isRunning = false;
@@ -1616,7 +1629,11 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         movement.speedTilesPerSecond = 0;
         movement.routeProgress = 0;
         movement.endpointErrorTiles = groupRef.current.position.distanceTo(targetPosition) / ts;
-        movement.pose = movement.endpointErrorTiles < ROUTE_LOCOMOTION.endpointSnapTiles ? 'idle' : movement.pose;
+        if (state.clock.elapsedTime < movement.stopPoseUntil) {
+          movement.pose = 'stop_brace';
+        } else {
+          movement.pose = movement.endpointErrorTiles < ROUTE_LOCOMOTION.endpointSnapTiles ? 'idle' : movement.pose;
+        }
       }
 
       const movedDistance = movement.lastPosition.distanceTo(groupRef.current.position);

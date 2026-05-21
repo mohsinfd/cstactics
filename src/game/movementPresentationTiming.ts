@@ -1,18 +1,10 @@
 import type { TileCoord } from './types';
+import { MOVEMENT_TIMING_PROFILE } from './movementTimingProfile';
 
 type Point2 = {
   x: number;
   y: number;
 };
-
-const ROUTE_TIMING = {
-  maxSpeedTilesPerSecond: 5.6,
-  accelTilesPerSecond2: 28,
-  decelTilesPerSecond2: 42,
-  minMoveMs: 220,
-  cornerRadiusTiles: 0.32,
-  cornerSamples: 5,
-} as const;
 
 function distance(a: Point2, b: Point2): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
@@ -79,7 +71,7 @@ function getSmoothedRoutePoints(points: Point2[]): Point2[] {
     }
 
     const cornerRadius = Math.min(
-      ROUTE_TIMING.cornerRadiusTiles,
+      MOVEMENT_TIMING_PROFILE.cornerRadiusTiles,
       incomingLength * 0.42,
       outgoingLength * 0.42
     );
@@ -87,8 +79,8 @@ function getSmoothedRoutePoints(points: Point2[]): Point2[] {
     const after = addScaled(current, outgoing, cornerRadius);
     pushPoint(smoothed, before);
 
-    for (let sample = 1; sample <= ROUTE_TIMING.cornerSamples; sample += 1) {
-      const t = sample / (ROUTE_TIMING.cornerSamples + 1);
+    for (let sample = 1; sample <= MOVEMENT_TIMING_PROFILE.cornerSamples; sample += 1) {
+      const t = sample / (MOVEMENT_TIMING_PROFILE.cornerSamples + 1);
       const a = lerp(before, current, t);
       const b = lerp(current, after, t);
       pushPoint(smoothed, lerp(a, b, t));
@@ -173,11 +165,11 @@ export function getRouteVisualTiming(path: TileCoord[]): {
   const smoothedTotalDistance = getCumulativeDistances(smoothedPoints).at(-1) ?? rawTotalDistance;
   const profileDurationSeconds = getTrapezoidDuration(
     smoothedTotalDistance,
-    ROUTE_TIMING.maxSpeedTilesPerSecond,
-    ROUTE_TIMING.accelTilesPerSecond2,
-    ROUTE_TIMING.decelTilesPerSecond2
+    MOVEMENT_TIMING_PROFILE.maxSpeedTilesPerSecond,
+    MOVEMENT_TIMING_PROFILE.accelTilesPerSecond2,
+    MOVEMENT_TIMING_PROFILE.decelTilesPerSecond2
   );
-  const durationSeconds = Math.max(ROUTE_TIMING.minMoveMs / 1000, profileDurationSeconds);
+  const durationSeconds = Math.max(MOVEMENT_TIMING_PROFILE.minMoveMs / 1000, profileDurationSeconds);
   const durationScale = profileDurationSeconds > 0 ? durationSeconds / profileDurationSeconds : 1;
   const arrivalTimesMs = rawCumulative.map((rawDistance, index) => {
     if (index === 0) return 0;
@@ -188,9 +180,9 @@ export function getRouteVisualTiming(path: TileCoord[]): {
     const profileTimeSeconds = getTimeAtDistance(
       targetDistance,
       smoothedTotalDistance,
-      ROUTE_TIMING.maxSpeedTilesPerSecond,
-      ROUTE_TIMING.accelTilesPerSecond2,
-      ROUTE_TIMING.decelTilesPerSecond2
+      MOVEMENT_TIMING_PROFILE.maxSpeedTilesPerSecond,
+      MOVEMENT_TIMING_PROFILE.accelTilesPerSecond2,
+      MOVEMENT_TIMING_PROFILE.decelTilesPerSecond2
     );
     return Math.round(profileTimeSeconds * durationScale * 1000);
   });

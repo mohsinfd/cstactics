@@ -513,3 +513,9 @@ stub, and the manifest has a generated/exported source switch for future real
 art. Direct move contact timing now uses route visual arrival times before
 advancing store tile truth, so direct contact breaks line up with visible
 arrival at the contact tile.
+Movement timing profile values are now centralized in
+`src/game/movementTimingProfile.ts`; direct moves, planned execute movement, CT
+AI movement, and renderer locomotion consume the same arrival-time model. The
+unit renderer also holds a short explicit stop-brace pose after a completed
+route before returning to idle. This improves timing consistency but does not
+replace the need for real authored/Blender-exported unit frames.
