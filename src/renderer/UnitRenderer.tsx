@@ -171,6 +171,12 @@ type UnitSpriteAnimationState = {
   currentFrameUrl: string;
 };
 
+type MovementProofTraceState = {
+  routeId: string;
+  pose: LocomotionPose | null;
+  frameUrl: string;
+};
+
 function tileKey(tile: TileCoord): string {
   return `${tile.x}:${tile.y}`;
 }
@@ -242,16 +248,30 @@ function tileFacingToWorldDirection(facing: TileCoord, team: Unit['team']): THRE
 
 function getPresentationAimWorldDirection(
   unit: Unit,
-  route: MovementPresentationRoute | null
+  route: MovementPresentationRoute | null,
+  sampledMoveDirection: THREE.Vector3 | null,
+  currentWorldPosition: THREE.Vector3 | null,
+  mapWidth: number,
+  tileSize: number
 ): THREE.Vector3 {
+  if (
+    route?.visualAimMode === 'face_move' &&
+    sampledMoveDirection &&
+    sampledMoveDirection.lengthSq() > 0.000001
+  ) {
+    return sampledMoveDirection.clone().normalize();
+  }
+
   if (route?.visualAimMode === 'lock_start_facing' && route.visualAimDirection) {
     return tileFacingToWorldDirection(route.visualAimDirection, unit.team);
   }
 
   if (route?.visualAimMode === 'target_tile' && route.visualAimTarget) {
-    const dx = route.visualAimTarget.x - unit.position.x;
-    const dy = route.visualAimTarget.y - unit.position.y;
-    return tileFacingToWorldDirection({ x: Math.sign(dx), y: Math.sign(dy) }, unit.team);
+    const targetWorld = tileToUnitWorld(mapWidth, tileSize, route.visualAimTarget);
+    const origin = currentWorldPosition ?? tileToUnitWorld(mapWidth, tileSize, unit.position);
+    const aim = targetWorld.sub(origin);
+    aim.y = 0;
+    if (aim.lengthSq() > 0.000001) return aim.normalize();
   }
 
   return getAimWorldDirection(unit);
@@ -1465,7 +1485,11 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     stopPoseUntil: 0,
     lastCompletedRouteId: '',
   });
-  const lastProofPoseRef = useRef<LocomotionPose | null>(null);
+  const lastProofTraceRef = useRef<MovementProofTraceState>({
+    routeId: '',
+    pose: null,
+    frameUrl: '',
+  });
   const animationStateRef = useRef<UnitSpriteAnimationState>({
     pose: 'idle',
     strideDistance: 0,
@@ -1565,24 +1589,32 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     let movementIntensity = 0;
     if (groupRef.current) {
       const movement = movementRef.current;
-      const aimDir = getPresentationAimWorldDirection(unit, movementRoute);
       const cappedDelta = Math.min(delta, MAX_MOVEMENT_FRAME_SECONDS);
       const routeReady = movementRoute
         ? Date.now() >= movementRoute.createdAt + movementRoute.delayMs
         : false;
+      const alreadyCompletedThisRoute = Boolean(
+        movementRoute &&
+        movement.lastCompletedRouteId === movementRoute.id
+      );
 
-      if (movementRoute && routeReady && movement.routeId !== movementRoute.id) {
+      if (
+        movementRoute &&
+        routeReady &&
+        movement.routeId !== movementRoute.id &&
+        !alreadyCompletedThisRoute
+      ) {
         const routePoints = getRouteClipPointsFromCurrent(
           movementRouteTargets,
           groupRef.current.position,
           ts
         );
 
-        movement.routeId = movementRoute.id;
-        movement.queue = [];
-        movement.isRunning = false;
-        movement.stopPoseUntil = 0;
         if (routePoints.length >= 2) {
+          movement.routeId = movementRoute.id;
+          movement.queue = [];
+          movement.isRunning = false;
+          movement.stopPoseUntil = 0;
           movement.clip = createMovementClip({
             id: movementRoute.id,
             unitId: unit.id,
@@ -1636,6 +1668,14 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         movement.speedTilesPerSecond = sample.speedTilesPerSecond;
         movement.routeProgress = sample.progress;
         movement.endpointErrorTiles = sample.endpointErrorTiles;
+        const aimDir = getPresentationAimWorldDirection(
+          unit,
+          movementRoute,
+          sample.moveDirection,
+          sample.position,
+          map.width,
+          ts
+        );
         movement.pose = classifyLocomotionPose(
           sample.moveDirection,
           aimDir,
@@ -1716,18 +1756,28 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           }>;
         };
         const stopPoseRemainingMs = Math.max(0, (movement.stopPoseUntil - state.clock.elapsedTime) * 1000);
+        const proofRouteId = movement.routeId || movement.lastCompletedRouteId || 'idle';
+        const proofFrameUrl = animationStateRef.current.currentFrameUrl;
+        const proofTraceChanged =
+          lastProofTraceRef.current.routeId !== proofRouteId ||
+          lastProofTraceRef.current.pose !== movement.pose ||
+          lastProofTraceRef.current.frameUrl !== proofFrameUrl;
         if (
           debugWindow.__CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__ === unit.id &&
-          lastProofPoseRef.current !== movement.pose
+          proofTraceChanged
         ) {
-          lastProofPoseRef.current = movement.pose;
+          lastProofTraceRef.current = {
+            routeId: proofRouteId,
+            pose: movement.pose,
+            frameUrl: proofFrameUrl,
+          };
           debugWindow.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ = [
             ...(debugWindow.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? []),
             {
               time: Math.round(state.clock.elapsedTime * 1000),
-              routeId: movement.routeId || movement.lastCompletedRouteId || 'idle',
+              routeId: proofRouteId,
               pose: movement.pose,
-              frameUrl: animationStateRef.current.currentFrameUrl,
+              frameUrl: proofFrameUrl,
               progress: movement.routeProgress,
             },
           ];

@@ -83,6 +83,27 @@ const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
 const MOVEMENT_PROOF_UNIT_ID = 6;
 const MOVEMENT_PROOF_AIM: TileCoord = { x: 0, y: -1 };
+const MOVEMENT_PROOF_POSES = [
+  'run_forward',
+  'strafe_left',
+  'strafe_right',
+  'stop_brace',
+  'idle',
+] as const;
+
+type MovementProofEvent = {
+  time: number;
+  routeId: string;
+  pose: string;
+  frameUrl: string;
+  progress: number;
+};
+
+type MovementProofSummary = {
+  posesSeen: Record<string, boolean>;
+  uniqueFramesByPose: Record<string, number>;
+  events: MovementProofEvent[];
+};
 
 let feedbackSequence = 0;
 let guidanceSequence = 0;
@@ -119,6 +140,29 @@ function createGuidanceEvent(title: string, detail: string, tone: GuidanceTone):
     tone,
     title,
     detail,
+  };
+}
+
+function createMovementProofSummary(events: MovementProofEvent[] = []): MovementProofSummary {
+  const posesSeen = MOVEMENT_PROOF_POSES.reduce<Record<string, boolean>>((summary, pose) => {
+    summary[pose] = events.some((event) => event.pose === pose);
+    return summary;
+  }, {});
+  const frameSetsByPose = events.reduce<Record<string, Set<string>>>((summary, event) => {
+    if (!event.frameUrl) return summary;
+    summary[event.pose] = summary[event.pose] ?? new Set<string>();
+    summary[event.pose].add(event.frameUrl);
+    return summary;
+  }, {});
+  const uniqueFramesByPose = MOVEMENT_PROOF_POSES.reduce<Record<string, number>>((summary, pose) => {
+    summary[pose] = frameSetsByPose[pose]?.size ?? 0;
+    return summary;
+  }, {});
+
+  return {
+    posesSeen,
+    uniqueFramesByPose,
+    events,
   };
 }
 
@@ -3538,15 +3582,15 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       if (typeof window !== 'undefined' && import.meta.env.DEV) {
         const events = window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? [];
-        const seen = new Set(events.map((event) => event.pose));
-        const summary = [
-          'run_forward',
-          'strafe_left',
-          'strafe_right',
-          'stop_brace',
-          'idle',
-        ].map((pose) => `${pose}: ${seen.has(pose) ? 'yes' : 'no'}`).join(', ');
-        console.info(`[CS2 Tactics] Movement proof poses seen: ${summary}`);
+        const proofSummary = createMovementProofSummary(events);
+        const poseSummary = MOVEMENT_PROOF_POSES
+          .map((pose) => `${pose}: ${proofSummary.posesSeen[pose] ? 'yes' : 'no'}`)
+          .join(', ');
+        const frameSummary = MOVEMENT_PROOF_POSES
+          .map((pose) => `${pose}: ${proofSummary.uniqueFramesByPose[pose] ?? 0}`)
+          .join(', ');
+        console.info(`[CS2 Tactics] Movement proof poses seen: ${poseSummary}`);
+        console.info(`[CS2 Tactics] Movement proof unique frames: ${frameSummary}`);
       }
     },
   };
@@ -3556,18 +3600,16 @@ declare global {
   interface Window {
     __CS_TACTICS_STORE__?: typeof useGameStore;
     __CS_TACTICS_START_MOVEMENT_PROOF__?: () => Promise<void>;
+    __CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__?: () => MovementProofSummary;
     __CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__?: number;
-    __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: Array<{
-      time: number;
-      routeId: string;
-      pose: string;
-      frameUrl: string;
-      progress: number;
-    }>;
+    __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: MovementProofEvent[];
   }
 }
 
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   window.__CS_TACTICS_STORE__ = useGameStore;
   window.__CS_TACTICS_START_MOVEMENT_PROOF__ = () => useGameStore.getState().startMovementProof();
+  window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__ = () => (
+    createMovementProofSummary(window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? [])
+  );
 }

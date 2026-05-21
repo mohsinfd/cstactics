@@ -528,3 +528,8 @@ AP/selection/AI progression continues. A dev-only proof command and button,
 `window.__CS_TACTICS_START_MOVEMENT_PROOF__()` / `Move Proof`, creates a one-CT
 forward/strafe route for isolating locomotion. `npm run sprites:validate` guards
 generated frames and future exported PNG frame quality/completeness.
+The `face_move` intent now uses the sampled route movement direction for
+classification instead of stored unit facing, stale completed routes cannot
+cancel stop-brace while the store waits to clear `movementRoutes`, and
+`window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__()` reports proof pose coverage
+plus unique frame counts by pose.

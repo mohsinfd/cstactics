@@ -246,3 +246,10 @@ The helper is intentionally pure and small so it can be imported into
   AI movement now waits for the shared `MOVEMENT_STOP_BRACE_MS` presentation beat
   before AP/selection/AI progression continues. Contact breaks still own their
   own shot/decision beat and do not wait behind this settle.
+- Correctness follow-up: `face_move` now classifies against the sampled route
+  movement direction instead of stale stored unit facing, so `fast_reposition`
+  mostly reads as `run_forward`. Completed routes are guarded from stale
+  `movementRoutes` reinitializing while stop-brace is counting down. Movement
+  proof logging now records route, pose, and frame URL transitions, and
+  `window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__()` returns pose coverage and
+  unique frame counts by pose after a proof run.
