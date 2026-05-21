@@ -7,6 +7,8 @@ export const MOVEMENT_TIMING_PROFILE = {
   cornerSamples: 5,
 } as const;
 
+export const MOVEMENT_STOP_BRACE_MS = 220;
+
 export const MOVEMENT_PRESENTATION_PROFILE = {
   ...MOVEMENT_TIMING_PROFILE,
   minMoveSeconds: MOVEMENT_TIMING_PROFILE.minMoveMs / 1000,

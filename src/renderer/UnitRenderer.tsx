@@ -31,6 +31,7 @@ import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { isUnitVisibleToTeam } from '../game/visibility';
 import { DEFAULT_MOVEMENT_TIMING } from './movementEasing';
+import { MOVEMENT_STOP_BRACE_MS } from '../game/movementTimingProfile';
 import {
   ROUTE_LOCOMOTION,
   advanceMovementClip,
@@ -1464,6 +1465,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     stopPoseUntil: 0,
     lastCompletedRouteId: '',
   });
+  const lastProofPoseRef = useRef<LocomotionPose | null>(null);
   const animationStateRef = useRef<UnitSpriteAnimationState>({
     pose: 'idle',
     strideDistance: 0,
@@ -1643,7 +1645,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
 
         if (sample.phase === 'done') {
           const completedRouteId = movement.routeId || movement.clip.id;
-          movement.stopPoseUntil = state.clock.elapsedTime + 0.22;
+          movement.stopPoseUntil = state.clock.elapsedTime + MOVEMENT_STOP_BRACE_MS / 1000;
           movement.lastCompletedRouteId = completedRouteId;
           movement.pose = 'stop_brace';
           movement.clip = null;
@@ -1704,8 +1706,32 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             stopPoseRemainingMs: number;
             lastCompletedRouteId: string;
           }>;
+          __CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__?: number;
+          __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: Array<{
+            time: number;
+            routeId: string;
+            pose: LocomotionPose;
+            frameUrl: string;
+            progress: number;
+          }>;
         };
         const stopPoseRemainingMs = Math.max(0, (movement.stopPoseUntil - state.clock.elapsedTime) * 1000);
+        if (
+          debugWindow.__CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__ === unit.id &&
+          lastProofPoseRef.current !== movement.pose
+        ) {
+          lastProofPoseRef.current = movement.pose;
+          debugWindow.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ = [
+            ...(debugWindow.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? []),
+            {
+              time: Math.round(state.clock.elapsedTime * 1000),
+              routeId: movement.routeId || movement.lastCompletedRouteId || 'idle',
+              pose: movement.pose,
+              frameUrl: animationStateRef.current.currentFrameUrl,
+              progress: movement.routeProgress,
+            },
+          ];
+        }
         debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ = {
           ...(debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ ?? {}),
           [unit.id]: {

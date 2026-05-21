@@ -213,6 +213,10 @@ export interface GuidanceEvent {
 
 export type MovementPresentationSource = 'direct_move' | 'planned_execute' | 'ct_ai';
 export type MovementPresentationAimMode = 'face_move' | 'lock_start_facing' | 'target_tile';
+export type MovementPresentationIntent =
+  | 'fast_reposition'
+  | 'cautious_hold_aim'
+  | 'move_to_hold_target';
 
 export interface MovementPresentationRoute {
   id: string;
@@ -223,6 +227,7 @@ export interface MovementPresentationRoute {
   stepMs: number;
   durationMs: number;
   path: TileCoord[];
+  visualIntent: MovementPresentationIntent;
   visualAimMode: MovementPresentationAimMode;
   visualAimDirection?: TileCoord;
   visualAimTarget?: TileCoord;

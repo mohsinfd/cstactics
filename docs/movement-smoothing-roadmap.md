@@ -226,16 +226,23 @@ The helper is intentionally pure and small so it can be imported into
   content; the current generated SVGs remain placeholder plumbing. The first
   proof target is documented at `art/sprite-proof/ct-rifle/README.md` so CT can
   switch to exported PNG frames independently of T once those assets exist.
-- Route-level presentation aim now exists on `MovementPresentationRoute`.
-  Direct moves and planned execute moves lock visual aim to the unit's starting
-  facing so the locomotion classifier can actually surface diagonal, strafe, and
-  backpedal poses while tactical tile truth continues to face each movement
-  step. CT AI can use a target-tile presentation aim while moving to holds.
+- Route-level presentation aim and movement intent now exist on
+  `MovementPresentationRoute`. Normal direct moves use `fast_reposition` so they
+  mostly face movement direction; planned execute uses `cautious_hold_aim` for
+  aim-locked movement; CT AI can use `move_to_hold_target` while moving to holds.
+  This keeps strafe/backpedal presentation intentional instead of making every
+  left-click move look like an angle-hold creep.
 - Dev movement QA now has a deterministic console command:
   `window.__CS_TACTICS_START_MOVEMENT_PROOF__()`. It creates a one-CT proof,
   runs a 6+ tile forward leg and a lateral aim-locked leg, and works with
   `window.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__ = true` to inspect pose, frame URL,
   progress, speed, endpoint error, stop-brace remaining time, and last completed
-  route id.
+  route id. The same proof is also exposed as a dev-only `Move Proof` HUD button.
 - `npm run sprites:validate` checks that all generated CT/T frames exist and
   blocks any team set to exported unless its required PNG frames are present.
+  For exported PNGs it also checks dimensions, alpha presence, transparent
+  background pixels, and coarse per-clip bounding-box center jitter.
+- Store handoff after non-contact direct moves, planned execute movement, and CT
+  AI movement now waits for the shared `MOVEMENT_STOP_BRACE_MS` presentation beat
+  before AP/selection/AI progression continues. Contact breaks still own their
+  own shot/decision beat and do not wait behind this settle.

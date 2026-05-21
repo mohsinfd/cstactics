@@ -36,6 +36,7 @@ import type {
   GuidanceEvent,
   GuidanceTone,
   MovementPresentationAimMode,
+  MovementPresentationIntent,
   MovementPresentationRoute,
   MovementPresentationSource,
   SmokeCloud,
@@ -47,6 +48,7 @@ import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
 import { applyMetaDefault, applyRandomSpawnPositions } from './metaDefaults';
 import { getRouteVisualTiming } from './movementPresentationTiming';
+import { MOVEMENT_STOP_BRACE_MS } from './movementTimingProfile';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
@@ -120,6 +122,12 @@ function createGuidanceEvent(title: string, detail: string, tone: GuidanceTone):
   };
 }
 
+function getVisualAimModeForIntent(intent: MovementPresentationIntent): MovementPresentationAimMode {
+  if (intent === 'cautious_hold_aim') return 'lock_start_facing';
+  if (intent === 'move_to_hold_target') return 'target_tile';
+  return 'face_move';
+}
+
 function createMovementPresentationRoute(
   unitId: number,
   path: TileCoord[],
@@ -132,6 +140,7 @@ function createMovementPresentationRoute(
     visualAimMode?: MovementPresentationAimMode;
     visualAimDirection?: TileCoord;
     visualAimTarget?: TileCoord;
+    visualIntent?: MovementPresentationIntent;
   } = {}
 ): MovementPresentationRoute {
   movementRouteSequence += 1;
@@ -143,6 +152,7 @@ function createMovementPresentationRoute(
   const durationMs = options.syncToVisualTiming && routeTiming
     ? routeTiming.durationMs
     : Math.max(normalizedStepMs, path.length * normalizedStepMs);
+  const visualIntent = options.visualIntent ?? 'fast_reposition';
   return {
     id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
     unitId,
@@ -152,7 +162,8 @@ function createMovementPresentationRoute(
     stepMs: normalizedStepMs,
     durationMs,
     path: path.map((tile) => ({ ...tile })),
-    visualAimMode: options.visualAimMode ?? 'face_move',
+    visualIntent,
+    visualAimMode: options.visualAimMode ?? getVisualAimModeForIntent(visualIntent),
     visualAimDirection: options.visualAimDirection ? { ...options.visualAimDirection } : undefined,
     visualAimTarget: options.visualAimTarget ? { ...options.visualAimTarget } : undefined,
   };
@@ -1060,7 +1071,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move', 0, {
         timingPath: visualRoutePath,
         syncToVisualTiming: true,
-        visualAimMode: 'lock_start_facing',
+        visualIntent: 'fast_reposition',
         visualAimDirection: unit.facing,
       });
 
@@ -1208,6 +1219,10 @@ export const useGameStore = create<GameStore>((set, get) => {
           },
         });
         return;
+      }
+
+      if (!contactEvent) {
+        await wait(MOVEMENT_STOP_BRACE_MS);
       }
 
       const spentAp = Math.max(1, Math.min(apCost, Math.ceil(tilesMoved / rangePerAP)));
@@ -2367,7 +2382,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           {
             timingPath,
             syncToVisualTiming: true,
-            visualAimMode: 'lock_start_facing',
+            visualIntent: 'cautious_hold_aim',
             visualAimDirection: routeUnit?.facing,
           }
         );
@@ -2559,6 +2574,10 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
 
         if (contactEvent) break;
+      }
+
+      if (!contactEvent && runtimes.some((runtime) => runtime.tilesMoved > 0)) {
+        await wait(MOVEMENT_STOP_BRACE_MS);
       }
 
       for (const runtime of runtimes) {
@@ -2934,7 +2953,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
             timingPath: visualRoutePath,
             syncToVisualTiming: true,
-            visualAimMode: round.phase === 'setup' ? 'face_move' : 'target_tile',
+            visualIntent: round.phase === 'setup' ? 'fast_reposition' : 'move_to_hold_target',
             visualAimTarget: aiHoldTarget,
           });
           set({ movementRoutes: [movementRoute] });
@@ -2976,6 +2995,10 @@ export const useGameStore = create<GameStore>((set, get) => {
                 intensity: 0.55,
               }),
             });
+          }
+
+          if (pathToTravel.length > 0) {
+            await wait(MOVEMENT_STOP_BRACE_MS);
           }
 
           unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
@@ -3353,6 +3376,10 @@ export const useGameStore = create<GameStore>((set, get) => {
       const proofUnit = baseUnits.find((unit) => unit.id === MOVEMENT_PROOF_UNIT_ID) ??
         baseUnits.find((unit) => unit.team === 'CT');
       if (!proofUnit || proof.runPath.length === 0 || proof.strafePath.length === 0) return;
+      if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        window.__CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__ = proofUnit.id;
+        window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ = [];
+      }
 
       let nextUnits: Unit[] = [{
         ...proofUnit,
@@ -3419,7 +3446,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         aiStatus: { team: 'CT', message: 'Movement proof running' },
       });
 
-      const runProofLeg = async (path: TileCoord[], label: string): Promise<void> => {
+      const runProofLeg = async (
+        path: TileCoord[],
+        label: string,
+        visualIntent: MovementPresentationIntent
+      ): Promise<void> => {
         if (path.length === 0) return;
         const currentUnit = nextUnits.find((unit) => unit.id === proofUnit.id);
         if (!currentUnit) return;
@@ -3432,7 +3463,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         const movementRoute = createMovementPresentationRoute(proofUnit.id, path, 'direct_move', 0, {
           timingPath: visualRoutePath,
           syncToVisualTiming: true,
-          visualAimMode: 'lock_start_facing',
+          visualIntent,
           visualAimDirection: proof.facing,
         });
         set({
@@ -3476,13 +3507,13 @@ export const useGameStore = create<GameStore>((set, get) => {
           });
         }
 
-        await wait(260);
+        await wait(MOVEMENT_STOP_BRACE_MS);
         set({ movementRoutes: [] });
       };
 
-      await runProofLeg(proof.runPath, 'run forward');
+      await runProofLeg(proof.runPath, 'run forward', 'fast_reposition');
       await wait(180);
-      await runProofLeg(proof.strafePath, 'strafe with aim locked');
+      await runProofLeg(proof.strafePath, 'strafe with aim locked', 'cautious_hold_aim');
 
       nextUnits = nextUnits.map((unit) => (
         unit.id === proofUnit.id
@@ -3504,6 +3535,19 @@ export const useGameStore = create<GameStore>((set, get) => {
           intensity: 0.9,
         }),
       });
+
+      if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        const events = window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? [];
+        const seen = new Set(events.map((event) => event.pose));
+        const summary = [
+          'run_forward',
+          'strafe_left',
+          'strafe_right',
+          'stop_brace',
+          'idle',
+        ].map((pose) => `${pose}: ${seen.has(pose) ? 'yes' : 'no'}`).join(', ');
+        console.info(`[CS2 Tactics] Movement proof poses seen: ${summary}`);
+      }
     },
   };
 });
@@ -3512,6 +3556,14 @@ declare global {
   interface Window {
     __CS_TACTICS_STORE__?: typeof useGameStore;
     __CS_TACTICS_START_MOVEMENT_PROOF__?: () => Promise<void>;
+    __CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__?: number;
+    __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: Array<{
+      time: number;
+      routeId: string;
+      pose: string;
+      frameUrl: string;
+      progress: number;
+    }>;
   }
 }
 

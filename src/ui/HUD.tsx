@@ -2596,6 +2596,7 @@ function CommandBar() {
   const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
   const startContactDrill = useGameStore((s) => s.startContactDrill);
   const startDuelLab = useGameStore((s) => s.startDuelLab);
+  const startMovementProof = useGameStore((s) => s.startMovementProof);
   const applyMetaDefaultSetup = useGameStore((s) => s.applyMetaDefaultSetup);
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
@@ -2762,6 +2763,32 @@ function CommandBar() {
       >
         Duel Lab
       </button>
+
+      {import.meta.env.DEV && (
+        <button
+          data-testid="hud-command-movement-proof"
+          onClick={() => !isExecuting && void startMovementProof()}
+          disabled={isExecuting}
+          title="Run a deterministic CT movement proof: forward, aim-locked strafe, stop-brace."
+          aria-label="Start Movement Proof"
+          style={{
+            border: '1px solid #314a52',
+            background: 'rgba(93, 242, 255, 0.12)',
+            color: isExecuting ? '#50696d' : '#a8f7ff',
+            borderRadius: 5,
+            padding: '9px 10px',
+            cursor: isExecuting ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+            minWidth: 112,
+            ...commandButtonStyle,
+          }}
+        >
+          Move Proof
+        </button>
+      )}
 
       {plannedActions.length > 0 ? (
         <button

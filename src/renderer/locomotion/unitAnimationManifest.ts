@@ -12,6 +12,8 @@ export type UnitAnimationClip = {
 
 type UnitAnimationSource = 'generated' | 'exported';
 
+// Switch CT to 'exported' only after public/board2d5/units/exported/ct
+// contains the authored CT proof set and npm run sprites:validate passes.
 const UNIT_ANIMATION_SOURCE_BY_TEAM: Record<Team, UnitAnimationSource> = {
   CT: 'generated',
   T: 'generated',
