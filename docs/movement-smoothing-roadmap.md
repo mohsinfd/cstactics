@@ -202,3 +202,17 @@ The helper is intentionally pure and small so it can be imported into
   for premium foot planting, stop transitions, strafe silhouettes, and
   directional weapon/body reads. The manifest is a bridge so those frames can
   be swapped in without changing AP, pathfinding, LOS, or route sampling.
+- May 21 asset-pipeline follow-up: the generated SVG script is now explicitly
+  marked placeholder-only, `docs/unit-sprite-asset-contract.md` defines the
+  production frame contract, and `scripts/blender/export-unit-sprite-sheet.py`
+  establishes a manual Blender export path for `public/board2d5/units/exported`.
+  `unitAnimationManifest.ts` can switch between generated and exported assets
+  without touching `UnitRenderer`.
+- Direct movement now waits for per-tile visual arrival times from
+  `src/game/movementPresentationTiming.ts` before advancing store tile truth.
+  That keeps direct-move contact interrupts aligned to visible arrival instead
+  of firing on a fixed `95ms` loop while the renderer is still accelerating or
+  decelerating through the route.
+- In dev, setting `window.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__ = true` shows the
+  selected unit's route id, pose, route progress, speed, endpoint error, and
+  current frame URL on the board.

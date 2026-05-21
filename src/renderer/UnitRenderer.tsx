@@ -165,6 +165,7 @@ type UnitSpriteAnimationState = {
   strideDistance: number;
   movementIntensity: number;
   hitPulse: number;
+  currentFrameUrl: string;
 };
 
 function tileKey(tile: TileCoord): string {
@@ -1156,6 +1157,7 @@ function AnimatedUnitSpriteBody({
       isAlive: unit.alive,
       hitPulse: animation.hitPulse,
     });
+    animation.currentFrameUrl = textureUrl;
     const texture = textureByUrl.get(textureUrl);
 
     if (spriteRef.current) {
@@ -1306,6 +1308,70 @@ function UnitSpriteLoadFallback({
   );
 }
 
+function MovementDebugOverlay({ unitId, angle }: { unitId: number; angle: number }) {
+  const [label, setLabel] = useState<string | null>(null);
+  const lastUpdateRef = useRef(-1);
+
+  useFrame((state) => {
+    const tick = Math.floor(state.clock.elapsedTime * 4);
+    if (tick === lastUpdateRef.current) return;
+    lastUpdateRef.current = tick;
+
+    const debugWindow = window as unknown as {
+      __CS_TACTICS_SHOW_MOVEMENT_DEBUG__?: boolean;
+      __CS_TACTICS_MOVEMENT_DEBUG__?: Record<number, {
+        activeRouteId: string;
+        progress: number;
+        speedTilesPerSecond: number;
+        pose: LocomotionPose;
+        endpointErrorTiles: number;
+        currentFrameUrl: string;
+      }>;
+    };
+    if (!debugWindow.__CS_TACTICS_SHOW_MOVEMENT_DEBUG__) {
+      if (label !== null) setLabel(null);
+      return;
+    }
+
+    const debug = debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__?.[unitId];
+    if (!debug) {
+      setLabel('movement debug: no route');
+      return;
+    }
+
+    const frameName = debug.currentFrameUrl.split('/').at(-1) ?? 'none';
+    setLabel([
+      `route ${debug.activeRouteId || 'idle'}`,
+      `${debug.pose} ${frameName}`,
+      `p ${debug.progress.toFixed(2)} spd ${debug.speedTilesPerSecond.toFixed(2)}`,
+      `err ${debug.endpointErrorTiles.toFixed(3)}`,
+    ].join('\n'));
+  });
+
+  if (!label) return null;
+
+  return (
+    <group position={[0, 2.95, 0]} rotation={[0, -angle, 0]} raycast={() => null}>
+      <mesh position={[0, 0, -0.012]}>
+        <planeGeometry args={[1.95, 0.72]} />
+        <meshBasicMaterial color="#05070b" transparent opacity={0.78} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0, 0]}
+        fontSize={0.105}
+        color="#dce9ff"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.008}
+        outlineColor="#000000"
+        font={undefined}
+      >
+        {label}
+      </SafeText>
+    </group>
+  );
+}
+
 function SoldierFigure({ unit }: { unit: Unit }) {
   const [isHovered, setIsHovered] = useState(false);
   const selectedUnitId = useGameStore((s) => s.selectedUnitId);
@@ -1373,6 +1439,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     strideDistance: 0,
     movementIntensity: 0,
     hitPulse: 0,
+    currentFrameUrl: '',
   });
 
   const isSelected = selectedUnitId === unit.id;
@@ -1590,6 +1657,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             speedTilesPerSecond: number;
             pose: LocomotionPose;
             endpointErrorTiles: number;
+            currentFrameUrl: string;
           }>;
         };
         debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ = {
@@ -1600,6 +1668,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             speedTilesPerSecond: movement.speedTilesPerSecond,
             pose: movement.pose,
             endpointErrorTiles: movement.endpointErrorTiles,
+            currentFrameUrl: animationStateRef.current.currentFrameUrl,
           },
         };
       }
@@ -2173,6 +2242,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               />
             </mesh>
           </group>
+        )}
+
+        {import.meta.env.DEV && isSelected && (
+          <MovementDebugOverlay unitId={unit.id} angle={angle} />
         )}
       </group>
     </group>

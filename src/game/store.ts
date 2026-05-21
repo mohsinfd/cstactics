@@ -45,6 +45,7 @@ import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
 import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
 import { applyMetaDefault, applyRandomSpawnPositions } from './metaDefaults';
+import { getRouteVisualTiming } from './movementPresentationTiming';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
@@ -122,11 +123,21 @@ function createMovementPresentationRoute(
   path: TileCoord[],
   source: MovementPresentationSource,
   delayMs = 0,
-  stepMs = EXECUTION_STEP_MS
+  options: {
+    stepMs?: number;
+    timingPath?: TileCoord[];
+    syncToVisualTiming?: boolean;
+  } = {}
 ): MovementPresentationRoute {
   movementRouteSequence += 1;
   const createdAt = Date.now();
-  const normalizedStepMs = Math.max(1, stepMs);
+  const routeTiming = options.timingPath ? getRouteVisualTiming(options.timingPath) : null;
+  const normalizedStepMs = path.length > 0
+    ? Math.max(1, options.stepMs ?? EXECUTION_STEP_MS)
+    : (options.stepMs ?? EXECUTION_STEP_MS);
+  const durationMs = options.syncToVisualTiming && routeTiming
+    ? routeTiming.durationMs
+    : Math.max(normalizedStepMs, path.length * normalizedStepMs);
   return {
     id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
     unitId,
@@ -134,7 +145,7 @@ function createMovementPresentationRoute(
     createdAt,
     delayMs: Math.max(0, delayMs),
     stepMs: normalizedStepMs,
-    durationMs: Math.max(normalizedStepMs, path.length * normalizedStepMs),
+    durationMs,
     path: path.map((tile) => ({ ...tile })),
   };
 }
@@ -949,7 +960,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         ? path.findIndex((tile) => tile.x === contactTile.x && tile.y === contactTile.y)
         : -1;
       const pathToTravel = contactIndex >= 0 ? path.slice(0, contactIndex + 1) : path;
-      const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move');
+      const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+      const routeTiming = getRouteVisualTiming(visualRoutePath);
+      const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move', 0, {
+        timingPath: visualRoutePath,
+        syncToVisualTiming: true,
+      });
 
       let nextUnits = [...units];
       let tilesMoved = 0;
@@ -996,7 +1012,15 @@ export const useGameStore = create<GameStore>((set, get) => {
         }),
       });
 
+      let previousArrivalMs = 0;
       for (const step of pathToTravel) {
+        const stepIndex = tilesMoved;
+        const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+          Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, pathToTravel.length)));
+        const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+        if (waitMs > 0) await wait(waitMs);
+        previousArrivalMs = arrivalMs;
+
         const currentUnitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
         if (currentUnitIdx === -1) break;
 
@@ -1018,7 +1042,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         appendExecuteEvent(createExecuteTimelineEvent({
           id: `${executeTimeline.id}:move:${tilesMoved}:${step.x},${step.y}`,
           kind: 'movement_beat',
-          timeMs: Math.max(0, (tilesMoved - 1) * EXECUTION_STEP_MS),
+          timeMs: arrivalMs,
           phaseLabel: 'MOVE',
           title: `${unit.name} crossed`,
           detail: mapData.grid[step.y]?.[step.x]?.label ?? `tile ${step.x},${step.y}`,
@@ -1036,8 +1060,6 @@ export const useGameStore = create<GameStore>((set, get) => {
             intensity: 0.7,
           }),
         });
-        await wait(EXECUTION_STEP_MS);
-
         if (
           crossedAngle &&
           contactTile &&
@@ -1052,7 +1074,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
               contactEvent = resolveReactionFire(mapData, attacker, target, contactTile, crossedAngle, state.smokes);
               consumedHeldAngleId = crossedAngle.id;
-              contactTimelineTimeMs = tilesMoved * EXECUTION_STEP_MS;
+              contactTimelineTimeMs = arrivalMs;
               if (contactEvent.hit) {
                 const newHp = Math.max(0, target.hp - contactEvent.damage);
                 nextUnits[targetIdx] = {
@@ -2746,7 +2768,9 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
-          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, AI_EXECUTION_STEP_MS);
+          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
+            stepMs: AI_EXECUTION_STEP_MS,
+          });
           set({ movementRoutes: [movementRoute] });
 
           for (const step of pathToTravel) {

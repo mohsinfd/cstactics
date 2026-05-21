@@ -10,8 +10,16 @@ export type UnitAnimationClip = {
   frames: string[];
 };
 
-const ct = (frame: string) => `/board2d5/units/ct/${frame}.svg`;
-const t = (frame: string) => `/board2d5/units/t/${frame}.svg`;
+type UnitAnimationSource = 'generated' | 'exported';
+
+const UNIT_ANIMATION_SOURCE = 'generated' as UnitAnimationSource;
+const UNIT_ANIMATION_EXTENSION = UNIT_ANIMATION_SOURCE === 'exported' ? 'png' : 'svg';
+const UNIT_ANIMATION_BASE = UNIT_ANIMATION_SOURCE === 'exported'
+  ? '/board2d5/units/exported'
+  : '/board2d5/units';
+
+const ct = (frame: string) => `${UNIT_ANIMATION_BASE}/ct/${frame}.${UNIT_ANIMATION_EXTENSION}`;
+const t = (frame: string) => `${UNIT_ANIMATION_BASE}/t/${frame}.${UNIT_ANIMATION_EXTENSION}`;
 
 const frames = (prefix: string, count: number, urlFor: (frame: string) => string): string[] => (
   Array.from({ length: count }, (_, index) => urlFor(`${prefix}_${index}`))

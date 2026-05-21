@@ -506,3 +506,10 @@ Those route hints now carry a duration derived from the same tactical tick
 cadence that advances store tile truth, and the visible sprite samples real SVG
 pose-frame URLs for run/strafe/backpedal/stop/hit/dead instead of animating one
 static card with whole-sprite transforms.
+The generated SVGs are now explicitly placeholder animation plumbing:
+`docs/unit-sprite-asset-contract.md` defines the production sprite contract,
+`scripts/blender/export-unit-sprite-sheet.py` provides the manual Blender export
+stub, and the manifest has a generated/exported source switch for future real
+art. Direct move contact timing now uses route visual arrival times before
+advancing store tile truth, so direct contact breaks line up with visible
+arrival at the contact tile.

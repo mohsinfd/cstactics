@@ -1,6 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Placeholder programmer-art frame generator.
+// This exists to prove runtime animation plumbing.
+// Final production frames should come from Blender-exported or artist-authored
+// sprite sheets. Do not spend more time making this generator visually clever.
+
 const OUT_ROOT = join(process.cwd(), 'public', 'board2d5', 'units');
 
 const TEAMS = {
