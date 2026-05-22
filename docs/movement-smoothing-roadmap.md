@@ -260,3 +260,12 @@ The helper is intentionally pure and small so it can be imported into
   movement slower and more readable, and `move_to_hold_target` sits between them
   for CT AI holds. Store arrival timing, renderer clip sampling, stop-brace
   handoff, and proof summaries all consume the same intent profile.
+- Render-jitter follow-up: sprite frame swaps no longer mark the material as
+  needing update during `useFrame`; all unit animation textures are configured
+  and GPU-prewarmed once after load. Dev QA can set
+  `window.__CS_TACTICS_LOCK_UNIT_ANIMATION_FRAME__ = true` to separate route
+  motion from flipbook-frame artifacts, and
+  `window.__CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__()` reports delta spikes,
+  movement distance, and frame-swap count after the movement proof. Per-tile
+  movement feedback spam was removed from direct, planned, CT AI, and proof
+  movement loops so HUD feedback work does not run on every route step.

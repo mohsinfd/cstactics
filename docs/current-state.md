@@ -541,3 +541,9 @@ for readable strafe/backpedal silhouettes, and `move_to_hold_target` gives CT AI
 hold repositioning a middle speed. The game-side arrival waits, renderer
 locomotion clip sampler, stop-brace handoff, and movement proof summary all read
 from those same profiles.
+Sprite locomotion frame swaps are now cheaper: `AnimatedUnitSpriteBody` no
+longer forces material updates while swapping textures, textures are prewarmed
+after load, and movement proof QA has a frame-lock flag plus perf summary helper
+to distinguish route jitter from placeholder flipbook art. Per-tile move-step
+feedback events were removed from visible movement loops so the HUD is not
+reprocessing feedback on every brisk route step.

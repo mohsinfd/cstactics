@@ -21,10 +21,10 @@
 //
 // Missing: final authored rig/model assets.
 // ============================================================
-import { Suspense, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
 import type {
   MovementPresentationIntent,
@@ -48,6 +48,7 @@ import {
   type MovementClip,
 } from './locomotion/LocomotionController';
 import {
+  UNIT_ANIMATION_MANIFEST,
   getAllUnitAnimationUrls,
   resolveUnitAnimationUrl,
   type UnitAnimationPose,
@@ -186,6 +187,29 @@ type MovementProofTraceState = {
   frameUrl: string;
 };
 
+type MovementPerfSample = {
+  t: number;
+  deltaMs: number;
+  positionX: number;
+  positionZ: number;
+  movedDistance: number;
+  frameUrl: string;
+  pose: LocomotionPose;
+  routeId: string;
+};
+
+type MovementPerfSummary = {
+  sampleCount: number;
+  avgDeltaMs: number;
+  maxDeltaMs: number;
+  framesOver25Ms: number;
+  framesOver33Ms: number;
+  avgMovedDistance: number;
+  maxMovedDistance: number;
+  frameSwapCount: number;
+  routeId: string;
+};
+
 function tileKey(tile: TileCoord): string {
   return `${tile.x}:${tile.y}`;
 }
@@ -209,6 +233,45 @@ function getMovementRouteTargets(
     position: tileToUnitWorld(mapWidth, tileSize, tile),
     routeId: route.id,
   }));
+}
+
+function summarizeMovementPerf(samples: MovementPerfSample[] = []): MovementPerfSummary {
+  if (samples.length === 0) {
+    return {
+      sampleCount: 0,
+      avgDeltaMs: 0,
+      maxDeltaMs: 0,
+      framesOver25Ms: 0,
+      framesOver33Ms: 0,
+      avgMovedDistance: 0,
+      maxMovedDistance: 0,
+      frameSwapCount: 0,
+      routeId: 'none',
+    };
+  }
+
+  let frameSwapCount = 0;
+  for (let index = 1; index < samples.length; index += 1) {
+    if (samples[index].frameUrl !== samples[index - 1].frameUrl) frameSwapCount += 1;
+  }
+
+  const totalDeltaMs = samples.reduce((sum, sample) => sum + sample.deltaMs, 0);
+  const totalMovedDistance = samples.reduce((sum, sample) => sum + sample.movedDistance, 0);
+  const latestRoute = [...samples].reverse().find((sample) => sample.routeId && sample.routeId !== 'idle')?.routeId ??
+    samples.at(-1)?.routeId ??
+    'none';
+
+  return {
+    sampleCount: samples.length,
+    avgDeltaMs: totalDeltaMs / samples.length,
+    maxDeltaMs: Math.max(...samples.map((sample) => sample.deltaMs)),
+    framesOver25Ms: samples.filter((sample) => sample.deltaMs > 25).length,
+    framesOver33Ms: samples.filter((sample) => sample.deltaMs > 33).length,
+    avgMovedDistance: totalMovedDistance / samples.length,
+    maxMovedDistance: Math.max(...samples.map((sample) => sample.movedDistance)),
+    frameSwapCount,
+    routeId: latestRoute,
+  };
 }
 
 function getRouteClipPointsFromCurrent(
@@ -1186,6 +1249,7 @@ function AnimatedUnitSpriteBody({
 }) {
   const animationUrls = useMemo(() => getAllUnitAnimationUrls(unit.team), [unit.team]);
   const textures = useLoader(THREE.TextureLoader, animationUrls) as THREE.Texture[];
+  const { gl } = useThree();
   const textureByUrl = useMemo(
     () => new Map(animationUrls.map((url, index) => [url, textures[index]] as const)),
     [animationUrls, textures]
@@ -1197,6 +1261,21 @@ function AnimatedUnitSpriteBody({
   const currentPoseRef = useRef<UnitAnimationPose>('idle');
   const poseStartedAtRef = useRef(0);
 
+  useEffect(() => {
+    const rendererWithInitTexture = gl as THREE.WebGLRenderer & {
+      initTexture?: (texture: THREE.Texture) => void;
+    };
+    textures.forEach((texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.anisotropy = 1;
+      texture.needsUpdate = true;
+      rendererWithInitTexture.initTexture?.(texture);
+    });
+  }, [gl, textures]);
+
   useFrame((state) => {
     const animation = animationStateRef.current;
     if (currentPoseRef.current !== animation.pose) {
@@ -1204,14 +1283,26 @@ function AnimatedUnitSpriteBody({
       poseStartedAtRef.current = state.clock.elapsedTime;
     }
 
-    const textureUrl = resolveUnitAnimationUrl({
-      team: unit.team,
-      pose: animation.pose,
-      strideDistance: animation.strideDistance,
-      elapsedSeconds: state.clock.elapsedTime - poseStartedAtRef.current,
-      isAlive: unit.alive,
-      hitPulse: animation.hitPulse,
-    });
+    const debugWindow = window as unknown as {
+      __CS_TACTICS_LOCK_UNIT_ANIMATION_FRAME__?: boolean;
+    };
+    const resolvedPose: UnitAnimationPose = !unit.alive
+      ? 'dead'
+      : animation.hitPulse > 0.08
+        ? 'hit'
+        : animation.pose;
+    const clip = UNIT_ANIMATION_MANIFEST[unit.team][resolvedPose] ??
+      UNIT_ANIMATION_MANIFEST[unit.team].idle;
+    const textureUrl = debugWindow.__CS_TACTICS_LOCK_UNIT_ANIMATION_FRAME__
+      ? clip.frames[0]
+      : resolveUnitAnimationUrl({
+        team: unit.team,
+        pose: animation.pose,
+        strideDistance: animation.strideDistance,
+        elapsedSeconds: state.clock.elapsedTime - poseStartedAtRef.current,
+        isAlive: unit.alive,
+        hitPulse: animation.hitPulse,
+      });
     animation.currentFrameUrl = textureUrl;
     const texture = textureByUrl.get(textureUrl);
 
@@ -1222,7 +1313,6 @@ function AnimatedUnitSpriteBody({
     if (spriteMaterialRef.current) {
       if (texture && spriteMaterialRef.current.map !== texture) {
         spriteMaterialRef.current.map = texture;
-        spriteMaterialRef.current.needsUpdate = true;
       }
       spriteMaterialRef.current.color.set('#ffffff');
       spriteMaterialRef.current.opacity = isSpent ? 0.72 : 1;
@@ -1792,6 +1882,10 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             progress: number;
             speedTilesPerSecond: number;
           }>;
+          __CS_TACTICS_MOVEMENT_PERF__?: {
+            samples: MovementPerfSample[];
+          };
+          __CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__?: () => MovementPerfSummary;
         };
         const stopPoseRemainingMs = Math.max(0, (movement.stopPoseUntil - state.clock.elapsedTime) * 1000);
         const proofRouteId = movement.routeId || movement.lastCompletedRouteId || 'idle';
@@ -1824,6 +1918,30 @@ function SoldierFigure({ unit }: { unit: Unit }) {
               speedTilesPerSecond: movement.speedTilesPerSecond,
             },
           ];
+        }
+        if (isSelected && (movement.clip || movedDistance > 0.0001 || movement.speedTilesPerSecond > 0.05)) {
+          const samples = debugWindow.__CS_TACTICS_MOVEMENT_PERF__?.samples ?? [];
+          const routeId = movement.routeId || movement.lastCompletedRouteId || 'idle';
+          samples.push({
+            t: Math.round(state.clock.elapsedTime * 1000),
+            deltaMs: delta * 1000,
+            positionX: groupRef.current.position.x,
+            positionZ: groupRef.current.position.z,
+            movedDistance,
+            frameUrl: animationStateRef.current.currentFrameUrl,
+            pose: movement.pose,
+            routeId,
+          });
+          debugWindow.__CS_TACTICS_MOVEMENT_PERF__ = {
+            samples: samples.slice(-240),
+          };
+          debugWindow.__CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__ = () => (
+            summarizeMovementPerf(debugWindow.__CS_TACTICS_MOVEMENT_PERF__?.samples ?? [])
+          );
+        } else if (!debugWindow.__CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__) {
+          debugWindow.__CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__ = () => (
+            summarizeMovementPerf(debugWindow.__CS_TACTICS_MOVEMENT_PERF__?.samples ?? [])
+          );
         }
         debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ = {
           ...(debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ ?? {}),

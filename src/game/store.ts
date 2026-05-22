@@ -1245,11 +1245,6 @@ export const useGameStore = create<GameStore>((set, get) => {
           units: nextUnits,
           hoveredTile: null,
           pathPreview: [],
-          feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
-            team: unit.team,
-            unitId: unit.id,
-            intensity: 0.7,
-          }),
         });
         if (
           crossedAngle &&
@@ -2601,10 +2596,6 @@ export const useGameStore = create<GameStore>((set, get) => {
             units: nextUnits,
             hoveredTile: null,
             pathPreview: [],
-            feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
-              team: round.activeTeam,
-              intensity: 0.75,
-            }),
           });
         } else if (!startedThisStep && !Number.isFinite(nextEventAtMs)) {
           break;
@@ -3083,11 +3074,6 @@ export const useGameStore = create<GameStore>((set, get) => {
               units: nextUnits,
               selectedUnitId: unit.id,
               pathPreview: [],
-              feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
-                team: 'CT',
-                unitId: unit.id,
-                intensity: 0.55,
-              }),
             });
           }
 
@@ -3473,6 +3459,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (typeof window !== 'undefined' && import.meta.env.DEV) {
         window.__CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__ = proofUnit.id;
         window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ = [];
+        window.__CS_TACTICS_MOVEMENT_PERF__ = { samples: [] };
       }
 
       let nextUnits: Unit[] = [{
@@ -3593,11 +3580,6 @@ export const useGameStore = create<GameStore>((set, get) => {
           set({
             units: nextUnits,
             selectedUnitId: proofUnit.id,
-            feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
-              team: 'CT',
-              unitId: proofUnit.id,
-              intensity: 0.65,
-            }),
           });
         }
 
@@ -3659,8 +3641,10 @@ declare global {
     __CS_TACTICS_STORE__?: typeof useGameStore;
     __CS_TACTICS_START_MOVEMENT_PROOF__?: () => Promise<void>;
     __CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__?: () => MovementProofSummary;
+    __CS_TACTICS_GET_MOVEMENT_PERF_SUMMARY__?: () => unknown;
     __CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__?: number;
     __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: MovementProofEvent[];
+    __CS_TACTICS_MOVEMENT_PERF__?: { samples: unknown[] };
   }
 }
 
