@@ -43,8 +43,8 @@ const ZONES: CalloutZone[] = [
   // Banana and B rotation.
   { name: 'Bottom Banana', xMin: 25, xMax: 38, yMin: 34, yMax: 47, tileType: 'floor' },
   { name: 'Lower Banana', xMin: 31, xMax: 44, yMin: 45, yMax: 58, tileType: 'floor' },
-  { name: 'Upper Banana', xMin: 35, xMax: 48, yMin: 57, yMax: 72, tileType: 'floor' },
   { name: 'Top Banana', xMin: 36, xMax: 49, yMin: 67, yMax: 77, tileType: 'floor' },
+  { name: 'Upper Banana', xMin: 35, xMax: 48, yMin: 57, yMax: 72, tileType: 'floor' },
   { name: 'Construction', xMin: 49, xMax: 63, yMin: 70, yMax: 84, tileType: 'floor' },
 
   // Mid and A rotation.
@@ -69,7 +69,7 @@ const COVER: CoverObject[] = [
   { x: 75, y: 28, width: 1, height: 2, coverType: 'half', label: 'Default Box' },
   { x: 70, y: 23, width: 3, height: 1, coverType: 'full', label: 'Pit Wall' },
   { x: 73, y: 21, width: 2, height: 1, coverType: 'half', label: 'Graveyard' },
-  { x: 68, y: 28, width: 1, height: 3, coverType: 'half', label: 'Balcony Rail' },
+  { x: 70, y: 28, width: 1, height: 3, coverType: 'half', label: 'Balcony Rail' },
   { x: 71, y: 36, width: 2, height: 1, coverType: 'half', label: 'Short Box' },
   { x: 76, y: 35, width: 1, height: 2, coverType: 'full', label: 'Ninja' },
 
@@ -83,14 +83,14 @@ const COVER: CoverObject[] = [
   { x: 49, y: 79, width: 1, height: 2, coverType: 'half', label: 'Dark Boxes' },
 
   // Banana and mid.
-  { x: 33, y: 52, width: 2, height: 1, coverType: 'full', label: 'Banana Car' },
-  { x: 35, y: 61, width: 2, height: 1, coverType: 'half', label: 'Logs' },
-  { x: 38, y: 68, width: 2, height: 1, coverType: 'half', label: 'Sandbags' },
+  { x: 38, y: 51, width: 4, height: 2, coverType: 'full', label: 'Banana Car' },
+  { x: 37, y: 61, width: 3, height: 1, coverType: 'half', label: 'Logs' },
+  { x: 43, y: 67, width: 3, height: 2, coverType: 'half', label: 'Sandbags' },
   { x: 42, y: 71, width: 2, height: 1, coverType: 'half', label: 'Half Wall' },
-  { x: 52, y: 43, width: 2, height: 1, coverType: 'half', label: 'Top Mid Cart' },
-  { x: 57, y: 51, width: 1, height: 2, coverType: 'half', label: 'Porch' },
-  { x: 63, y: 55, width: 1, height: 1, coverType: 'full', label: 'Arch Pillar' },
-  { x: 76, y: 47, width: 1, height: 2, coverType: 'full', label: 'Library Shelf' },
+  { x: 61, y: 45, width: 2, height: 1, coverType: 'half', label: 'Top Mid Cart' },
+  { x: 68, y: 51, width: 1, height: 2, coverType: 'half', label: 'Porch' },
+  { x: 66, y: 55, width: 1, height: 1, coverType: 'full', label: 'Arch Pillar' },
+  { x: 76, y: 54, width: 1, height: 2, coverType: 'full', label: 'Library Shelf' },
 ];
 
 function getZone(x: number, y: number): CalloutZone | null {
@@ -175,12 +175,12 @@ export function createInfernoMap(): MapData {
     coverObjects: COVER,
     spawns: {
       T: [
-        { x: 8, y: 31 }, { x: 10, y: 31 }, { x: 8, y: 34 },
-        { x: 10, y: 34 }, { x: 9, y: 37 },
+        { x: 7, y: 28 }, { x: 12, y: 29 }, { x: 6, y: 34 },
+        { x: 12, y: 34 }, { x: 9, y: 39 },
       ],
       CT: [
-        { x: 80, y: 62 }, { x: 82, y: 62 }, { x: 80, y: 66 },
-        { x: 82, y: 66 }, { x: 81, y: 70 },
+        { x: 78, y: 58 }, { x: 83, y: 59 }, { x: 78, y: 65 },
+        { x: 83, y: 68 }, { x: 80, y: 72 },
       ],
     },
     bombsites: {

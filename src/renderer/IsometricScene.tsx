@@ -7,11 +7,12 @@
 // - Shadow mapping
 // - Fog for depth
 // ============================================================
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera, MapControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
+import { ART } from './artDirection';
 import { MapRenderer } from './MapRenderer';
 import { UnitRenderer } from './UnitRenderer';
 import { useGameStore } from '../game/store';
@@ -19,6 +20,21 @@ import { useGameStore } from '../game/store';
 type MapControlsHandle = {
   target: THREE.Vector3;
   update: () => void;
+};
+
+type CameraRigRefs = {
+  cameraRef: RefObject<ThreeOrthographicCamera | null>;
+  controlsRef: RefObject<MapControlsHandle | null>;
+};
+
+type PresentationBeatState = {
+  id: string;
+  startedAt: number;
+  basePosition: THREE.Vector3;
+  baseTarget: THREE.Vector3;
+  baseZoom: number;
+  target: THREE.Vector3;
+  settled: boolean;
 };
 
 type CameraCommand =
@@ -30,23 +46,163 @@ type CameraCommand =
   | 'pan-up'
   | 'pan-down';
 
-const CAMERA_PRESET = {
-  offsetX: 78,
-  height: 125,
-  offsetZ: -98,
-  targetOffsetZ: 8,
-  zoom: 4.9,
-  minZoom: 3.8,
-  maxZoom: 26,
+const CAMERA_PRESET = ART.camera.defaultPreset;
+
+const WHEEL_INPUT = {
+  mouseStepThresholdPx: 80,
+  trackpadPanZoomFactor: 0.9,
+  minTrackpadPanScale: 0.075,
+  maxTrackpadPanScale: 0.22,
+  mouseWheelZoomFactor: 1.12,
+  pinchZoomFactor: 1.14,
 } as const;
 
+const CONTACT_CAMERA_BEAT = ART.camera.contactBeat;
+
+const DUEL_LAB_CAMERA = ART.camera.duelLab;
+
 function getCrispDevicePixelRatio(): number {
-  if (typeof window === 'undefined') return 1.5;
-  return THREE.MathUtils.clamp(window.devicePixelRatio || 1, 1.5, 2.5);
+  if (typeof window === 'undefined') return ART.camera.dpr.fallback;
+  return THREE.MathUtils.clamp(
+    window.devicePixelRatio || ART.camera.dpr.fallback,
+    ART.camera.dpr.min,
+    ART.camera.dpr.max
+  );
+}
+
+function isLikelyMouseWheel(deltaX: number, deltaY: number, deltaMode: number, shiftKey: boolean): boolean {
+  if (shiftKey) return false;
+  if (deltaMode !== 0) return true;
+
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX > 0.5 || absY < WHEEL_INPUT.mouseStepThresholdPx) return false;
+
+  const roundedY = Math.round(absY);
+  const isCleanStep = Math.abs(absY - roundedY) < 0.01;
+  return isCleanStep && (roundedY % 100 === 0 || roundedY % 120 === 0);
+}
+
+function tileToWorld(mapWidth: number, tileSize: number, x: number, y: number): THREE.Vector3 {
+  return new THREE.Vector3(
+    (mapWidth - 1 - x) * tileSize + tileSize / 2,
+    0,
+    y * tileSize + tileSize / 2
+  );
+}
+
+function CameraBootstrap({
+  cameraRef,
+  controlsRef,
+  cameraPosition,
+  targetVector,
+  zoom,
+}: CameraRigRefs & {
+  cameraPosition: [number, number, number];
+  targetVector: THREE.Vector3;
+  zoom: number;
+}) {
+  const appliedKeyRef = useRef('');
+
+  useFrame(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const key = `${cameraPosition.join(',')}|${targetVector.x},${targetVector.y},${targetVector.z}|${zoom}`;
+    if (appliedKeyRef.current === key) return;
+
+    camera.position.set(...cameraPosition);
+    camera.zoom = zoom;
+    controls.target.copy(targetVector);
+    camera.lookAt(targetVector);
+    camera.updateProjectionMatrix();
+    controls.update();
+    appliedKeyRef.current = key;
+  });
+
+  return null;
+}
+
+function PresentationDirector({ cameraRef, controlsRef }: CameraRigRefs) {
+  const map = useGameStore((s) => s.map);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const beatRef = useRef<PresentationBeatState>({
+    id: '',
+    startedAt: 0,
+    basePosition: new THREE.Vector3(),
+    baseTarget: new THREE.Vector3(),
+    baseZoom: CAMERA_PRESET.zoom,
+    target: new THREE.Vector3(),
+    settled: true,
+  });
+
+  useFrame((state) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    if (interrupt && beatRef.current.id !== interrupt.id) {
+      beatRef.current = {
+        id: interrupt.id,
+        startedAt: state.clock.elapsedTime,
+        basePosition: camera.position.clone(),
+        baseTarget: controls.target.clone(),
+        baseZoom: camera.zoom,
+        target: tileToWorld(map.width, map.tileSize, interrupt.contactTile.x, interrupt.contactTile.y),
+        settled: false,
+      };
+    }
+
+    if (!beatRef.current.id) return;
+
+    const elapsed = state.clock.elapsedTime - beatRef.current.startedAt;
+    const progress = THREE.MathUtils.clamp(elapsed / CONTACT_CAMERA_BEAT.durationSeconds, 0, 1);
+    if (progress >= 1) {
+      if (!beatRef.current.settled) {
+        controls.target.copy(beatRef.current.baseTarget);
+        camera.position.copy(beatRef.current.basePosition);
+        camera.zoom = beatRef.current.baseZoom;
+        camera.lookAt(controls.target);
+        camera.updateProjectionMatrix();
+        controls.update();
+        beatRef.current.settled = true;
+      }
+      return;
+    }
+
+    const easeIn = THREE.MathUtils.smootherstep(progress, 0, 0.45);
+    const easeOut = 1 - THREE.MathUtils.smoothstep(progress, 0.56, 1);
+    const contactWeight = easeIn * easeOut;
+    const shake = Math.sin(elapsed * 52) * CONTACT_CAMERA_BEAT.shakeWorld * contactWeight;
+    const lift = Math.cos(elapsed * 39) * CONTACT_CAMERA_BEAT.shakeWorld * 0.45 * contactWeight;
+    const stagedTarget = beatRef.current.baseTarget.clone().lerp(
+      beatRef.current.target,
+      CONTACT_CAMERA_BEAT.targetBlend * contactWeight
+    );
+    const stagedPosition = beatRef.current.basePosition.clone().lerp(
+      beatRef.current.basePosition.clone().add(
+        beatRef.current.target.clone().sub(beatRef.current.baseTarget).multiplyScalar(CONTACT_CAMERA_BEAT.targetBlend)
+      ),
+      contactWeight
+    );
+
+    stagedPosition.x += shake;
+    stagedPosition.z += lift;
+    controls.target.copy(stagedTarget);
+    camera.position.copy(stagedPosition);
+    camera.zoom = beatRef.current.baseZoom * (1 + (CONTACT_CAMERA_BEAT.pushInZoom - 1) * contactWeight + CONTACT_CAMERA_BEAT.shakeZoom * contactWeight);
+    camera.lookAt(controls.target);
+    camera.updateProjectionMatrix();
+    controls.update();
+  });
+
+  return null;
 }
 
 export function IsometricScene() {
   const map = useGameStore((s) => s.map);
+  const units = useGameStore((s) => s.units);
   const [rendererDpr, setRendererDpr] = useState(getCrispDevicePixelRatio);
   const cameraRef = useRef<ThreeOrthographicCamera>(null);
   const controlsRef = useRef<MapControlsHandle | null>(null);
@@ -102,7 +258,6 @@ export function IsometricScene() {
   }, []);
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
     event.stopPropagation();
 
     const unitScale = event.deltaMode === 1
@@ -113,15 +268,25 @@ export function IsometricScene() {
     const deltaX = event.deltaX * unitScale;
     const deltaY = event.deltaY * unitScale;
 
-    if (event.ctrlKey || event.metaKey || event.altKey) {
-      zoomCamera(deltaY < 0 ? 1.14 : 1 / 1.14);
+    const isPinchZoom = event.ctrlKey || event.metaKey || event.altKey;
+    const isMouseWheel = isLikelyMouseWheel(event.deltaX, event.deltaY, event.deltaMode, event.shiftKey);
+
+    if (isPinchZoom || isMouseWheel) {
+      const zoomFactor = isMouseWheel ? WHEEL_INPUT.mouseWheelZoomFactor : WHEEL_INPUT.pinchZoomFactor;
+      zoomCamera(deltaY < 0 ? zoomFactor : 1 / zoomFactor);
       return;
     }
 
     const horizontal = event.shiftKey && Math.abs(deltaX) < 1 ? deltaY : deltaX;
     const vertical = event.shiftKey && Math.abs(deltaX) < 1 ? 0 : deltaY;
     const camera = cameraRef.current;
-    const panScale = camera ? THREE.MathUtils.clamp(0.62 / camera.zoom, 0.035, 0.14) : 0.08;
+    const panScale = camera
+      ? THREE.MathUtils.clamp(
+        WHEEL_INPUT.trackpadPanZoomFactor / camera.zoom,
+        WHEEL_INPUT.minTrackpadPanScale,
+        WHEEL_INPUT.maxTrackpadPanScale
+      )
+      : 0.1;
     panCamera(-horizontal, vertical, panScale);
   }, [panCamera, zoomCamera]);
 
@@ -143,6 +308,42 @@ export function IsometricScene() {
     window.addEventListener('resize', updateDpr);
     return () => window.removeEventListener('resize', updateDpr);
   }, []);
+
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const isDuelLab = units.length === 2 &&
+      units.some((unit) => unit.id === 0 && unit.position.x === 43 && unit.position.y === 61) &&
+      units.some((unit) => unit.id === 6 && unit.position.x === 43 && unit.position.y === 69);
+    if (!isDuelLab) {
+      return;
+    }
+
+    const livingUnits = units.filter((unit) => unit.alive);
+    const center = livingUnits
+      .map((unit) => tileToWorld(map.width, map.tileSize, unit.position.x, unit.position.y))
+      .reduce((sum, point) => sum.add(point), new THREE.Vector3())
+      .divideScalar(Math.max(1, livingUnits.length));
+    center.z += map.tileSize * 0.8;
+    const useCompactFrame = typeof window !== 'undefined' && window.innerWidth < 760;
+    const offsetX = useCompactFrame ? DUEL_LAB_CAMERA.compactOffsetX : DUEL_LAB_CAMERA.offsetX;
+    const height = useCompactFrame ? DUEL_LAB_CAMERA.compactHeight : DUEL_LAB_CAMERA.height;
+    const offsetZ = useCompactFrame ? DUEL_LAB_CAMERA.compactOffsetZ : DUEL_LAB_CAMERA.offsetZ;
+    const zoom = useCompactFrame ? DUEL_LAB_CAMERA.compactZoom : DUEL_LAB_CAMERA.zoom;
+
+    controls.target.copy(center);
+    camera.position.set(
+      center.x + offsetX,
+      height,
+      center.z + offsetZ
+    );
+    camera.zoom = zoom;
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+    controls.update();
+  }, [map.tileSize, map.width, units]);
 
   useEffect(() => {
     const applyCameraCommand = (command: CameraCommand) => {
@@ -237,19 +438,19 @@ export function IsometricScene() {
       }}
       onCreated={({ gl }) => {
         gl.outputColorSpace = THREE.SRGBColorSpace;
-        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+        gl.shadowMap.type = THREE.PCFShadowMap;
       }}
       style={{
         width: '100vw',
         height: '100vh',
-        background: '#10131a',
+        background: ART.palette.void,
         touchAction: 'none',
         transform: 'translateZ(0)',
       }}
       onContextMenu={(event) => event.preventDefault()}
       onWheel={handleWheel}
     >
-      <color attach="background" args={['#10131a']} />
+      <color attach="background" args={[ART.palette.void]} />
 
       {/* Camera */}
       <OrthographicCamera
@@ -288,53 +489,65 @@ export function IsometricScene() {
 
       {/* === Lighting === */}
 
-      {/* Hemisphere: warm ground, cool sky */}
+      {/* Neutral studio hemisphere for clay whitebox readability */}
       <hemisphereLight
-        args={['#d7deee', '#2a2630', 0.78]}
+        args={[
+          ART.scene.lights.hemisphere.sky,
+          ART.scene.lights.hemisphere.ground,
+          ART.scene.lights.hemisphere.intensity,
+        ]}
       />
 
       {/* Ambient fill */}
-      <ambientLight intensity={0.76} color="#c9d2e2" />
+      <ambientLight intensity={ART.scene.lights.ambient.intensity} color={ART.scene.lights.ambient.color} />
 
       {/* Main sun (warm, casts shadows) */}
       <directionalLight
-        position={[cx + 60, 100, cz - 40]}
-        intensity={1.2}
-        color="#ffe0b0"
+        position={[cx + 52, 96, cz - 64]}
+        intensity={ART.scene.lights.sun.intensity}
+        color={ART.scene.lights.sun.color}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-120}
-        shadow-camera-right={120}
-        shadow-camera-top={120}
-        shadow-camera-bottom={-120}
-        shadow-camera-near={1}
-        shadow-camera-far={350}
-        shadow-bias={-0.001}
+        shadow-mapSize-width={ART.shadows.mapSize}
+        shadow-mapSize-height={ART.shadows.mapSize}
+        shadow-camera-left={-ART.shadows.cameraExtent}
+        shadow-camera-right={ART.shadows.cameraExtent}
+        shadow-camera-top={ART.shadows.cameraExtent}
+        shadow-camera-bottom={-ART.shadows.cameraExtent}
+        shadow-camera-near={ART.shadows.cameraNear}
+        shadow-camera-far={ART.shadows.cameraFar}
+        shadow-bias={ART.shadows.bias}
       />
 
       {/* Cool fill from opposite side */}
       <directionalLight
-        position={[cx - 50, 50, cz + 50]}
-        intensity={0.42}
-        color="#7788aa"
+        position={[cx - 72, 62, cz + 72]}
+        intensity={ART.scene.lights.fill.intensity}
+        color={ART.scene.lights.fill.color}
       />
 
-      {/* Slight rim light from behind */}
+      {/* Soft neutral rim to separate white walls from the void */}
       <directionalLight
-        position={[cx, 30, cz - 80]}
-        intensity={0.28}
-        color="#aabbcc"
+        position={[cx - 12, 38, cz - 82]}
+        intensity={ART.scene.lights.rim.intensity}
+        color={ART.scene.lights.rim.color}
       />
 
       {/* === Scene content === */}
+      <CameraBootstrap
+        cameraRef={cameraRef}
+        controlsRef={controlsRef}
+        cameraPosition={cameraPosition}
+        targetVector={targetVector}
+        zoom={CAMERA_PRESET.zoom}
+      />
+      <PresentationDirector cameraRef={cameraRef} controlsRef={controlsRef} />
       <MapRenderer />
       <Suspense fallback={null}>
         <UnitRenderer />
       </Suspense>
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#10131a', 360, 640]} />
+      <fog attach="fog" args={[ART.palette.void, ART.scene.fog.near, ART.scene.fog.far]} />
     </Canvas>
   );
 }

@@ -12,7 +12,7 @@
 //     first contact vertical slice
 //   - "End Turn" advances to next team / next turn
 //
-// Missing: generic action pipeline, utility, plant/defuse, AI, and economy.
+// Missing: generic action pipeline, production AI, and economy.
 // ============================================================
 import { create } from 'zustand';
 import type {
@@ -27,28 +27,92 @@ import type {
   HeldAngle,
   InputMode,
   CombatEvent,
+  ExecuteInterrupt,
+  ExecuteTimeline,
+  ExecuteTimelineEvent,
+  ExecuteInterruptTradeShot,
   FeedbackEvent,
   FeedbackEventType,
+  GuidanceEvent,
+  GuidanceTone,
+  MovementPresentationAimMode,
+  MovementPresentationIntent,
+  MovementPresentationRoute,
+  MovementPresentationSource,
   SmokeCloud,
+  FlashBurst,
 } from './types';
 import { createInfernoMap } from './maps/inferno';
 import { ROLES, T_ROSTER, CT_ROSTER } from './config/roles';
-import { getDefaultWeapon } from './config/weapons';
+import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
+import { applyMetaDefault, applyRandomSpawnPositions } from './metaDefaults';
+import { getRouteVisualTiming } from './movementPresentationTiming';
+import { getMovementTimingProfile } from './movementTimingProfile';
 import { findPath, getMovementTiles } from './pathfinding';
-import { getWatchedLane } from './los';
+import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
 import { getShotPreview, resolveReactionFire, resolveShot, tileDistance } from './combat';
+import {
+  clampExecuteAtMs,
+  buildContactBreakTimelineEvents,
+  buildContactBreakTimelineItems,
+  createExecuteTimeline,
+  createExecuteTimelineEvent,
+  createMoveStartTimelineEvent,
+  createMovementBeatTimelineEvent,
+  createPlannedUtilityTimelineEvent,
+  createUtilityResolvedTimelineEvent,
+  formatExecuteTime,
+  getDefaultExecuteAtMs,
+  getPlannedActionBeat,
+  getPlannedActionExecuteAtMs,
+  sortExecuteTimelineEvents,
+  sortPlannedActionsByBeat,
+} from './executeTimeline';
 
 const EXECUTION_STEP_MS = 95;
-const AI_EXECUTION_STEP_MS = 55;
 const AI_THINK_MS = 180;
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS = 2;
 const SMOKE_DURATION_TURNS = 4;
+const FLASH_THROW_RANGE = 12;
+const FLASH_RADIUS = 5;
+const FLASH_DURATION_TURNS = 1;
+const FLASH_BURST_LOG_LIMIT = 8;
 const FEEDBACK_LOG_LIMIT = 16;
+const MOVEMENT_PROOF_UNIT_ID = 6;
+const MOVEMENT_PROOF_AIM: TileCoord = { x: 0, y: -1 };
+const MOVEMENT_PROOF_POSES = [
+  'run_forward',
+  'strafe_left',
+  'strafe_right',
+  'stop_brace',
+  'idle',
+] as const;
+
+type MovementProofEvent = {
+  time: number;
+  routeId: string;
+  intent: MovementPresentationIntent;
+  pose: string;
+  frameUrl: string;
+  progress: number;
+  speedTilesPerSecond: number;
+};
+
+type MovementProofSummary = {
+  posesSeen: Record<string, boolean>;
+  uniqueFramesByPose: Record<string, number>;
+  routeDurations: Record<string, number>;
+  intentsSeen: Record<MovementPresentationIntent, boolean>;
+  maxSpeedByIntent: Record<MovementPresentationIntent, number>;
+  events: MovementProofEvent[];
+};
 
 let feedbackSequence = 0;
+let guidanceSequence = 0;
+let movementRouteSequence = 0;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -60,15 +124,260 @@ function appendFeedback(
   details: Omit<FeedbackEvent, 'id' | 'createdAt' | 'type'> = {}
 ): FeedbackEvent[] {
   feedbackSequence += 1;
+  const createdAt = Date.now() + feedbackSequence / 1000;
   return [
     {
-      id: `${Date.now()}:${feedbackSequence}:${type}`,
-      createdAt: Date.now(),
+      id: `${createdAt}:${feedbackSequence}:${type}`,
+      createdAt,
       type,
       ...details,
     },
     ...events,
   ].slice(0, FEEDBACK_LOG_LIMIT);
+}
+
+function createGuidanceEvent(title: string, detail: string, tone: GuidanceTone): GuidanceEvent {
+  guidanceSequence += 1;
+  const createdAt = Date.now();
+  return {
+    id: `${createdAt}:${guidanceSequence}:guidance`,
+    createdAt,
+    tone,
+    title,
+    detail,
+  };
+}
+
+function createMovementProofSummary(events: MovementProofEvent[] = []): MovementProofSummary {
+  const posesSeen = MOVEMENT_PROOF_POSES.reduce<Record<string, boolean>>((summary, pose) => {
+    summary[pose] = events.some((event) => event.pose === pose);
+    return summary;
+  }, {});
+  const frameSetsByPose = events.reduce<Record<string, Set<string>>>((summary, event) => {
+    if (!event.frameUrl) return summary;
+    summary[event.pose] = summary[event.pose] ?? new Set<string>();
+    summary[event.pose].add(event.frameUrl);
+    return summary;
+  }, {});
+  const uniqueFramesByPose = MOVEMENT_PROOF_POSES.reduce<Record<string, number>>((summary, pose) => {
+    summary[pose] = frameSetsByPose[pose]?.size ?? 0;
+    return summary;
+  }, {});
+  const routeRanges = events.reduce<Record<string, { first: number; last: number }>>((summary, event) => {
+    if (!event.routeId || event.routeId === 'idle') return summary;
+    const existing = summary[event.routeId];
+    summary[event.routeId] = existing
+      ? { first: Math.min(existing.first, event.time), last: Math.max(existing.last, event.time) }
+      : { first: event.time, last: event.time };
+    return summary;
+  }, {});
+  const routeDurations = Object.fromEntries(
+    Object.entries(routeRanges).map(([routeId, range]) => [routeId, range.last - range.first])
+  );
+  const intents = ['fast_reposition', 'cautious_hold_aim', 'move_to_hold_target'] as const;
+  const intentsSeen = intents.reduce<Record<MovementPresentationIntent, boolean>>((summary, intent) => {
+    summary[intent] = events.some((event) => event.intent === intent);
+    return summary;
+  }, {
+    fast_reposition: false,
+    cautious_hold_aim: false,
+    move_to_hold_target: false,
+  });
+  const maxSpeedByIntent = intents.reduce<Record<MovementPresentationIntent, number>>((summary, intent) => {
+    summary[intent] = events
+      .filter((event) => event.intent === intent)
+      .reduce((maxSpeed, event) => Math.max(maxSpeed, event.speedTilesPerSecond), 0);
+    return summary;
+  }, {
+    fast_reposition: 0,
+    cautious_hold_aim: 0,
+    move_to_hold_target: 0,
+  });
+
+  return {
+    posesSeen,
+    uniqueFramesByPose,
+    routeDurations,
+    intentsSeen,
+    maxSpeedByIntent,
+    events,
+  };
+}
+
+function getVisualAimModeForIntent(intent: MovementPresentationIntent): MovementPresentationAimMode {
+  if (intent === 'cautious_hold_aim') return 'lock_start_facing';
+  if (intent === 'move_to_hold_target') return 'target_tile';
+  return 'face_move';
+}
+
+function createMovementPresentationRoute(
+  unitId: number,
+  path: TileCoord[],
+  source: MovementPresentationSource,
+  delayMs = 0,
+  options: {
+    stepMs?: number;
+    timingPath?: TileCoord[];
+    syncToVisualTiming?: boolean;
+    visualAimMode?: MovementPresentationAimMode;
+    visualAimDirection?: TileCoord;
+    visualAimTarget?: TileCoord;
+    visualIntent?: MovementPresentationIntent;
+  } = {}
+): MovementPresentationRoute {
+  movementRouteSequence += 1;
+  const createdAt = Date.now();
+  const visualIntent = options.visualIntent ?? 'fast_reposition';
+  const routeTiming = options.timingPath ? getRouteVisualTiming(options.timingPath, visualIntent) : null;
+  const normalizedStepMs = path.length > 0
+    ? Math.max(1, options.stepMs ?? EXECUTION_STEP_MS)
+    : (options.stepMs ?? EXECUTION_STEP_MS);
+  const durationMs = options.syncToVisualTiming && routeTiming
+    ? routeTiming.durationMs
+    : Math.max(normalizedStepMs, path.length * normalizedStepMs);
+  return {
+    id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
+    unitId,
+    source,
+    createdAt,
+    delayMs: Math.max(0, delayMs),
+    stepMs: normalizedStepMs,
+    durationMs,
+    path: path.map((tile) => ({ ...tile })),
+    visualIntent,
+    visualAimMode: options.visualAimMode ?? getVisualAimModeForIntent(visualIntent),
+    visualAimDirection: options.visualAimDirection ? { ...options.visualAimDirection } : undefined,
+    visualAimTarget: options.visualAimTarget ? { ...options.visualAimTarget } : undefined,
+  };
+}
+
+function appendBombTickFeedback(events: FeedbackEvent[], previousRound: RoundState, nextRound: RoundState): FeedbackEvent[] {
+  if (
+    previousRound.bombPlanted &&
+    !previousRound.bombDefused &&
+    nextRound.bombPlanted &&
+    nextRound.bombTimer < previousRound.bombTimer
+  ) {
+    return appendFeedback(events, 'bomb_tick', {
+      team: nextRound.activeTeam,
+      intensity: nextRound.bombTimer <= 2 ? 1.25 : nextRound.bombTimer <= 4 ? 1.05 : 0.85,
+    });
+  }
+
+  return events;
+}
+
+function getBestTradeShot(
+  map: GameState['map'],
+  units: Unit[],
+  round: RoundState,
+  smokes: SmokeCloud[],
+  event: CombatEvent
+): ExecuteInterruptTradeShot | null {
+  const target = units.find((unit) => unit.id === event.attackerId);
+  if (!target?.alive) return null;
+  if (round.phase === 'setup' && !RULES.setupFiringAllowed) return null;
+
+  const options = units
+    .filter((unit) => (
+      unit.alive &&
+      unit.team === round.activeTeam &&
+      unit.id !== target.id &&
+      unit.ap >= getWeaponShotApCost(unit.weapon) &&
+      unit.ammoInClip > 0
+    ))
+    .map((shooter) => ({
+      shooter,
+      preview: getShotPreview(map, shooter, target, 0, target.position, smokes),
+    }))
+    .filter(({ preview }) => preview.hasLineOfSight && preview.inRange)
+    .sort((a, b) => {
+      const stoppedUnitBonusA = a.shooter.id === event.targetId ? 1000 : 0;
+      const stoppedUnitBonusB = b.shooter.id === event.targetId ? 1000 : 0;
+      return (
+        stoppedUnitBonusB + b.preview.hitChance + b.preview.damage * 0.1 -
+        (stoppedUnitBonusA + a.preview.hitChance + a.preview.damage * 0.1)
+      );
+    });
+
+  const best = options[0];
+  if (!best) return null;
+
+  return {
+    shooterId: best.shooter.id,
+    shooterName: best.shooter.name,
+    targetId: target.id,
+    targetName: target.name,
+    hitChance: best.preview.hitChance,
+    damage: best.preview.damage,
+    critChance: best.preview.critChance,
+    critDamage: best.preview.critDamage,
+    coverLabel: best.preview.coverLabel,
+    coverState: best.preview.coverState,
+    coverQuality: best.preview.coverQuality,
+  };
+}
+
+function createExecuteInterrupt({
+  event,
+  map,
+  units,
+  round,
+  smokes,
+  source,
+  beatTimeMs,
+  phaseLabel,
+  timelineEvents,
+}: {
+  event: CombatEvent;
+  map: GameState['map'];
+  units: Unit[];
+  round: RoundState;
+  smokes: SmokeCloud[];
+  source: ExecuteInterrupt['source'];
+  beatTimeMs: number;
+  phaseLabel: string;
+  timelineEvents: ExecuteTimelineEvent[];
+}): ExecuteInterrupt {
+  const beatLabel = formatExecuteTime(beatTimeMs);
+  const contactTile = { ...event.tile };
+  const tileLabel = map.grid[contactTile.y]?.[contactTile.x]?.label ?? `tile ${contactTile.x},${contactTile.y}`;
+  const tradeShot = getBestTradeShot(map, units, round, smokes, event);
+  const bombPressure = {
+    bombPlanted: round.bombPlanted,
+    bombDropped: !round.bombPlanted && round.bombCarrierId === null && Boolean(round.bombPosition),
+    bombTimer: round.bombTimer,
+    bombPosition: round.bombPosition ? { ...round.bombPosition } : null,
+    bombCarrierId: round.bombCarrierId,
+  };
+  const interruptTimelineEvents = buildContactBreakTimelineEvents({
+    event,
+    source,
+    beatTimeMs,
+    phaseLabel,
+    contactTile,
+    tileLabel,
+    tradeShot,
+    bombPressure,
+    precedingEvents: timelineEvents,
+  });
+
+  return {
+    id: `${event.id}:interrupt`,
+    createdAt: Date.now(),
+    source,
+    beatTimeMs,
+    beatLabel,
+    phaseLabel,
+    contactTile,
+    event,
+    shooterId: event.attackerId,
+    stoppedUnitId: event.targetId,
+    timelineEvents: interruptTimelineEvents,
+    timeline: buildContactBreakTimelineItems(interruptTimelineEvents),
+    tradeShot,
+    bombPressure,
+  };
 }
 
 // Movement range per AP point
@@ -168,6 +477,92 @@ function findNearestWalkable(map: GameState['map'], preferred: TileCoord): TileC
   return preferred;
 }
 
+type MovementProofPlan = {
+  start: TileCoord;
+  facing: TileCoord;
+  runPath: TileCoord[];
+  strafePath: TileCoord[];
+};
+
+function uniqueTiles(tiles: TileCoord[]): TileCoord[] {
+  const seen = new Set<string>();
+  return tiles.filter((tile) => {
+    const key = `${tile.x},${tile.y}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getWalkableTiles(map: GameState['map']): TileCoord[] {
+  const tiles: TileCoord[] = [];
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      if (map.grid[y]?.[x]?.walkable) tiles.push({ x, y });
+    }
+  }
+  return tiles;
+}
+
+function findMovementProofPlan(map: GameState['map']): MovementProofPlan {
+  const preferredStarts = [
+    { x: 43, y: 76 },
+    { x: 45, y: 74 },
+    { x: 52, y: 70 },
+    { x: 58, y: 58 },
+    { x: 64, y: 55 },
+  ].map((tile) => findNearestWalkable(map, tile));
+  const candidates = uniqueTiles([...preferredStarts, ...getWalkableTiles(map)]);
+  const directions = [
+    { facing: MOVEMENT_PROOF_AIM, run: { x: 0, y: -7 }, strafe: { x: 5, y: 0 } },
+    { facing: MOVEMENT_PROOF_AIM, run: { x: 0, y: -7 }, strafe: { x: -5, y: 0 } },
+    { facing: { x: 1, y: 0 }, run: { x: 7, y: 0 }, strafe: { x: 0, y: -5 } },
+    { facing: { x: -1, y: 0 }, run: { x: -7, y: 0 }, strafe: { x: 0, y: 5 } },
+    { facing: { x: 0, y: 1 }, run: { x: 0, y: 7 }, strafe: { x: -5, y: 0 } },
+  ];
+
+  for (const start of candidates) {
+    for (const direction of directions) {
+      const runTarget = findNearestWalkable(map, {
+        x: start.x + direction.run.x,
+        y: start.y + direction.run.y,
+      });
+      const fullRunPath = findPath(map, start, runTarget);
+      if (fullRunPath.length < 6) continue;
+
+      const runPath = fullRunPath.slice(0, 6);
+      const runEnd = runPath.at(-1);
+      if (!runEnd) continue;
+
+      const strafeTarget = findNearestWalkable(map, {
+        x: runEnd.x + direction.strafe.x,
+        y: runEnd.y + direction.strafe.y,
+      });
+      const fullStrafePath = findPath(map, runEnd, strafeTarget);
+      if (fullStrafePath.length < 4) continue;
+
+      return {
+        start,
+        facing: direction.facing,
+        runPath,
+        strafePath: fullStrafePath.slice(0, 4),
+      };
+    }
+  }
+
+  const fallbackStart = findNearestWalkable(map, { x: 43, y: 76 });
+  const fallbackRunTarget = findNearestWalkable(map, { x: fallbackStart.x, y: fallbackStart.y - 6 });
+  const fallbackRunPath = findPath(map, fallbackStart, fallbackRunTarget).slice(0, 6);
+  const fallbackEnd = fallbackRunPath.at(-1) ?? fallbackStart;
+  const fallbackStrafeTarget = findNearestWalkable(map, { x: fallbackEnd.x + 4, y: fallbackEnd.y });
+  return {
+    start: fallbackStart,
+    facing: MOVEMENT_PROOF_AIM,
+    runPath: fallbackRunPath,
+    strafePath: findPath(map, fallbackEnd, fallbackStrafeTarget).slice(0, 4),
+  };
+}
+
 function isUnitSelectable(units: Unit[], activeTeam: Team, unitId: number | null): boolean {
   if (unitId === null) return false;
   const unit = units.find((candidate) => candidate.id === unitId);
@@ -247,6 +642,8 @@ function getBestAiShot(
   units: Unit[],
   smokes: SmokeCloud[]
 ): { target: Unit; preview: ReturnType<typeof getShotPreview> } | null {
+  if (attacker.ammoInClip <= 0 || attacker.ap < getWeaponShotApCost(attacker.weapon)) return null;
+
   return units
     .filter((target) => target.alive && target.team !== attacker.team)
     .map((target) => ({
@@ -257,6 +654,123 @@ function getBestAiShot(
     .sort((a, b) => b.preview.hitChance - a.preview.hitChance)[0] ?? null;
 }
 
+function isInsideZone(tile: TileCoord, zone: { min: TileCoord; max: TileCoord }): boolean {
+  return tile.x >= zone.min.x &&
+    tile.x <= zone.max.x &&
+    tile.y >= zone.min.y &&
+    tile.y <= zone.max.y;
+}
+
+function getPlantSite(map: GameState['map'], tile: TileCoord): 'A' | 'B' | null {
+  if (isInsideZone(tile, map.plantZones.A)) return 'A';
+  if (isInsideZone(tile, map.plantZones.B)) return 'B';
+  return null;
+}
+
+function canReachBomb(unit: Unit, bombPosition: TileCoord | null): boolean {
+  if (!bombPosition) return false;
+  return tileDistance(unit.position, bombPosition) <= 1.5;
+}
+
+function applyBombDrop(round: RoundState, units: Unit[]): RoundState {
+  if (round.phase === 'roundend' || round.bombPlanted || round.bombDefused || round.bombCarrierId === null) {
+    return round;
+  }
+
+  const carrier = units.find((unit) => unit.id === round.bombCarrierId);
+  if (!carrier || (carrier.alive && carrier.hasBomb)) return round;
+
+  return {
+    ...round,
+    bombCarrierId: null,
+    bombPosition: { ...carrier.position },
+  };
+}
+
+function applyEliminationOutcome(round: RoundState, units: Unit[]): RoundState {
+  if (round.phase === 'roundend') return round;
+
+  const terroristsAlive = units.some((unit) => unit.alive && unit.team === 'T');
+  const ctsAlive = units.some((unit) => unit.alive && unit.team === 'CT');
+
+  if (!terroristsAlive) {
+    return {
+      ...round,
+      phase: 'roundend',
+      roundWinner: 'CT',
+      winReason: 'elimination',
+    };
+  }
+
+  if (!ctsAlive) {
+    return {
+      ...round,
+      phase: 'roundend',
+      roundWinner: 'T',
+      winReason: 'elimination',
+    };
+  }
+
+  return round;
+}
+
+function isUtilityAction(action: PlannedAction): boolean {
+  return action.kind === 'smoke' || action.kind === 'flash';
+}
+
+function createUtilityPlan(
+  state: GameState,
+  kind: 'smoke' | 'flash',
+  targetTile: TileCoord,
+  throwRange: number
+): {
+  plannedActions: PlannedAction[];
+  selectedUnitId: number | null;
+  movementTiles: MovementTile[];
+  walkableTiles: TileCoord[];
+} | null {
+  const { selectedUnitId, units, map: mapData, round } = state;
+  if (selectedUnitId === null) return null;
+
+  const unit = units.find((candidate) => candidate.id === selectedUnitId);
+  if (!unit || !unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam) return null;
+  if (round.phase === 'setup' && !RULES.setupUtilityAllowed) return null;
+  if (!mapData.grid[targetTile.y]?.[targetTile.x]?.walkable) return null;
+  if (tileDistance(unit.position, targetTile) > throwRange) return null;
+
+  const charges = kind === 'smoke' ? unit.smokeGrenades : unit.flashbangs;
+  if (charges <= 0) return null;
+
+  const existingPlans = state.plannedActions.filter((action) => action.unitId !== unit.id);
+  const plannedAction: PlannedAction = {
+    id: `${unit.id}:${kind}`,
+    unitId: unit.id,
+    team: unit.team,
+    kind,
+    executeAtMs: getDefaultExecuteAtMs(kind),
+    from: { ...unit.position },
+    target: { ...targetTile },
+    path: [],
+    apCost: 1,
+    summary: `${unit.name} ${kind} ${mapData.grid[targetTile.y]?.[targetTile.x]?.label ?? 'tile'}`,
+  };
+  const plannedActions = [...existingPlans, plannedAction];
+  const nextSelectedUnitId = getNextUnplannedUnitId(
+    units,
+    round.activeTeam,
+    unit.id,
+    plannedActions
+  ) ?? unit.id;
+  const movement = getMovementForSelection(units, nextSelectedUnitId, mapData, round);
+
+  return {
+    plannedActions,
+    selectedUnitId: nextSelectedUnitId,
+    movementTiles: movement.movementTiles,
+    walkableTiles: movement.walkableTiles,
+  };
+}
+
 function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []): {
   round: RoundState;
   units: Unit[];
@@ -265,6 +779,14 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   let nextTeam: Team;
   let nextTurn = round.turn;
   let nextPhase = round.phase;
+  let nextBombTimer = round.bombTimer;
+  const nextRoundTimer = round.phase === 'setup' ? round.roundTimer : Math.max(0, round.roundTimer - 1);
+  let roundWinner = round.roundWinner;
+  let winReason = round.winReason;
+
+  if (round.phase === 'roundend') {
+    return { round, units, smokes };
+  }
 
   if (round.activeTeam === 'T') {
     nextTeam = 'CT';
@@ -278,10 +800,14 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
   }
 
   const newUnits = units.map((u) => {
-    if (u.team === nextTeam && u.alive) {
-      return { ...u, ap: u.maxAp, hasMoved: false, shotsFiredThisTurn: 0 };
+    const flashTurns = u.team === round.activeTeam
+      ? Math.max(0, u.flashTurns - 1)
+      : u.flashTurns;
+    const nextUnit = flashTurns !== u.flashTurns ? { ...u, flashTurns } : u;
+    if (nextUnit.team === nextTeam && nextUnit.alive) {
+      return { ...nextUnit, ap: nextUnit.maxAp, hasMoved: false, shotsFiredThisTurn: 0 };
     }
-    return u;
+    return nextUnit;
   });
 
   const nextSmokes = nextTeam === 'T'
@@ -290,26 +816,51 @@ function advanceTurn(round: RoundState, units: Unit[], smokes: SmokeCloud[] = []
       .filter((smoke) => smoke.remainingTurns > 0)
     : smokes;
 
+  if (round.bombPlanted && !round.bombDefused && round.phase === 'postplant') {
+    nextBombTimer = Math.max(0, round.bombTimer - 1);
+    if (nextBombTimer <= 0) {
+      nextPhase = 'roundend';
+      roundWinner = 'T';
+      winReason = 'detonation';
+    }
+  }
+
+  if (nextPhase !== 'roundend' && !round.bombPlanted && round.phase !== 'setup' && nextRoundTimer <= 0) {
+    nextPhase = 'roundend';
+    roundWinner = 'CT';
+    winReason = 'timeexpiry';
+  }
+
+  const possessionRound = applyBombDrop({
+    ...round,
+    activeTeam: nextTeam,
+    turn: nextTurn,
+    phase: nextPhase,
+    bombTimer: nextBombTimer,
+    roundWinner,
+    winReason,
+    roundTimer: nextRoundTimer,
+  }, newUnits);
+  const outcomeRound = applyEliminationOutcome(possessionRound, newUnits);
+
   return {
     units: newUnits,
     smokes: nextSmokes,
-    round: {
-      ...round,
-      activeTeam: nextTeam,
-      turn: nextTurn,
-      phase: nextPhase,
-      roundTimer: round.phase === 'setup' ? round.roundTimer : round.roundTimer - 1,
-    },
+    round: outcomeRound,
   };
 }
 
-function createUnits(): Unit[] {
-  const map = createInfernoMap();
+type CreateUnitsOptions = {
+  randomizeSpawns?: boolean;
+};
+
+function createUnits(map: GameState['map'] = createInfernoMap(), options: CreateUnitsOptions = {}): Unit[] {
   const units: Unit[] = [];
   let id = 0;
 
   const makeUnit = (team: Team, roleId: RoleId, spawn: TileCoord): Unit => {
     const role = ROLES[roleId];
+    const weapon = getDefaultWeaponForRole(team, roleId);
     return {
       id: id++,
       team,
@@ -318,7 +869,7 @@ function createUnits(): Unit[] {
       hp: role.hp,
       maxHp: role.hp,
       position: { ...spawn },
-      weapon: getDefaultWeapon(team),
+      weapon,
       money: 800,
       ap: RULES.baseAp,
       maxAp: RULES.baseAp,
@@ -326,8 +877,12 @@ function createUnits(): Unit[] {
       shotsFiredThisTurn: 0,
       hasMoved: false,
       hasBomb: false,
-      hasDefuseKit: false,
+      hasDefuseKit: team === 'CT' && (roleId === 'support' || roleId === 'igl'),
       smokeGrenades: roleId === 'support' ? 2 : (roleId === 'igl' || roleId === 'lurker' ? 1 : 0),
+      flashbangs: roleId === 'awper' ? 0 : (roleId === 'support' ? 2 : 1),
+      flashTurns: 0,
+      ammoInClip: weapon.clipSize,
+      reserveAmmo: weapon.clipSize * 3,
       facing: { x: 0, y: team === 'T' ? 1 : -1 },
     };
   };
@@ -342,7 +897,11 @@ function createUnits(): Unit[] {
   // Bomb carrier = first T (entry fragger)
   units[0].hasBomb = true;
 
-  return units;
+  return options.randomizeSpawns ? applyRandomSpawnPositions(map, units) : units;
+}
+
+function createRoundUnits(map: GameState['map']): Unit[] {
+  return createUnits(map);
 }
 
 interface GameStore extends GameState {
@@ -352,21 +911,32 @@ interface GameStore extends GameState {
   setInputMode: (mode: InputMode) => void;
   holdAngle: (targetTile: TileCoord) => void;
   throwSmoke: (targetTile: TileCoord) => void;
+  throwFlash: (targetTile: TileCoord) => void;
+  plantBomb: () => void;
+  defuseBomb: () => void;
+  pickupBomb: () => void;
+  reloadWeapon: () => void;
   shootUnit: (targetId: number) => void;
   queueMove: (targetTile: TileCoord) => void;
   commitPlannedActions: () => void;
   clearPlannedActions: () => void;
+  setPlannedActionTiming: (actionId: string, executeAtMs: number) => void;
   setPlanningMode: (enabled: boolean) => void;
+  applyMetaDefaultSetup: () => void;
+  pushGuidance: (title: string, detail: string, tone?: GuidanceTone) => void;
   finishUnit: () => void;
   endTurn: () => void;
   runCtAiTurn: () => Promise<void>;
   initGame: () => void;
+  startNextRound: () => void;
   startContactDrill: () => void;
+  startDuelLab: () => void;
+  startMovementProof: () => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => {
   const map = createInfernoMap();
-  const units = createUnits();
+  const units = createRoundUnits(map);
   const maybeRunCtAiTurn = () => {
     window.setTimeout(() => {
       const state = get();
@@ -389,6 +959,8 @@ export const useGameStore = create<GameStore>((set, get) => {
       bombTimer: RULES.bombTimerTurns,
       bombCarrierId: 0,
       roundTimer: RULES.roundTimeLimitTurns,
+      roundWinner: null,
+      winReason: null,
     },
     match: {
       scoreT: 0,
@@ -415,9 +987,29 @@ export const useGameStore = create<GameStore>((set, get) => {
     inputMode: 'move',
     heldAngles: [],
     smokes: [],
+    flashBursts: [],
     combatLog: [],
+    executeInterrupt: null,
+    currentExecuteTimeline: null,
+    lastExecuteTimeline: null,
+    movementRoutes: [],
     feedbackEvents: [],
+    guidanceEvent: null,
     aiStatus: null,
+
+    pushGuidance: (title, detail, tone = 'hint') => {
+      const state = get();
+      const guidanceEvent = createGuidanceEvent(title, detail, tone);
+      set({
+        guidanceEvent,
+        feedbackEvents: tone === 'warning'
+          ? appendFeedback(state.feedbackEvents, 'invalid_action', {
+            team: state.round.activeTeam,
+            intensity: 0.9,
+          })
+          : state.feedbackEvents,
+      });
+    },
 
     selectUnit: (id) => {
       const state = get();
@@ -495,7 +1087,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         return;
       }
 
-      if (state.inputMode === 'smoke' || state.inputMode === 'hold_angle') {
+      if (state.inputMode === 'smoke' || state.inputMode === 'flash' || state.inputMode === 'hold_angle') {
         set({ hoveredTile: tile, pathPreview: [] });
         return;
       }
@@ -556,14 +1148,49 @@ export const useGameStore = create<GameStore>((set, get) => {
         ? path.findIndex((tile) => tile.x === contactTile.x && tile.y === contactTile.y)
         : -1;
       const pathToTravel = contactIndex >= 0 ? path.slice(0, contactIndex + 1) : path;
+      const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+      const visualIntent: MovementPresentationIntent = 'fast_reposition';
+      const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
+      const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move', 0, {
+        timingPath: visualRoutePath,
+        syncToVisualTiming: true,
+        visualIntent,
+        visualAimDirection: unit.facing,
+      });
 
       let nextUnits = [...units];
       let tilesMoved = 0;
       let contactEvent: CombatEvent | null = null;
       let consumedHeldAngleId: string | null = null;
+      let contactTimelineTimeMs = 0;
+      let executeTimeline = createExecuteTimeline({
+        id: `${Date.now()}:direct-move:${unit.id}`,
+        source: 'direct_move',
+        activeTeam: round.activeTeam,
+      });
+      const appendExecuteEvent = (event: ExecuteTimelineEvent) => {
+        executeTimeline = {
+          ...executeTimeline,
+          events: sortExecuteTimelineEvents([...executeTimeline.events, event]),
+        };
+        set({ currentExecuteTimeline: executeTimeline });
+      };
 
+      appendExecuteEvent(createExecuteTimelineEvent({
+        id: `${executeTimeline.id}:move-start`,
+        kind: 'move_start',
+        timeMs: 0,
+        phaseLabel: 'MOVE',
+        title: `${unit.name} move start`,
+        detail: `toward ${mapData.grid[targetTile.y]?.[targetTile.x]?.label ?? `${targetTile.x},${targetTile.y}`}`,
+        unitId: unit.id,
+        tile: unit.position,
+      }));
       set({
         isExecuting: true,
+        executeInterrupt: null,
+        currentExecuteTimeline: executeTimeline,
+        movementRoutes: [movementRoute],
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
@@ -576,7 +1203,15 @@ export const useGameStore = create<GameStore>((set, get) => {
         }),
       });
 
+      let previousArrivalMs = 0;
       for (const step of pathToTravel) {
+        const stepIndex = tilesMoved;
+        const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+          Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, pathToTravel.length)));
+        const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+        if (waitMs > 0) await wait(waitMs);
+        previousArrivalMs = arrivalMs;
+
         const currentUnitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
         if (currentUnitIdx === -1) break;
 
@@ -595,6 +1230,16 @@ export const useGameStore = create<GameStore>((set, get) => {
           facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
         };
         tilesMoved += 1;
+        appendExecuteEvent(createExecuteTimelineEvent({
+          id: `${executeTimeline.id}:move:${tilesMoved}:${step.x},${step.y}`,
+          kind: 'movement_beat',
+          timeMs: arrivalMs,
+          phaseLabel: 'MOVE',
+          title: `${unit.name} crossed`,
+          detail: mapData.grid[step.y]?.[step.x]?.label ?? `tile ${step.x},${step.y}`,
+          unitId: unit.id,
+          tile: step,
+        }));
 
         set({
           units: nextUnits,
@@ -606,8 +1251,6 @@ export const useGameStore = create<GameStore>((set, get) => {
             intensity: 0.7,
           }),
         });
-        await wait(EXECUTION_STEP_MS);
-
         if (
           crossedAngle &&
           contactTile &&
@@ -617,17 +1260,27 @@ export const useGameStore = create<GameStore>((set, get) => {
           const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
           const target = targetIdx === -1 ? null : nextUnits[targetIdx];
           const attacker = nextUnits.find((candidate) => candidate.id === crossedAngle.unitId);
-          if (target?.alive && attacker?.alive) {
+          if (target?.alive && attacker?.alive && attacker.ammoInClip > 0) {
             const reactionPreview = getShotPreview(mapData, attacker, target, crossedAngle.aimBonus, contactTile, state.smokes);
             if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
               contactEvent = resolveReactionFire(mapData, attacker, target, contactTile, crossedAngle, state.smokes);
               consumedHeldAngleId = crossedAngle.id;
+              contactTimelineTimeMs = arrivalMs;
               if (contactEvent.hit) {
                 const newHp = Math.max(0, target.hp - contactEvent.damage);
                 nextUnits[targetIdx] = {
                   ...target,
                   hp: newHp,
                   alive: newHp > 0,
+                  hasBomb: newHp > 0 ? target.hasBomb : false,
+                };
+              }
+              const attackerIdx = nextUnits.findIndex((candidate) => candidate.id === attacker.id);
+              if (attackerIdx !== -1) {
+                nextUnits[attackerIdx] = {
+                  ...nextUnits[attackerIdx],
+                  ammoInClip: Math.max(0, nextUnits[attackerIdx].ammoInClip - 1),
+                  shotsFiredThisTurn: nextUnits[attackerIdx].shotsFiredThisTurn + 1,
                 };
               }
               break;
@@ -638,8 +1291,21 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       const finalUnitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
       if (finalUnitIdx === -1 || tilesMoved === 0) {
-        set({ isExecuting: false });
+        set({
+          isExecuting: false,
+          currentExecuteTimeline: null,
+          movementRoutes: [],
+          lastExecuteTimeline: {
+            ...executeTimeline,
+            status: 'completed',
+            events: sortExecuteTimelineEvents(executeTimeline.events),
+          },
+        });
         return;
+      }
+
+      if (!contactEvent) {
+        await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
       }
 
       const spentAp = Math.max(1, Math.min(apCost, Math.ceil(tilesMoved / rangePerAP)));
@@ -657,15 +1323,15 @@ export const useGameStore = create<GameStore>((set, get) => {
         : selectedUnitId;
       let movementTiles: MovementTile[] = [];
       let walkableTiles: TileCoord[] = [];
-      let nextRound = round;
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
       let nextSmokes = state.smokes;
 
-      if (contactEvent) {
+      if (nextRound.phase === 'roundend') {
+        nextSelectedUnitId = null;
+      } else if (contactEvent) {
         nextSelectedUnitId = nextUnits[finalUnitIdx].alive
           ? unit.id
           : getFirstAvailableUnitId(nextUnits, round.activeTeam);
-      } else if (newAp > 0) {
-        nextSelectedUnitId = unit.id;
       } else {
         nextSelectedUnitId = getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
         if (nextSelectedUnitId === null) {
@@ -686,15 +1352,37 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
       }
 
-      const preferredSelectedUnitId = getPreferredSelection(
-        nextUnits,
-        nextRound,
-        contactEvent ? nextSelectedUnitId : get().selectedUnitId,
-        nextSelectedUnitId
-      );
+      const preferredSelectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : contactEvent
+          ? getPreferredSelection(nextUnits, nextRound, nextSelectedUnitId, nextSelectedUnitId)
+          : nextSelectedUnitId;
       const movement = getMovementForSelection(nextUnits, preferredSelectedUnitId, mapData, nextRound);
       movementTiles = movement.movementTiles;
       walkableTiles = movement.walkableTiles;
+      const executeInterrupt = contactEvent
+        ? createExecuteInterrupt({
+          event: contactEvent,
+          map: mapData,
+          units: nextUnits,
+          round: nextRound,
+          smokes: nextSmokes,
+          source: 'direct_move',
+          beatTimeMs: contactTimelineTimeMs,
+          phaseLabel: 'CONTACT',
+          timelineEvents: executeTimeline.events,
+        })
+        : null;
+      const finalExecuteTimelineEvents = executeInterrupt
+        ? [...executeTimeline.events, ...executeInterrupt.timelineEvents.filter((event) => (
+          !executeTimeline.events.some((existingEvent) => existingEvent.id === event.id)
+        ))]
+        : executeTimeline.events;
+      const finalExecuteTimeline: ExecuteTimeline = {
+        ...executeTimeline,
+        status: contactEvent ? 'interrupted' : 'completed',
+        events: sortExecuteTimelineEvents(finalExecuteTimelineEvents),
+      };
 
       set({
         units: nextUnits,
@@ -707,19 +1395,23 @@ export const useGameStore = create<GameStore>((set, get) => {
         isExecuting: false,
         inputMode: contactEvent ? 'shoot' : 'move',
         plannedActions: [],
+        currentExecuteTimeline: null,
+        movementRoutes: [],
+        lastExecuteTimeline: finalExecuteTimeline,
         heldAngles: state.heldAngles.filter((angle) => (
           angle.unitId !== unit.id &&
           angle.id !== consumedHeldAngleId
         )),
         smokes: nextSmokes,
         combatLog: contactEvent ? [contactEvent, ...state.combatLog].slice(0, 8) : state.combatLog,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+        executeInterrupt,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'move_complete', {
           team: unit.team,
           unitId: unit.id,
           intensity: contactEvent ? 1.2 : 0.9,
-        }),
+        }), round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     setInputMode: (mode) => {
@@ -736,7 +1428,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (unitIdx === -1) return;
 
       const unit = units[unitIdx];
-      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam) return;
+      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam || unit.ammoInClip <= 0) return;
       if (unit.position.x === targetTile.x && unit.position.y === targetTile.y) return;
 
       const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
@@ -795,6 +1487,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles,
         walkableTiles,
@@ -805,18 +1498,39 @@ export const useGameStore = create<GameStore>((set, get) => {
           heldAngle,
         ],
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'hold_angle', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'hold_angle', {
           team: unit.team,
           unitId: unit.id,
           intensity: 0.9,
-        }),
+        }), round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     throwSmoke: (targetTile) => {
       const state = get();
       if (state.isExecuting) return;
+      if (state.planningMode) {
+        const plan = createUtilityPlan(state, 'smoke', targetTile, SMOKE_THROW_RANGE);
+        if (!plan) return;
+        const unit = state.units.find((candidate) => candidate.id === state.selectedUnitId);
+        set({
+          plannedActions: plan.plannedActions,
+          selectedUnitId: plan.selectedUnitId,
+          executeInterrupt: null,
+          movementTiles: plan.movementTiles,
+          walkableTiles: plan.walkableTiles,
+          hoveredTile: null,
+          pathPreview: [],
+          inputMode: 'move',
+          feedbackEvents: appendFeedback(state.feedbackEvents, 'plan_add', {
+            team: unit?.team,
+            unitId: unit?.id,
+            intensity: 0.7,
+          }),
+        });
+        return;
+      }
       const { selectedUnitId, units, map: mapData, round } = state;
       if (selectedUnitId === null) return;
 
@@ -872,64 +1586,117 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'smoke_throw', {
-          team: unit.team,
-          unitId: unit.id,
-          intensity: 1,
-        }),
+        feedbackEvents: appendBombTickFeedback(appendFeedback(
+          appendFeedback(state.feedbackEvents, 'smoke_throw', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 1,
+          }),
+          'smoke_bloom',
+          {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: 0.95,
+          }
+        ), round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
-    shootUnit: (targetId) => {
+    throwFlash: (targetTile) => {
       const state = get();
       if (state.isExecuting) return;
+      if (state.planningMode) {
+        const plan = createUtilityPlan(state, 'flash', targetTile, FLASH_THROW_RANGE);
+        if (!plan) return;
+        const unit = state.units.find((candidate) => candidate.id === state.selectedUnitId);
+        set({
+          plannedActions: plan.plannedActions,
+          selectedUnitId: plan.selectedUnitId,
+          executeInterrupt: null,
+          movementTiles: plan.movementTiles,
+          walkableTiles: plan.walkableTiles,
+          hoveredTile: null,
+          pathPreview: [],
+          inputMode: 'move',
+          feedbackEvents: appendFeedback(state.feedbackEvents, 'plan_add', {
+            team: unit?.team,
+            unitId: unit?.id,
+            intensity: 0.75,
+          }),
+        });
+        return;
+      }
       const { selectedUnitId, units, map: mapData, round } = state;
-      if (selectedUnitId === null || selectedUnitId === targetId) return;
+      if (selectedUnitId === null) return;
 
-      const shooterIdx = units.findIndex((unit) => unit.id === selectedUnitId);
-      const targetIdx = units.findIndex((unit) => unit.id === targetId);
-      if (shooterIdx === -1 || targetIdx === -1) return;
+      const unitIdx = units.findIndex((u) => u.id === selectedUnitId);
+      if (unitIdx === -1) return;
 
-      const shooter = units[shooterIdx];
-      const target = units[targetIdx];
-      if (!shooter.alive || !target.alive || shooter.ap <= 0) return;
-      if (shooter.team !== round.activeTeam || target.team === shooter.team) return;
-      if (round.phase === 'setup' && !RULES.setupFiringAllowed) return;
+      const unit = units[unitIdx];
+      if (!unit.alive || unit.ap <= 0 || unit.team !== round.activeTeam || unit.flashbangs <= 0) return;
+      if (round.phase === 'setup' && !RULES.setupUtilityAllowed) return;
+      if (!mapData.grid[targetTile.y]?.[targetTile.x]?.walkable) return;
+      if (tileDistance(unit.position, targetTile) > FLASH_THROW_RANGE) return;
 
-      const shotPreview = getShotPreview(mapData, shooter, target, 0, target.position, state.smokes);
-      if (!shotPreview.hasLineOfSight || !shotPreview.inRange) return;
+      const affectedUnitIds = units
+        .filter((candidate) => (
+          candidate.alive &&
+          candidate.team !== unit.team &&
+          tileDistance(candidate.position, targetTile) <= FLASH_RADIUS &&
+          hasLineOfSight(mapData, targetTile, candidate.position, state.smokes)
+        ))
+        .map((candidate) => candidate.id);
 
-      const event = resolveShot(mapData, shooter, target, target.position, 0, 'direct_fire', state.smokes);
-      const distance = tileDistance(shooter.position, target.position);
-      let nextUnits = [...units];
-      const newTargetHp = event.hit ? Math.max(0, target.hp - event.damage) : target.hp;
-      nextUnits[targetIdx] = {
-        ...target,
-        hp: newTargetHp,
-        alive: newTargetHp > 0,
-      };
-      nextUnits[shooterIdx] = {
-        ...shooter,
-        ap: Math.max(0, shooter.ap - 1),
-        shotsFiredThisTurn: shooter.shotsFiredThisTurn + 1,
-        facing: {
-          x: Math.round((target.position.x - shooter.position.x) / (distance || 1)),
-          y: Math.round((target.position.y - shooter.position.y) / (distance || 1)),
-        },
+      const dx = targetTile.x - unit.position.x;
+      const dy = targetTile.y - unit.position.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      let nextUnits = units.map((candidate, index) => {
+        if (index === unitIdx) {
+          return {
+            ...candidate,
+            ap: Math.max(0, candidate.ap - 1),
+            flashbangs: Math.max(0, candidate.flashbangs - 1),
+            hasMoved: true,
+            facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+          };
+        }
+
+        if (affectedUnitIds.includes(candidate.id)) {
+          return {
+            ...candidate,
+            flashTurns: Math.max(candidate.flashTurns, FLASH_DURATION_TURNS),
+          };
+        }
+
+        return candidate;
+      });
+
+      const newAp = nextUnits[unitIdx].ap;
+      const flashBurst: FlashBurst = {
+        id: `${Date.now()}:${unit.id}:flash`,
+        ownerId: unit.id,
+        team: unit.team,
+        position: { ...targetTile },
+        radius: FLASH_RADIUS,
+        affectedUnitIds,
+        createdAt: Date.now(),
       };
 
       let nextRound = round;
+      let nextSelectedUnitId: number | null = newAp > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
       let nextSmokes = state.smokes;
-      let nextSelectedUnitId = nextUnits[shooterIdx].ap > 0
-        ? shooter.id
-        : getNextAvailableUnitId(nextUnits, round.activeTeam, shooter.id);
+
       if (nextSelectedUnitId === null) {
         const advanced = advanceTurn(round, nextUnits, state.smokes);
         nextUnits = advanced.units;
@@ -944,6 +1711,341 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+        flashBursts: [
+          flashBurst,
+          ...state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000),
+        ].slice(0, FLASH_BURST_LOG_LIMIT),
+        feedbackEvents: appendBombTickFeedback(appendFeedback(
+          appendFeedback(state.feedbackEvents, 'flash_throw', {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
+          }),
+          'flash_pop',
+          {
+            team: unit.team,
+            unitId: unit.id,
+            intensity: affectedUnitIds.length > 0 ? 1.2 : 0.85,
+          }
+        ), round, nextRound),
+      });
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
+    },
+
+    pickupBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (
+        selectedUnitId === null ||
+        round.bombPlanted ||
+        round.bombCarrierId !== null ||
+        !round.bombPosition ||
+        round.phase === 'roundend'
+      ) return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      if (!unit.alive || unit.team !== 'T' || unit.team !== round.activeTeam) return;
+      if (!canReachBomb(unit, round.bombPosition) || unit.ap < RULES.bombPickupCost) return;
+
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - RULES.bombPickupCost),
+        hasBomb: true,
+      };
+
+      let nextRound: RoundState = {
+        ...round,
+        bombCarrierId: unit.id,
+        bombPosition: null,
+      };
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = nextUnits[unitIdx].ap > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(nextRound, nextUnits, nextSmokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'bomb_pickup', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: 0.95,
+        }), round, nextRound),
+      });
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
+    },
+
+    reloadWeapon: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (selectedUnitId === null || round.phase === 'roundend') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const ammoNeeded = unit.weapon.clipSize - unit.ammoInClip;
+      if (!unit.alive || unit.team !== round.activeTeam || unit.ap <= 0 || ammoNeeded <= 0 || unit.reserveAmmo <= 0) return;
+
+      const reloadAmount = Math.min(ammoNeeded, unit.reserveAmmo);
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - 1),
+        ammoInClip: unit.ammoInClip + reloadAmount,
+        reserveAmmo: unit.reserveAmmo - reloadAmount,
+        hasMoved: true,
+      };
+
+      let nextRound = round;
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = nextUnits[unitIdx].ap > 0
+        ? unit.id
+        : getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(round, nextUnits, nextSmokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'reload_weapon', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: reloadAmount >= unit.weapon.clipSize * 0.5 ? 1 : 0.8,
+        }), round, nextRound),
+      });
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
+    },
+
+    plantBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round, map: mapData } = state;
+      if (selectedUnitId === null || round.bombPlanted || round.phase === 'setup' || round.phase === 'roundend') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const plantSite = getPlantSite(mapData, unit.position);
+      if (!unit.alive || unit.team !== 'T' || unit.team !== round.activeTeam) return;
+      if (!unit.hasBomb || unit.ap < RULES.plantActionCost || !plantSite) return;
+
+      let nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - RULES.plantActionCost),
+        hasBomb: false,
+        hasMoved: true,
+      };
+
+      let nextRound: RoundState = {
+        ...round,
+        phase: 'postplant',
+        bombPlanted: true,
+        bombDefused: false,
+        bombPosition: { ...unit.position },
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: null,
+        roundWinner: null,
+        winReason: null,
+      };
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = getNextAvailableUnitId(nextUnits, round.activeTeam, unit.id);
+
+      if (nextSelectedUnitId === null) {
+        const advanced = advanceTurn(nextRound, nextUnits, state.smokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        smokes: nextSmokes,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'bomb_plant', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: plantSite === 'B' ? 1.05 : 1,
+        }), round, nextRound),
+      });
+    },
+
+    defuseBomb: () => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, round } = state;
+      if (selectedUnitId === null || !round.bombPlanted || round.bombDefused || round.phase !== 'postplant') return;
+
+      const unitIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      if (unitIdx === -1) return;
+
+      const unit = units[unitIdx];
+      const defuseCost = unit.hasDefuseKit ? RULES.defuseWithKit : RULES.defuseWithoutKit;
+      if (!unit.alive || unit.team !== 'CT' || unit.team !== round.activeTeam) return;
+      if (!canReachBomb(unit, round.bombPosition) || unit.ap < defuseCost) return;
+
+      const nextUnits = [...units];
+      nextUnits[unitIdx] = {
+        ...unit,
+        ap: Math.max(0, unit.ap - defuseCost),
+        hasMoved: true,
+      };
+
+      const nextRound: RoundState = {
+        ...round,
+        phase: 'roundend',
+        bombDefused: true,
+        bombTimer: Math.max(0, round.bombTimer),
+        roundWinner: 'CT',
+        winReason: 'defuse',
+      };
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: unit.id,
+        executeInterrupt: null,
+        hoveredTile: null,
+        movementTiles: [],
+        walkableTiles: [],
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'bomb_defuse', {
+          team: unit.team,
+          unitId: unit.id,
+          intensity: unit.hasDefuseKit ? 1.05 : 0.95,
+        }),
+      });
+    },
+
+    shootUnit: (targetId) => {
+      const state = get();
+      if (state.isExecuting) return;
+      const { selectedUnitId, units, map: mapData, round } = state;
+      if (selectedUnitId === null || selectedUnitId === targetId) return;
+
+      const shooterIdx = units.findIndex((unit) => unit.id === selectedUnitId);
+      const targetIdx = units.findIndex((unit) => unit.id === targetId);
+      if (shooterIdx === -1 || targetIdx === -1) return;
+
+      const shooter = units[shooterIdx];
+      const target = units[targetIdx];
+      const shotApCost = getWeaponShotApCost(shooter.weapon);
+      if (!shooter.alive || !target.alive || shooter.ap < shotApCost || shooter.ammoInClip <= 0) return;
+      if (shooter.team !== round.activeTeam || target.team === shooter.team) return;
+      if (round.phase === 'setup' && !RULES.setupFiringAllowed) return;
+
+      const shotPreview = getShotPreview(mapData, shooter, target, 0, target.position, state.smokes);
+      if (!shotPreview.hasLineOfSight || !shotPreview.inRange) return;
+
+      const event = resolveShot(mapData, shooter, target, target.position, 0, 'direct_fire', state.smokes);
+      const distance = tileDistance(shooter.position, target.position);
+      let nextUnits = [...units];
+      const newTargetHp = event.hit ? Math.max(0, target.hp - event.damage) : target.hp;
+      nextUnits[targetIdx] = {
+        ...target,
+        hp: newTargetHp,
+        alive: newTargetHp > 0,
+        hasBomb: newTargetHp > 0 ? target.hasBomb : false,
+      };
+      nextUnits[shooterIdx] = {
+        ...shooter,
+        ap: Math.max(0, shooter.ap - shotApCost),
+        ammoInClip: Math.max(0, shooter.ammoInClip - 1),
+        shotsFiredThisTurn: shooter.shotsFiredThisTurn + 1,
+        facing: {
+          x: Math.round((target.position.x - shooter.position.x) / (distance || 1)),
+          y: Math.round((target.position.y - shooter.position.y) / (distance || 1)),
+        },
+      };
+
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
+      let nextSmokes = state.smokes;
+      let nextSelectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : nextUnits[shooterIdx].ap > 0
+          ? shooter.id
+          : getNextAvailableUnitId(nextUnits, round.activeTeam, shooter.id);
+      if (nextRound.phase !== 'roundend' && nextSelectedUnitId === null) {
+        const advanced = advanceTurn(round, nextUnits, state.smokes);
+        nextUnits = advanced.units;
+        nextRound = advanced.round;
+        nextSmokes = advanced.smokes;
+        nextSelectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+      }
+
+      const movement = getMovementForSelection(nextUnits, nextSelectedUnitId, mapData, nextRound);
+
+      set({
+        units: nextUnits,
+        round: nextRound,
+        selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
         hoveredTile: null,
@@ -951,8 +2053,9 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         smokes: nextSmokes,
         combatLog: [event, ...state.combatLog].slice(0, 8),
+        feedbackEvents: appendBombTickFeedback(state.feedbackEvents, round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     queueMove: (targetTile) => {
@@ -970,7 +2073,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       if (!isInRange) return;
 
       const existingPlans = state.plannedActions.filter((action) => action.unitId !== unit.id);
-      const plannedMovingUnitIds = new Set(existingPlans.map((action) => action.unitId));
+      const plannedMovingUnitIds = new Set(existingPlans.filter((action) => action.kind === 'move').map((action) => action.unitId));
       const duplicateTarget = existingPlans.some(
         (action) => action.target.x === targetTile.x && action.target.y === targetTile.y
       );
@@ -995,6 +2098,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         unitId: unit.id,
         team: unit.team,
         kind: 'move',
+        executeAtMs: getDefaultExecuteAtMs('move'),
         from: { ...unit.position },
         target: { ...targetTile },
         path,
@@ -1014,6 +2118,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       set({
         plannedActions,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
         hoveredTile: null,
@@ -1035,22 +2140,231 @@ export const useGameStore = create<GameStore>((set, get) => {
       const activePlans = state.plannedActions.filter((action) => action.team === round.activeTeam);
       if (activePlans.length === 0) return;
 
-      const movingUnitIds = new Set(activePlans.map((action) => action.unitId));
+      const utilityPlans = activePlans.filter(isUtilityAction);
+      const movePlans = activePlans.filter((action) => action.kind === 'move');
+      const movingUnitIds = new Set(movePlans.map((action) => action.unitId));
       const claimedTargets = new Set<string>();
       let nextUnits = [...state.units];
+      let nextSmokes = state.smokes;
+      let nextFlashBursts = state.flashBursts.filter((burst) => Date.now() - burst.createdAt < 6000);
       let contactEvent: CombatEvent | null = null;
       let consumedHeldAngleId: string | null = null;
+      let contactBeatTimeMs = 0;
+      let contactPhaseLabel = 'CONTACT';
+      let executeTimeline = createExecuteTimeline({
+        id: `${Date.now()}:planned-execute:${round.activeTeam}`,
+        source: 'planned_execute',
+        activeTeam: round.activeTeam,
+        events: sortPlannedActionsByBeat(utilityPlans)
+          .map((action) => {
+            const unit = state.units.find((candidate) => candidate.id === action.unitId);
+            return createPlannedUtilityTimelineEvent(
+              action,
+              unit?.name ?? 'Unit',
+              mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`
+            );
+          })
+          .filter((event): event is ExecuteTimelineEvent => Boolean(event)),
+      });
+      const appendExecuteEvent = (event: ExecuteTimelineEvent) => {
+        executeTimeline = {
+          ...executeTimeline,
+          events: sortExecuteTimelineEvents([...executeTimeline.events, event]),
+        };
+        set({ currentExecuteTimeline: executeTimeline });
+      };
       const runtimes: Array<{
         action: PlannedAction;
+        startAtMs: number;
+        visualIntent: MovementPresentationIntent;
         pathToTravel: TileCoord[];
+        routeTiming: ReturnType<typeof getRouteVisualTiming>;
         crossedAngle: HeldAngle | null;
         contactTile: TileCoord | null;
         rangePerAP: number;
         tilesMoved: number;
+        started: boolean;
         stopped: boolean;
       }> = [];
 
-      for (const action of activePlans) {
+      set({
+        planningMode: false,
+        isExecuting: true,
+        executeInterrupt: null,
+        currentExecuteTimeline: executeTimeline,
+        hoveredTile: null,
+        movementTiles: [],
+        walkableTiles: [],
+        pathPreview: [],
+        inputMode: 'move',
+      });
+
+      let executeClockMs = 0;
+      let utilityExecuted = false;
+      for (const action of sortPlannedActionsByBeat(utilityPlans)) {
+        const actionAtMs = getPlannedActionExecuteAtMs(action);
+        const delayMs = Math.max(0, actionAtMs - executeClockMs);
+        if (delayMs > 0) {
+          await wait(delayMs);
+          executeClockMs = actionAtMs;
+        }
+
+        const unitIdx = nextUnits.findIndex((unit) => unit.id === action.unitId);
+        if (unitIdx === -1) continue;
+
+        const unit = nextUnits[unitIdx];
+        if (!unit.alive || unit.ap < action.apCost) continue;
+        if (!mapData.grid[action.target.y]?.[action.target.x]?.walkable) continue;
+        if (round.phase === 'setup' && !RULES.setupUtilityAllowed) continue;
+
+        const throwRange = action.kind === 'smoke' ? SMOKE_THROW_RANGE : FLASH_THROW_RANGE;
+        if (tileDistance(unit.position, action.target) > throwRange) continue;
+
+        if (action.kind === 'smoke' && unit.smokeGrenades <= 0) continue;
+        if (action.kind === 'flash' && unit.flashbangs <= 0) continue;
+
+        const dx = action.target.x - unit.position.x;
+        const dy = action.target.y - unit.position.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        if (action.kind === 'smoke') {
+          nextUnits = [...nextUnits];
+          nextUnits[unitIdx] = {
+            ...unit,
+            ap: Math.max(0, unit.ap - action.apCost),
+            smokeGrenades: Math.max(0, unit.smokeGrenades - 1),
+            hasMoved: true,
+            facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+          };
+          nextSmokes = [
+            ...nextSmokes,
+            {
+              id: `${Date.now()}:${unit.id}:planned-smoke`,
+              ownerId: unit.id,
+              team: unit.team,
+              position: { ...action.target },
+              radius: SMOKE_RADIUS,
+              remainingTurns: SMOKE_DURATION_TURNS,
+            },
+          ];
+          utilityExecuted = true;
+          const timelineEvent = createUtilityResolvedTimelineEvent(
+            action,
+            unit.name,
+            mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`
+          );
+          if (timelineEvent) appendExecuteEvent(timelineEvent);
+          set({
+            units: nextUnits,
+            smokes: nextSmokes,
+            flashBursts: nextFlashBursts,
+            hoveredTile: null,
+            pathPreview: [],
+            feedbackEvents: appendFeedback(
+              appendFeedback(get().feedbackEvents, 'smoke_throw', {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: 1,
+              }),
+              'smoke_bloom',
+              {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: 0.95,
+              }
+            ),
+          });
+        }
+
+        if (action.kind === 'flash') {
+          const affectedUnitIds = nextUnits
+            .filter((candidate) => (
+              candidate.alive &&
+              candidate.team !== unit.team &&
+              tileDistance(candidate.position, action.target) <= FLASH_RADIUS &&
+              hasLineOfSight(mapData, action.target, candidate.position, nextSmokes)
+            ))
+            .map((candidate) => candidate.id);
+
+          nextUnits = nextUnits.map((candidate, index) => {
+            if (index === unitIdx) {
+              return {
+                ...candidate,
+                ap: Math.max(0, candidate.ap - action.apCost),
+                flashbangs: Math.max(0, candidate.flashbangs - 1),
+                hasMoved: true,
+                facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+              };
+            }
+
+            if (affectedUnitIds.includes(candidate.id)) {
+              return {
+                ...candidate,
+                flashTurns: Math.max(candidate.flashTurns, FLASH_DURATION_TURNS),
+              };
+            }
+
+            return candidate;
+          });
+          nextFlashBursts = [
+            {
+              id: `${Date.now()}:${unit.id}:planned-flash`,
+              ownerId: unit.id,
+              team: unit.team,
+              position: { ...action.target },
+              radius: FLASH_RADIUS,
+              affectedUnitIds,
+              createdAt: Date.now(),
+            },
+            ...nextFlashBursts,
+          ].slice(0, FLASH_BURST_LOG_LIMIT);
+          utilityExecuted = true;
+          const timelineEvent = createUtilityResolvedTimelineEvent(
+            action,
+            unit.name,
+            mapData.grid[action.target.y]?.[action.target.x]?.label ?? `tile ${action.target.x},${action.target.y}`,
+            affectedUnitIds.length
+          );
+          if (timelineEvent) appendExecuteEvent(timelineEvent);
+          set({
+            units: nextUnits,
+            smokes: nextSmokes,
+            flashBursts: nextFlashBursts,
+            hoveredTile: null,
+            pathPreview: [],
+            feedbackEvents: appendFeedback(
+              appendFeedback(get().feedbackEvents, 'flash_throw', {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: affectedUnitIds.length > 0 ? 1.15 : 0.85,
+              }),
+              'flash_pop',
+              {
+                team: unit.team,
+                unitId: unit.id,
+                intensity: affectedUnitIds.length > 0 ? 1.2 : 0.85,
+              }
+            ),
+          });
+        }
+      }
+
+      const utilitySettleMs = utilityExecuted ? EXECUTION_STEP_MS * 2 : 0;
+      if (utilitySettleMs > 0) {
+        await wait(utilitySettleMs);
+        executeClockMs += utilitySettleMs;
+      }
+
+      const firstMoveAtMs = movePlans.length > 0
+        ? Math.min(...movePlans.map(getPlannedActionExecuteAtMs))
+        : 0;
+      if (movePlans.length > 0 && executeClockMs < firstMoveAtMs) {
+        const delayMs = firstMoveAtMs - executeClockMs;
+        await wait(delayMs);
+        executeClockMs = firstMoveAtMs;
+      }
+
+      for (const action of movePlans) {
         const unitIdx = nextUnits.findIndex((unit) => unit.id === action.unitId);
         if (unitIdx === -1) continue;
 
@@ -1081,48 +2395,117 @@ export const useGameStore = create<GameStore>((set, get) => {
         const pathToTravel = contactIndex >= 0
           ? action.path.slice(0, contactIndex + 1)
           : action.path;
+        const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+        const visualIntent: MovementPresentationIntent = 'cautious_hold_aim';
 
         runtimes.push({
           action,
+          startAtMs: getPlannedActionExecuteAtMs(action),
+          visualIntent,
           pathToTravel,
+          routeTiming: getRouteVisualTiming(visualRoutePath, visualIntent),
           crossedAngle,
           contactTile,
           rangePerAP,
           tilesMoved: 0,
+          started: false,
           stopped: false,
         });
       }
 
       if (runtimes.length === 0) {
+        let nextRound = round;
+        let selectedUnitId = getFirstAvailableUnitId(nextUnits, round.activeTeam);
+        if (selectedUnitId === null) {
+          const advanced = advanceTurn(round, nextUnits, nextSmokes);
+          nextUnits = advanced.units;
+          nextRound = advanced.round;
+          nextSmokes = advanced.smokes;
+          selectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
+        }
+        const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, nextRound);
         set({
-          planningMode: false,
+          units: nextUnits,
+          round: nextRound,
+          selectedUnitId,
+          movementTiles: movement.movementTiles,
+          walkableTiles: movement.walkableTiles,
           plannedActions: [],
           pathPreview: [],
           isExecuting: false,
+          executeInterrupt: null,
+          currentExecuteTimeline: null,
+          movementRoutes: [],
+          lastExecuteTimeline: {
+            ...executeTimeline,
+            status: 'completed',
+            events: sortExecuteTimelineEvents(executeTimeline.events),
+          },
+          inputMode: 'move',
+          smokes: nextSmokes,
+          flashBursts: nextFlashBursts,
+          feedbackEvents: appendBombTickFeedback(get().feedbackEvents, round, nextRound),
         });
+        if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
         return;
       }
 
+      for (const runtime of runtimes) {
+        runtime.startAtMs = Math.max(runtime.startAtMs, executeClockMs);
+      }
+
+      const movementRoutes = runtimes.map((runtime) => {
+        const routeUnit = nextUnits.find((unit) => unit.id === runtime.action.unitId);
+        const timingPath = [
+          ...(routeUnit ? [{ ...routeUnit.position }] : []),
+          ...runtime.pathToTravel.map((tile) => ({ ...tile })),
+        ];
+        return createMovementPresentationRoute(
+          runtime.action.unitId,
+          runtime.pathToTravel,
+          'planned_execute',
+          Math.max(0, runtime.startAtMs - executeClockMs),
+          {
+            timingPath,
+            syncToVisualTiming: true,
+            visualIntent: runtime.visualIntent,
+            visualAimDirection: routeUnit?.facing,
+          }
+        );
+      });
+
       set({
-        planningMode: false,
-        isExecuting: true,
         hoveredTile: null,
         movementTiles: [],
         walkableTiles: [],
         pathPreview: [],
         inputMode: 'move',
+        movementRoutes,
         feedbackEvents: appendFeedback(state.feedbackEvents, 'move_step', {
           team: round.activeTeam,
           intensity: 0.8,
         }),
       });
 
-      const maxSteps = Math.max(...runtimes.map((runtime) => runtime.pathToTravel.length));
-      for (let step = 0; step < maxSteps; step++) {
+      const hasPendingRuntime = () => runtimes.some((runtime) => (
+        !runtime.stopped && runtime.tilesMoved < runtime.pathToTravel.length
+      ));
+      const getRuntimeStepArrivalMs = (runtime: (typeof runtimes)[number]): number => {
+        const stepNumber = runtime.tilesMoved + 1;
+        const fallbackArrivalMs = Math.round(
+          runtime.routeTiming.durationMs * (stepNumber / Math.max(1, runtime.pathToTravel.length))
+        );
+        return runtime.startAtMs + (runtime.routeTiming.arrivalTimesMs[stepNumber] ?? fallbackArrivalMs);
+      };
+      let safetyTicks = 0;
+      while (hasPendingRuntime() && safetyTicks < 160) {
+        safetyTicks += 1;
+        let startedThisStep = false;
         let movedThisStep = false;
 
         for (const runtime of runtimes) {
-          if (runtime.stopped || step >= runtime.pathToTravel.length) continue;
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (runtime.started || executeClockMs < runtime.startAtMs) continue;
 
           const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
           if (unitIdx === -1) {
@@ -1135,8 +2518,62 @@ export const useGameStore = create<GameStore>((set, get) => {
             runtime.stopped = true;
             continue;
           }
+          appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
+          runtime.started = true;
+          startedThisStep = true;
+        }
 
-          const destination = runtime.pathToTravel[step];
+        let nextEventAtMs = Number.POSITIVE_INFINITY;
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (!runtime.started && runtime.startAtMs > executeClockMs) {
+            nextEventAtMs = Math.min(nextEventAtMs, runtime.startAtMs);
+            continue;
+          }
+          nextEventAtMs = Math.min(nextEventAtMs, getRuntimeStepArrivalMs(runtime));
+        }
+
+        if (Number.isFinite(nextEventAtMs) && nextEventAtMs > executeClockMs) {
+          await wait(nextEventAtMs - executeClockMs);
+          executeClockMs = nextEventAtMs;
+        }
+
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length) continue;
+          if (runtime.started || executeClockMs < runtime.startAtMs) continue;
+
+          const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
+          if (unitIdx === -1) {
+            runtime.stopped = true;
+            continue;
+          }
+
+          const unit = nextUnits[unitIdx];
+          if (!unit.alive) {
+            runtime.stopped = true;
+            continue;
+          }
+          appendExecuteEvent(createMoveStartTimelineEvent(runtime.action, unit.name, 'planned_execute'));
+          runtime.started = true;
+          startedThisStep = true;
+        }
+
+        for (const runtime of runtimes) {
+          if (runtime.stopped || runtime.tilesMoved >= runtime.pathToTravel.length || !runtime.started) continue;
+          if (getRuntimeStepArrivalMs(runtime) > executeClockMs + 0.5) continue;
+
+          const unitIdx = nextUnits.findIndex((unit) => unit.id === runtime.action.unitId);
+          if (unitIdx === -1) {
+            runtime.stopped = true;
+            continue;
+          }
+
+          const unit = nextUnits[unitIdx];
+          if (!unit.alive) {
+            runtime.stopped = true;
+            continue;
+          }
+          const destination = runtime.pathToTravel[runtime.tilesMoved];
           const dx = destination.x - unit.position.x;
           const dy = destination.y - unit.position.y;
           const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1148,7 +2585,14 @@ export const useGameStore = create<GameStore>((set, get) => {
             hasMoved: true,
             facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
           };
-          runtime.tilesMoved = step + 1;
+          runtime.tilesMoved += 1;
+          appendExecuteEvent(createMovementBeatTimelineEvent(
+            runtime.action,
+            unit.name,
+            executeClockMs,
+            destination,
+            mapData.grid[destination.y]?.[destination.x]?.label ?? `tile ${destination.x},${destination.y}`
+          ));
           movedThisStep = true;
         }
 
@@ -1162,7 +2606,8 @@ export const useGameStore = create<GameStore>((set, get) => {
               intensity: 0.75,
             }),
           });
-          await wait(EXECUTION_STEP_MS);
+        } else if (!startedThisStep && !Number.isFinite(nextEventAtMs)) {
+          break;
         }
 
         for (const runtime of runtimes) {
@@ -1180,11 +2625,15 @@ export const useGameStore = create<GameStore>((set, get) => {
             runtime.stopped = true;
             continue;
           }
+          if (attacker.ammoInClip <= 0) continue;
 
-          const reactionPreview = getShotPreview(mapData, attacker, unit, runtime.crossedAngle.aimBonus, runtime.contactTile, state.smokes);
+          const reactionPreview = getShotPreview(mapData, attacker, unit, runtime.crossedAngle.aimBonus, runtime.contactTile, nextSmokes);
           if (reactionPreview.hasLineOfSight && reactionPreview.inRange) {
-            contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, state.smokes);
+            contactEvent = resolveReactionFire(mapData, attacker, unit, runtime.contactTile, runtime.crossedAngle, nextSmokes);
             consumedHeldAngleId = runtime.crossedAngle.id;
+            const beat = getPlannedActionBeat(runtime.action);
+            contactBeatTimeMs = executeClockMs;
+            contactPhaseLabel = beat.phaseLabel;
             const targetIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (targetIdx !== -1 && contactEvent.hit) {
               const newHp = Math.max(0, nextUnits[targetIdx].hp - contactEvent.damage);
@@ -1193,6 +2642,16 @@ export const useGameStore = create<GameStore>((set, get) => {
                 ...nextUnits[targetIdx],
                 hp: newHp,
                 alive: newHp > 0,
+                hasBomb: newHp > 0 ? nextUnits[targetIdx].hasBomb : false,
+              };
+            }
+            const attackerIdx = nextUnits.findIndex((candidate) => candidate.id === attacker.id);
+            if (attackerIdx !== -1) {
+              nextUnits = [...nextUnits];
+              nextUnits[attackerIdx] = {
+                ...nextUnits[attackerIdx],
+                ammoInClip: Math.max(0, nextUnits[attackerIdx].ammoInClip - 1),
+                shotsFiredThisTurn: nextUnits[attackerIdx].shotsFiredThisTurn + 1,
               };
             }
             runtime.stopped = true;
@@ -1201,6 +2660,15 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
 
         if (contactEvent) break;
+      }
+
+      if (!contactEvent && runtimes.some((runtime) => runtime.tilesMoved > 0)) {
+        const stopBraceMs = Math.max(
+          ...runtimes
+            .filter((runtime) => runtime.tilesMoved > 0)
+            .map((runtime) => getMovementTimingProfile(runtime.visualIntent).stopBraceMs)
+        );
+        await wait(stopBraceMs);
       }
 
       for (const runtime of runtimes) {
@@ -1220,29 +2688,55 @@ export const useGameStore = create<GameStore>((set, get) => {
         };
       }
 
-      let nextRound = round;
-      let nextSmokes = state.smokes;
-      let selectedUnitId = contactEvent
-        ? (nextUnits.find((unit) => unit.id === contactEvent!.targetId && unit.alive)?.id ?? getFirstAvailableUnitId(nextUnits, round.activeTeam))
-        : getFirstAvailableUnitId(nextUnits, round.activeTeam);
-      if (!contactEvent && selectedUnitId === null) {
-        const advanced = advanceTurn(round, nextUnits, state.smokes);
+      let nextRound = applyEliminationOutcome(applyBombDrop(round, nextUnits), nextUnits);
+      let selectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : contactEvent
+          ? (nextUnits.find((unit) => unit.id === contactEvent!.targetId && unit.alive)?.id ?? getFirstAvailableUnitId(nextUnits, round.activeTeam))
+          : getFirstAvailableUnitId(nextUnits, round.activeTeam);
+      if (nextRound.phase !== 'roundend' && !contactEvent && selectedUnitId === null) {
+        const advanced = advanceTurn(round, nextUnits, nextSmokes);
         nextUnits = advanced.units;
         nextRound = advanced.round;
         nextSmokes = advanced.smokes;
         selectedUnitId = getFirstAvailableUnitId(nextUnits, nextRound.activeTeam);
       }
 
-      selectedUnitId = getPreferredSelection(
-        nextUnits,
-        nextRound,
-        contactEvent ? selectedUnitId : get().selectedUnitId,
-        selectedUnitId
-      );
+      selectedUnitId = nextRound.phase === 'roundend'
+        ? null
+        : getPreferredSelection(
+          nextUnits,
+          nextRound,
+          contactEvent ? selectedUnitId : get().selectedUnitId,
+          selectedUnitId
+        );
       const movement = getMovementForSelection(nextUnits, selectedUnitId, mapData, nextRound);
       const combatLog = contactEvent
         ? [contactEvent, ...state.combatLog].slice(0, 8)
         : state.combatLog;
+      const executeInterrupt = contactEvent
+        ? createExecuteInterrupt({
+          event: contactEvent,
+          map: mapData,
+          units: nextUnits,
+          round: nextRound,
+          smokes: nextSmokes,
+          source: 'planned_execute',
+          beatTimeMs: contactBeatTimeMs,
+          phaseLabel: contactPhaseLabel,
+          timelineEvents: executeTimeline.events,
+        })
+        : null;
+      const finalExecuteTimelineEvents = executeInterrupt
+        ? [...executeTimeline.events, ...executeInterrupt.timelineEvents.filter((event) => (
+          !executeTimeline.events.some((existingEvent) => existingEvent.id === event.id)
+        ))]
+        : executeTimeline.events;
+      const finalExecuteTimeline: ExecuteTimeline = {
+        ...executeTimeline,
+        status: contactEvent ? 'interrupted' : 'completed',
+        events: sortExecuteTimelineEvents(finalExecuteTimelineEvents),
+      };
 
       set({
         units: nextUnits,
@@ -1254,23 +2748,39 @@ export const useGameStore = create<GameStore>((set, get) => {
         pathPreview: [],
         plannedActions: [],
         isExecuting: false,
+        currentExecuteTimeline: null,
+        movementRoutes: [],
+        lastExecuteTimeline: finalExecuteTimeline,
         inputMode: contactEvent ? 'shoot' : 'move',
         heldAngles: state.heldAngles.filter((angle) => (
           !movingUnitIds.has(angle.unitId) &&
           angle.id !== consumedHeldAngleId
         )),
         smokes: nextSmokes,
+        flashBursts: nextFlashBursts,
         combatLog,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+        executeInterrupt,
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'move_complete', {
           team: round.activeTeam,
           intensity: contactEvent ? 1.2 : 1,
-        }),
+        }), round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     clearPlannedActions: () => {
       set({ plannedActions: [], pathPreview: [] });
+    },
+
+    setPlannedActionTiming: (actionId, executeAtMs) => {
+      if (get().isExecuting) return;
+      set((state) => ({
+        plannedActions: state.plannedActions.map((action) => (
+          action.id === actionId
+            ? { ...action, executeAtMs: clampExecuteAtMs(action.kind, executeAtMs) }
+            : action
+        )),
+      }));
     },
 
     setPlanningMode: (enabled) => {
@@ -1280,6 +2790,43 @@ export const useGameStore = create<GameStore>((set, get) => {
         plannedActions: enabled ? get().plannedActions : [],
         inputMode: 'move',
         pathPreview: [],
+      });
+    },
+
+    applyMetaDefaultSetup: () => {
+      const state = get();
+      if (state.isExecuting || state.round.phase !== 'setup') return;
+
+      const result = applyMetaDefault(state.map, state.units, state.round.activeTeam);
+      const selectedUnitId = isUnitSelectable(result.units, state.round.activeTeam, state.selectedUnitId)
+        ? state.selectedUnitId
+        : null;
+      const movement = getMovementForSelection(result.units, selectedUnitId, state.map, state.round);
+
+      set({
+        units: result.units,
+        selectedUnitId,
+        hoveredTile: null,
+        movementTiles: movement.movementTiles,
+        walkableTiles: movement.walkableTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        inputMode: 'move',
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        guidanceEvent: createGuidanceEvent(
+          `Applied ${result.metaDefault.id}`,
+          result.spawnSummary,
+          'hint'
+        ),
+        feedbackEvents: appendFeedback(state.feedbackEvents, 'select_unit', {
+          team: state.round.activeTeam,
+          unitId: selectedUnitId ?? undefined,
+          intensity: 0.8,
+        }),
       });
     },
 
@@ -1328,19 +2875,20 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: nextRound,
         selectedUnitId: nextSelectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles,
         walkableTiles,
         pathPreview: [],
         inputMode: 'move',
         smokes: nextSmokes,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'turn_change', {
           team: nextRound.activeTeam,
           unitId: unit.id,
           intensity: 0.8,
-        }),
+        }), round, nextRound),
       });
-      if (nextRound.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (nextRound.activeTeam === 'CT' && nextRound.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     endTurn: () => {
@@ -1364,6 +2912,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: advanced.units,
         round: advanced.round,
         selectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         walkableTiles,
         movementTiles,
@@ -1373,12 +2922,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         smokes: advanced.smokes,
         aiStatus: null,
-        feedbackEvents: appendFeedback(state.feedbackEvents, 'turn_change', {
+        feedbackEvents: appendBombTickFeedback(appendFeedback(state.feedbackEvents, 'turn_change', {
           team: advanced.round.activeTeam,
           intensity: 1,
-        }),
+        }), state.round, advanced.round),
       });
-      if (advanced.round.activeTeam === 'CT') maybeRunCtAiTurn();
+      if (advanced.round.activeTeam === 'CT' && advanced.round.phase !== 'roundend') maybeRunCtAiTurn();
     },
 
     runCtAiTurn: async () => {
@@ -1394,6 +2943,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       set({
         isExecuting: true,
+        executeInterrupt: null,
         aiStatus: { team: 'CT', message: 'CT reading the map' },
         selectedUnitId: null,
         hoveredTile: null,
@@ -1441,6 +2991,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (bestShot && bestShot.preview.hitChance >= 25) {
           const targetIdx = nextUnits.findIndex((candidate) => candidate.id === bestShot.target.id);
           if (targetIdx !== -1) {
+            const shotApCost = getWeaponShotApCost(unit.weapon);
             const event = resolveShot(mapData, unit, bestShot.target, bestShot.target.position, 0, 'direct_fire', nextSmokes);
             const distance = tileDistance(unit.position, bestShot.target.position);
             const newTargetHp = event.hit ? Math.max(0, nextUnits[targetIdx].hp - event.damage) : nextUnits[targetIdx].hp;
@@ -1450,10 +3001,12 @@ export const useGameStore = create<GameStore>((set, get) => {
               ...nextUnits[targetIdx],
               hp: newTargetHp,
               alive: newTargetHp > 0,
+              hasBomb: newTargetHp > 0 ? nextUnits[targetIdx].hasBomb : false,
             };
             nextUnits[unitIdx] = {
               ...unit,
-              ap: 0,
+              ap: Math.max(0, unit.ap - shotApCost),
+              ammoInClip: Math.max(0, unit.ammoInClip - 1),
               shotsFiredThisTurn: unit.shotsFiredThisTurn + 1,
               hasMoved: true,
               facing: {
@@ -1485,8 +3038,29 @@ export const useGameStore = create<GameStore>((set, get) => {
         if (destination && (destination.x !== unit.position.x || destination.y !== unit.position.y)) {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
+          const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+          const visualIntent: MovementPresentationIntent = round.phase === 'setup'
+            ? 'fast_reposition'
+            : 'move_to_hold_target';
+          const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
+          const aiHoldTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
+          const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
+            timingPath: visualRoutePath,
+            syncToVisualTiming: true,
+            visualIntent,
+            visualAimTarget: aiHoldTarget,
+          });
+          set({ movementRoutes: [movementRoute] });
 
-          for (const step of pathToTravel) {
+          let previousArrivalMs = 0;
+          for (let stepIndex = 0; stepIndex < pathToTravel.length; stepIndex += 1) {
+            const step = pathToTravel[stepIndex];
+            const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+              Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, pathToTravel.length)));
+            const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+            if (waitMs > 0) await wait(waitMs);
+            previousArrivalMs = arrivalMs;
+
             unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
             if (unitIdx === -1) break;
 
@@ -1515,7 +3089,10 @@ export const useGameStore = create<GameStore>((set, get) => {
                 intensity: 0.55,
               }),
             });
-            await wait(AI_EXECUTION_STEP_MS);
+          }
+
+          if (pathToTravel.length > 0) {
+            await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
           }
 
           unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
@@ -1533,7 +3110,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           unit = nextUnits[unitIdx];
         }
 
-        if (round.phase !== 'setup' && unit.ap > 0) {
+        if (round.phase !== 'setup' && unit.ap > 0 && unit.ammoInClip > 0) {
           const holdTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
           const maxTiles = Math.max(4, Math.min(unit.weapon.rangeMax, 24));
           const laneTiles = getWatchedLane(mapData, unit.position, holdTarget, maxTiles);
@@ -1589,6 +3166,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         units: nextUnits,
         round: advanced.round,
         selectedUnitId,
+        executeInterrupt: null,
         hoveredTile: null,
         movementTiles: movement.movementTiles,
         walkableTiles: movement.walkableTiles,
@@ -1601,16 +3179,17 @@ export const useGameStore = create<GameStore>((set, get) => {
         smokes: nextSmokes,
         combatLog,
         aiStatus: null,
-        feedbackEvents: appendFeedback(get().feedbackEvents, 'ai_end', {
+        movementRoutes: [],
+        feedbackEvents: appendBombTickFeedback(appendFeedback(get().feedbackEvents, 'ai_end', {
           team: 'CT',
           intensity: 1,
-        }),
+        }), round, advanced.round),
       });
     },
 
     initGame: () => {
       const newMap = createInfernoMap();
-      const newUnits = createUnits();
+      const newUnits = createRoundUnits(newMap);
       set({
         map: newMap,
         units: newUnits,
@@ -1624,6 +3203,16 @@ export const useGameStore = create<GameStore>((set, get) => {
           bombTimer: RULES.bombTimerTurns,
           bombCarrierId: 0,
           roundTimer: RULES.roundTimeLimitTurns,
+          roundWinner: null,
+          winReason: null,
+        },
+        match: {
+          scoreT: 0,
+          scoreCT: 0,
+          currentRound: 1,
+          maxRounds: RULES.roundsPerHalf * 2,
+          isOvertime: false,
+          halfSwapped: false,
         },
         selectedUnitId: null,
         hoveredTile: null,
@@ -1636,8 +3225,67 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         heldAngles: [],
         smokes: [],
+        flashBursts: [],
         combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
+        aiStatus: null,
+      });
+    },
+
+    startNextRound: () => {
+      const state = get();
+      if (state.isExecuting) return;
+
+      const newMap = createInfernoMap();
+      const newUnits = createRoundUnits(newMap);
+      const winner = state.round.roundWinner;
+
+      set({
+        map: newMap,
+        units: newUnits,
+        round: {
+          phase: 'setup',
+          turn: 1,
+          activeTeam: 'T',
+          bombPlanted: false,
+          bombDefused: false,
+          bombPosition: null,
+          bombTimer: RULES.bombTimerTurns,
+          bombCarrierId: 0,
+          roundTimer: RULES.roundTimeLimitTurns,
+          roundWinner: null,
+          winReason: null,
+        },
+        match: {
+          ...state.match,
+          scoreT: state.match.scoreT + (winner === 'T' ? 1 : 0),
+          scoreCT: state.match.scoreCT + (winner === 'CT' ? 1 : 0),
+          currentRound: Math.min(state.match.currentRound + 1, state.match.maxRounds),
+        },
+        selectedUnitId: null,
+        hoveredTile: null,
+        walkableTiles: [],
+        movementTiles: [],
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles: [],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
@@ -1645,7 +3293,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     startContactDrill: () => {
       if (get().isExecuting) return;
       const mapData = createInfernoMap();
-      const nextUnits = createUnits();
+      const nextUnits = createUnits(mapData);
       const tEntryId = 0;
       const ctAnchorId = 5;
       const tStart = findNearestWalkable(mapData, { x: 43, y: 57 });
@@ -1692,6 +3340,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         bombTimer: RULES.bombTimerTurns,
         bombCarrierId: tEntryId,
         roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
       };
       const movement = getMovementForSelection(nextUnits, tEntryId, mapData, round);
 
@@ -1710,10 +3360,314 @@ export const useGameStore = create<GameStore>((set, get) => {
         inputMode: 'move',
         heldAngles: [heldAngle],
         smokes: [],
+        flashBursts: [],
         combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
         feedbackEvents: [],
+        guidanceEvent: null,
         aiStatus: null,
       });
     },
+
+    startDuelLab: () => {
+      if (get().isExecuting) return;
+      const mapData = createInfernoMap();
+      const tDuelistId = 0;
+      const ctDuelistId = 6;
+      const tStart = findNearestWalkable(mapData, { x: 43, y: 61 });
+      const ctStart = findNearestWalkable(mapData, { x: 43, y: 69 });
+      const baseUnits = createUnits(mapData);
+      const tDuelist = baseUnits.find((unit) => unit.id === tDuelistId);
+      const ctDuelist = baseUnits.find((unit) => unit.id === ctDuelistId);
+      if (!tDuelist || !ctDuelist) return;
+
+      const nextUnits: Unit[] = [
+        {
+          ...tDuelist,
+          hp: tDuelist.maxHp,
+          position: tStart,
+          ap: tDuelist.maxAp,
+          alive: true,
+          shotsFiredThisTurn: 0,
+          hasMoved: false,
+          hasBomb: true,
+          smokeGrenades: 1,
+          flashbangs: 1,
+          flashTurns: 0,
+          ammoInClip: tDuelist.weapon.clipSize,
+          reserveAmmo: tDuelist.weapon.clipSize * 3,
+          facing: { x: 0, y: 1 },
+        },
+        {
+          ...ctDuelist,
+          hp: ctDuelist.maxHp,
+          position: ctStart,
+          ap: ctDuelist.maxAp,
+          alive: true,
+          shotsFiredThisTurn: 0,
+          hasMoved: false,
+          hasBomb: false,
+          smokeGrenades: 0,
+          flashbangs: 0,
+          flashTurns: 0,
+          ammoInClip: ctDuelist.weapon.clipSize,
+          reserveAmmo: ctDuelist.weapon.clipSize * 3,
+          facing: { x: 0, y: -1 },
+        },
+      ];
+
+      const round: RoundState = {
+        phase: 'combat',
+        turn: RULES.setupPhaseTurns + 1,
+        activeTeam: 'T',
+        bombPlanted: false,
+        bombDefused: false,
+        bombPosition: null,
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: tDuelistId,
+        roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
+      };
+      const movement = getMovementForSelection(nextUnits, tDuelistId, mapData, round);
+
+      set({
+        map: mapData,
+        units: nextUnits,
+        round,
+        selectedUnitId: tDuelistId,
+        hoveredTile: null,
+        walkableTiles: movement.walkableTiles,
+        movementTiles: movement.movementTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles: [],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: [],
+        guidanceEvent: null,
+        aiStatus: null,
+      });
+    },
+
+    startMovementProof: async () => {
+      if (get().isExecuting) return;
+
+      const mapData = createInfernoMap();
+      const proof = findMovementProofPlan(mapData);
+      const baseUnits = createUnits(mapData);
+      const proofUnit = baseUnits.find((unit) => unit.id === MOVEMENT_PROOF_UNIT_ID) ??
+        baseUnits.find((unit) => unit.team === 'CT');
+      if (!proofUnit || proof.runPath.length === 0 || proof.strafePath.length === 0) return;
+      if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        window.__CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__ = proofUnit.id;
+        window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ = [];
+      }
+
+      let nextUnits: Unit[] = [{
+        ...proofUnit,
+        hp: proofUnit.maxHp,
+        position: { ...proof.start },
+        ap: proofUnit.maxAp,
+        alive: true,
+        shotsFiredThisTurn: 0,
+        hasMoved: false,
+        hasBomb: false,
+        smokeGrenades: 0,
+        flashbangs: 0,
+        flashTurns: 0,
+        ammoInClip: proofUnit.weapon.clipSize,
+        reserveAmmo: proofUnit.weapon.clipSize * 3,
+        facing: { ...proof.facing },
+      }];
+
+      const round: RoundState = {
+        phase: 'combat',
+        turn: RULES.setupPhaseTurns + 1,
+        activeTeam: 'CT',
+        bombPlanted: false,
+        bombDefused: false,
+        bombPosition: null,
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: null,
+        roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
+      };
+      const movement = getMovementForSelection(nextUnits, proofUnit.id, mapData, round);
+      set({
+        map: mapData,
+        units: nextUnits,
+        round,
+        selectedUnitId: proofUnit.id,
+        hoveredTile: null,
+        walkableTiles: movement.walkableTiles,
+        movementTiles: movement.movementTiles,
+        pathPreview: [],
+        planningMode: false,
+        plannedActions: [],
+        isExecuting: true,
+        inputMode: 'move',
+        heldAngles: [],
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: appendFeedback([], 'move_step', {
+          team: 'CT',
+          unitId: proofUnit.id,
+          intensity: 0.75,
+        }),
+        guidanceEvent: createGuidanceEvent(
+          'Movement Proof',
+          'Debug route: run forward, then strafe with aim locked.',
+          'hint'
+        ),
+        aiStatus: { team: 'CT', message: 'Movement proof running' },
+      });
+
+      const runProofLeg = async (
+        path: TileCoord[],
+        label: string,
+        visualIntent: MovementPresentationIntent
+      ): Promise<void> => {
+        if (path.length === 0) return;
+        const currentUnit = nextUnits.find((unit) => unit.id === proofUnit.id);
+        if (!currentUnit) return;
+
+        nextUnits = nextUnits.map((unit) => (
+          unit.id === proofUnit.id ? { ...unit, facing: { ...proof.facing } } : unit
+        ));
+        const visualRoutePath = [{ ...currentUnit.position }, ...path.map((tile) => ({ ...tile }))];
+        const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
+        const movementRoute = createMovementPresentationRoute(proofUnit.id, path, 'direct_move', 0, {
+          timingPath: visualRoutePath,
+          syncToVisualTiming: true,
+          visualIntent,
+          visualAimDirection: proof.facing,
+        });
+        set({
+          units: nextUnits,
+          movementRoutes: [movementRoute],
+          aiStatus: { team: 'CT', message: `Movement proof: ${label}` },
+        });
+
+        let previousArrivalMs = 0;
+        for (let stepIndex = 0; stepIndex < path.length; stepIndex += 1) {
+          const step = path[stepIndex];
+          const arrivalMs = routeTiming.arrivalTimesMs[stepIndex + 1] ??
+            Math.round(routeTiming.durationMs * ((stepIndex + 1) / Math.max(1, path.length)));
+          const waitMs = Math.max(0, arrivalMs - previousArrivalMs);
+          if (waitMs > 0) await wait(waitMs);
+          previousArrivalMs = arrivalMs;
+
+          const unit = nextUnits.find((candidate) => candidate.id === proofUnit.id);
+          if (!unit) return;
+          const dx = step.x - unit.position.x;
+          const dy = step.y - unit.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          nextUnits = nextUnits.map((candidate) => (
+            candidate.id === proofUnit.id
+              ? {
+                  ...candidate,
+                  position: { ...step },
+                  hasMoved: true,
+                  facing: { x: Math.round(dx / len), y: Math.round(dy / len) },
+                }
+              : candidate
+          ));
+          set({
+            units: nextUnits,
+            selectedUnitId: proofUnit.id,
+            feedbackEvents: appendFeedback(get().feedbackEvents, 'move_step', {
+              team: 'CT',
+              unitId: proofUnit.id,
+              intensity: 0.65,
+            }),
+          });
+        }
+
+        await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
+        set({ movementRoutes: [] });
+      };
+
+      await runProofLeg(proof.runPath, 'run forward', 'fast_reposition');
+      await wait(180);
+      await runProofLeg(proof.strafePath, 'strafe with aim locked', 'cautious_hold_aim');
+
+      nextUnits = nextUnits.map((unit) => (
+        unit.id === proofUnit.id
+          ? { ...unit, ap: Math.max(0, unit.ap - 1), facing: { ...proof.facing } }
+          : unit
+      ));
+      const finalMovement = getMovementForSelection(nextUnits, proofUnit.id, mapData, round);
+      set({
+        units: nextUnits,
+        selectedUnitId: proofUnit.id,
+        walkableTiles: finalMovement.walkableTiles,
+        movementTiles: finalMovement.movementTiles,
+        movementRoutes: [],
+        isExecuting: false,
+        aiStatus: { team: 'CT', message: 'Movement proof complete' },
+        feedbackEvents: appendFeedback(get().feedbackEvents, 'move_complete', {
+          team: 'CT',
+          unitId: proofUnit.id,
+          intensity: 0.9,
+        }),
+      });
+
+      if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        const events = window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? [];
+        const proofSummary = createMovementProofSummary(events);
+        const poseSummary = MOVEMENT_PROOF_POSES
+          .map((pose) => `${pose}: ${proofSummary.posesSeen[pose] ? 'yes' : 'no'}`)
+          .join(', ');
+        const frameSummary = MOVEMENT_PROOF_POSES
+          .map((pose) => `${pose}: ${proofSummary.uniqueFramesByPose[pose] ?? 0}`)
+          .join(', ');
+        const durationSummary = Object.entries(proofSummary.routeDurations)
+          .map(([routeId, duration]) => `${routeId}: ${duration}ms`)
+          .join(', ');
+        const speedSummary = Object.entries(proofSummary.maxSpeedByIntent)
+          .map(([intent, speed]) => `${intent}: ${speed.toFixed(2)} tiles/s`)
+          .join(', ');
+        console.info(`[CS2 Tactics] Movement proof route durations: ${durationSummary || 'none'}`);
+        console.info(`[CS2 Tactics] Movement proof max speed by intent: ${speedSummary}`);
+        console.info(`[CS2 Tactics] Movement proof poses seen: ${poseSummary}`);
+        console.info(`[CS2 Tactics] Movement proof unique frames: ${frameSummary}`);
+      }
+    },
   };
 });
+
+declare global {
+  interface Window {
+    __CS_TACTICS_STORE__?: typeof useGameStore;
+    __CS_TACTICS_START_MOVEMENT_PROOF__?: () => Promise<void>;
+    __CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__?: () => MovementProofSummary;
+    __CS_TACTICS_MOVEMENT_PROOF_ACTIVE_UNIT_ID__?: number;
+    __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: MovementProofEvent[];
+  }
+}
+
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  window.__CS_TACTICS_STORE__ = useGameStore;
+  window.__CS_TACTICS_START_MOVEMENT_PROOF__ = () => useGameStore.getState().startMovementProof();
+  window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__ = () => (
+    createMovementProofSummary(window.__CS_TACTICS_MOVEMENT_PROOF_EVENTS__ ?? [])
+  );
+}

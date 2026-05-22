@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="tDown" x1="72" y1="116" x2="170" y2="176" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffcc8b"/>
+      <stop offset="0.43" stop-color="#bd482a"/>
+      <stop offset="1" stop-color="#3b0d08"/>
+    </linearGradient>
+    <filter id="softShadow" x="24" y="142" width="208" height="70" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+  <ellipse cx="128" cy="178" rx="82" ry="24" fill="#140301" opacity="0.5" filter="url(#softShadow)" transform="rotate(-10 128 178)"/>
+  <path d="M61 159L138 129L181 146L105 181Z" fill="url(#tDown)"/>
+  <path d="M91 151L139 134L155 143L105 164Z" fill="#401008" opacity="0.76"/>
+  <circle cx="72" cy="159" r="22" fill="#b97745"/>
+  <path d="M49 155C54 137 77 130 94 139C79 142 63 148 49 155Z" fill="#f5a84f"/>
+  <path d="M104 177L153 162L161 177L114 192Z" fill="#1d0805"/>
+  <path d="M138 133L190 109L198 119L149 148Z" fill="#1b0704"/>
+  <path d="M179 108L236 91L240 101L184 120Z" fill="#020101"/>
+  <path d="M55 178L85 170L101 184L64 196Z" fill="#070201"/>
+  <path d="M149 150L199 151L207 166L158 166Z" fill="#070201"/>
+  <path d="M105 132L130 124L137 137L111 147Z" fill="#f3b162"/>
+</svg>

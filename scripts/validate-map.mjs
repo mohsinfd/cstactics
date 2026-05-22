@@ -147,6 +147,27 @@ function tilesWithLabel(map, label) {
   return tiles;
 }
 
+function tilesAdjacentToCover(map, label) {
+  const coverObjects = map.coverObjects.filter((cover) => cover.label === label);
+  const adjacent = new Map();
+
+  for (const cover of coverObjects) {
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        for (const [dx, dy] of DIRS) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const tile = map.grid[ny]?.[nx];
+          if (!tile?.walkable) continue;
+          adjacent.set(tileKey(nx, ny), { x: nx, y: ny });
+        }
+      }
+    }
+  }
+
+  return [...adjacent.values()];
+}
+
 function shortestPath(map, start, goals) {
   const goalKeys = new Set(goals.map((goal) => tileKey(goal.x, goal.y)));
   const startKey = tileKey(start.x, start.y);
@@ -178,6 +199,20 @@ function shortestPath(map, start, goals) {
   }
 
   return { distance: null, path: [] };
+}
+
+function shortestPathFromAny(map, starts, goals) {
+  const startTiles = Array.isArray(starts) ? starts : [starts];
+  let best = { distance: null, path: [] };
+
+  for (const start of startTiles) {
+    if (!start || !map.grid[start.y]?.[start.x]?.walkable) continue;
+    const route = shortestPath(map, start, goals);
+    if (route.distance === null) continue;
+    if (best.distance === null || route.distance < best.distance) best = route;
+  }
+
+  return best;
 }
 
 const TILE_COLORS = {
@@ -304,6 +339,66 @@ function renderPng(map, routes) {
   return PNG.sync.write(png);
 }
 
+function getCoverPlacementWarnings(map) {
+  const warnings = [];
+
+  for (const cover of map.coverObjects) {
+    const expectedType = cover.coverType === 'half' ? 'cover_half' : 'cover_full';
+
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        const tile = map.grid[y]?.[x];
+        if (!tile) {
+          warnings.push(`${cover.label} includes out-of-bounds tile ${x},${y}.`);
+          continue;
+        }
+
+        if (tile.type !== expectedType) {
+          warnings.push(
+            `${cover.label} tile ${x},${y} resolves to ${tile.type}; expected ${expectedType}.`
+          );
+        }
+      }
+    }
+  }
+
+  return warnings;
+}
+
+function getCoverAdjacencyWarnings(map) {
+  const warnings = [];
+  const bananaCoverLabels = ['Banana Car', 'Logs', 'Sandbags', 'Half Wall'];
+
+  for (const label of bananaCoverLabels) {
+    const adjacentTiles = tilesAdjacentToCover(map, label);
+    if (adjacentTiles.length < 2) {
+      warnings.push(`${label} has only ${adjacentTiles.length} adjacent walkable tile(s).`);
+    }
+  }
+
+  return warnings;
+}
+
+function getRouteSanityWarnings(routes) {
+  const warnings = [];
+  const distance = (routeName) => routes[routeName]?.distance;
+  const expectBefore = (earlier, later, reason) => {
+    const earlierDistance = distance(earlier);
+    const laterDistance = distance(later);
+    if (earlierDistance === null || laterDistance === null) return;
+    if (earlierDistance > laterDistance) {
+      warnings.push(`${earlier} (${earlierDistance}) should be before ${later} (${laterDistance}): ${reason}.`);
+    }
+  };
+
+  expectBefore('T_to_Banana_Car', 'T_to_Banana_Logs', 'lower Banana should route around car into logs');
+  expectBefore('T_to_Banana_Logs', 'T_to_Banana_Sandbags', 'logs should stage before the top-Banana sandbags pocket');
+  expectBefore('T_to_Banana_Sandbags', 'T_to_B', 'sandbags should be reached before the B plant area');
+  expectBefore('T_to_Top_Banana', 'T_to_B', 'top Banana should be reached before the B plant area');
+
+  return warnings;
+}
+
 function summarize() {
   const map = loadInfernoMap();
   const counts = {};
@@ -322,6 +417,11 @@ function summarize() {
     T_to_B: [map.spawns.T[0], tilesInBox(map, map.plantZones.B)],
     CT_to_A: [map.spawns.CT[0], tilesInBox(map, map.plantZones.A)],
     CT_to_B: [map.spawns.CT[0], tilesInBox(map, map.plantZones.B)],
+    T_to_Banana_Car: [map.spawns.T, tilesAdjacentToCover(map, 'Banana Car')],
+    T_to_Banana_Logs: [map.spawns.T, tilesAdjacentToCover(map, 'Logs')],
+    T_to_Banana_Sandbags: [map.spawns.T, tilesAdjacentToCover(map, 'Sandbags')],
+    CT_to_Banana_Sandbags: [map.spawns.CT, tilesAdjacentToCover(map, 'Sandbags')],
+    Top_Banana_to_B_Site: [tilesWithLabel(map, 'Top Banana'), tilesInBox(map, map.plantZones.B)],
     T_to_Top_Banana: [map.spawns.T[0], tilesWithLabel(map, 'Top Banana')],
     CT_to_Coffins: [map.spawns.CT[0], tilesWithLabel(map, 'Coffins')],
     T_to_A_Short: [map.spawns.T[0], tilesWithLabel(map, 'A Short')],
@@ -330,13 +430,22 @@ function summarize() {
   };
 
   const routes = Object.fromEntries(
-    Object.entries(routeTargets).map(([name, [start, goals]]) => [
+    Object.entries(routeTargets).map(([name, [starts, goals]]) => [
       name,
-      shortestPath(map, start, goals),
+      shortestPathFromAny(map, starts, goals),
     ])
   );
 
   const components = getConnectedComponents(map);
+  const coverWarnings = getCoverPlacementWarnings(map);
+  const coverAdjacencyWarnings = getCoverAdjacencyWarnings(map);
+  const routeSanityWarnings = getRouteSanityWarnings(routes);
+  const coverAdjacency = Object.fromEntries(
+    ['Banana Car', 'Logs', 'Sandbags', 'Half Wall', 'Coffins', 'First Oranges', 'Second Oranges'].map((label) => [
+      label,
+      tilesAdjacentToCover(map, label).length,
+    ])
+  );
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(outputPath, renderSvg(map, routes));
   fs.writeFileSync(outputPngPath, renderPng(map, routes));
@@ -355,6 +464,10 @@ function summarize() {
     routes: Object.fromEntries(
       Object.entries(routes).map(([name, route]) => [name, route.distance])
     ),
+    coverAdjacency,
+    coverPlacementWarnings: coverWarnings.length,
+    coverAdjacencyWarnings: coverAdjacencyWarnings.length,
+    routeSanityWarnings: routeSanityWarnings.length,
     output: {
       svg: path.relative(root, outputPath),
       png: path.relative(root, outputPngPath),
@@ -373,6 +486,21 @@ function summarize() {
       console.warn(`Map warning: ${name} has no route.`);
       process.exitCode = 1;
     }
+  }
+
+  for (const warning of coverWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
+  }
+
+  for (const warning of coverAdjacencyWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
+  }
+
+  for (const warning of routeSanityWarnings) {
+    console.warn(`Map warning: ${warning}`);
+    process.exitCode = 1;
   }
 }
 

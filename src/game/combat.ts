@@ -1,20 +1,24 @@
 import { RULES } from './config/rules';
 import { hasLineOfSight } from './los';
-import type { CombatEvent, CoverLabel, CoverState, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
+import type { CombatEvent, CoverLabel, CoverQuality, CoverState, HeldAngle, MapData, SmokeCloud, TileCoord, Unit } from './types';
 
 export interface ShotPreview {
   hasLineOfSight: boolean;
   inRange: boolean;
   distance: number;
   hitChance: number;
+  critChance: number;
+  critDamage: number;
   damage: number;
   baseAim: number;
   weaponAim: number;
   aimBonus: number;
   rangePenalty: number;
   coverPenalty: number;
+  flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
   staticCoverPenalty: number;
   directionalCoverPenalty: number;
   unclampedHitChance: number;
@@ -27,6 +31,7 @@ export interface CoverProfile {
   effectiveCoverPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -65,34 +70,56 @@ function getCoverPenaltyAt(map: MapData, tile: TileCoord): number {
   return 0;
 }
 
-function getCoverDirections(attacker: TileCoord, target: TileCoord): TileCoord[] {
-  const dx = attacker.x - target.x;
-  const dy = attacker.y - target.y;
-  if (dx === 0 && dy === 0) return [];
+const CARDINAL_COVER_DIRECTIONS: TileCoord[] = [
+  { x: 0, y: -1 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+];
 
-  if (Math.abs(dx) > Math.abs(dy) * 1.35) {
-    return [{ x: Math.sign(dx), y: 0 }];
-  }
-
-  if (Math.abs(dy) > Math.abs(dx) * 1.35) {
-    return [{ x: 0, y: Math.sign(dy) }];
-  }
-
-  return [
-    { x: Math.sign(dx), y: 0 },
-    { x: 0, y: Math.sign(dy) },
-  ].filter((dir) => dir.x !== 0 || dir.y !== 0);
+interface DirectionalCoverResult {
+  penalty: number;
+  label: CoverLabel;
+  quality: CoverQuality;
 }
 
-export function getDirectionalCoverPenalty(
+function getDirectionalCover(
   map: MapData,
-  attackerTile: TileCoord,
-  targetTile: TileCoord
-): number {
-  return getCoverDirections(attackerTile, targetTile).reduce((best, dir) => {
-    const coverTile = { x: targetTile.x + dir.x, y: targetTile.y + dir.y };
-    return Math.max(best, getCoverPenaltyAt(map, coverTile));
-  }, 0);
+  attacker: TileCoord,
+  target: TileCoord
+): DirectionalCoverResult {
+  const dx = attacker.x - target.x;
+  const dy = attacker.y - target.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return { penalty: 0, label: 'open', quality: 'none' };
+
+  const facing = { x: dx / length, y: dy / length };
+  let weightedPenalty = 0;
+  let strongestRawPenalty = 0;
+  let directCover = false;
+
+  for (const dir of CARDINAL_COVER_DIRECTIONS) {
+    const facingDot = dir.x * facing.x + dir.y * facing.y;
+    if (facingDot < 0.38) continue;
+
+    const coverTile = { x: target.x + dir.x, y: target.y + dir.y };
+    const rawPenalty = getCoverPenaltyAt(map, coverTile);
+    if (rawPenalty <= 0) continue;
+
+    const isDirect = facingDot >= 0.82;
+    const angleWeight = isDirect ? 1 : 0.65;
+    weightedPenalty += rawPenalty * angleWeight;
+    strongestRawPenalty = Math.max(strongestRawPenalty, rawPenalty);
+    directCover ||= isDirect;
+  }
+
+  if (weightedPenalty <= 0) return { penalty: 0, label: 'open', quality: 'none' };
+
+  return {
+    penalty: Math.min(RULES.fullCoverAimPenalty, weightedPenalty),
+    label: getCoverLabel(strongestRawPenalty),
+    quality: directCover ? 'direct' : 'corner',
+  };
 }
 
 function getCoverLabel(coverPenalty: number): CoverLabel {
@@ -107,8 +134,8 @@ export function getCoverProfile(
   targetTile: TileCoord
 ): CoverProfile {
   const staticCoverPenalty = getStaticCoverPenalty(map, targetTile);
-  const directionalCoverPenalty = getDirectionalCoverPenalty(map, attackerTile, targetTile);
-  const coverState: CoverState = directionalCoverPenalty > 0
+  const directionalCover = getDirectionalCover(map, attackerTile, targetTile);
+  const coverState: CoverState = directionalCover.penalty > 0
     ? 'protected'
     : staticCoverPenalty > 0
       ? 'flanked'
@@ -116,10 +143,11 @@ export function getCoverProfile(
 
   return {
     staticCoverPenalty,
-    directionalCoverPenalty,
-    effectiveCoverPenalty: directionalCoverPenalty * 0.5,
-    coverLabel: getCoverLabel(directionalCoverPenalty),
+    directionalCoverPenalty: directionalCover.penalty,
+    effectiveCoverPenalty: directionalCover.penalty * 0.5,
+    coverLabel: directionalCover.label,
     coverState,
+    coverQuality: directionalCover.quality,
   };
 }
 
@@ -136,13 +164,15 @@ export function getShotPreview(
   const inRange = distance <= attacker.weapon.rangeMax;
   const rangePenalty = Math.max(0, distance - attacker.weapon.rangeOptimal) * 4;
   const cover = getCoverProfile(map, attacker.position, targetTile);
+  const flashPenalty = attacker.flashTurns > 0 ? RULES.flashAimPenalty : 0;
   const unclampedHitChance = Math.round(
     attacker.role.baseAim +
     attacker.weapon.baseAim -
     70 +
     aimBonus -
     rangePenalty -
-    cover.effectiveCoverPenalty
+    cover.effectiveCoverPenalty -
+    flashPenalty
   );
   const hitChance = clamp(
     unclampedHitChance,
@@ -153,23 +183,29 @@ export function getShotPreview(
     1,
     Math.round(attacker.weapon.baseDamage - Math.max(0, distance - attacker.weapon.rangeOptimal) * attacker.weapon.damageFalloffPerTile)
   );
+  const critDamage = Math.max(damage, attacker.weapon.critDamage);
   const reasons: string[] = [];
   if (!hasLos) reasons.push('No line of sight');
   if (!inRange) reasons.push('Out of range');
+  if (flashPenalty > 0) reasons.push('Attacker flashed');
 
   return {
     hasLineOfSight: hasLos,
     inRange,
     distance,
     hitChance,
+    critChance: attacker.weapon.critChance,
+    critDamage,
     damage,
     baseAim: attacker.role.baseAim,
     weaponAim: attacker.weapon.baseAim,
     aimBonus,
     rangePenalty,
     coverPenalty: cover.effectiveCoverPenalty,
+    flashPenalty,
     coverLabel: cover.coverLabel,
     coverState: cover.coverState,
+    coverQuality: cover.coverQuality,
     staticCoverPenalty: cover.staticCoverPenalty,
     directionalCoverPenalty: cover.directionalCoverPenalty,
     unclampedHitChance,
@@ -188,13 +224,30 @@ export function resolveShot(
 ): CombatEvent {
   const preview = getShotPreview(map, attacker, target, aimBonus, targetTile, smokes);
   const hit = Math.random() * 100 < preview.hitChance;
-  const damage = hit ? preview.damage : 0;
+  const critical = hit && Math.random() * 100 < preview.critChance;
+  const damage = hit ? (critical ? preview.critDamage : preview.damage) : 0;
+  const targetHpBefore = target.hp;
+  const targetHpAfter = hit ? Math.max(0, targetHpBefore - damage) : targetHpBefore;
+  const killed = targetHpBefore > 0 && targetHpAfter === 0;
   const coverText = preview.coverState === 'protected'
-    ? `${preview.coverLabel} cover`
+    ? preview.coverQuality === 'corner'
+      ? `${preview.coverLabel} corner`
+      : `${preview.coverLabel} cover`
     : preview.coverState;
-  const summary = hit
-    ? `${attacker.name} hits ${target.name} for ${damage} through ${coverText}`
-    : `${attacker.name} misses ${target.name} through ${coverText}`;
+  const flashText = preview.flashPenalty > 0 ? ' while flashed' : '';
+  const weaponText = attacker.weapon.name;
+  let summary: string;
+  if (killed && critical) {
+    summary = `${attacker.name} headshots and eliminates ${target.name} with ${weaponText} through ${coverText}${flashText}`;
+  } else if (killed) {
+    summary = `${attacker.name} eliminates ${target.name} with ${weaponText} through ${coverText}${flashText}`;
+  } else if (critical) {
+    summary = `${attacker.name} headshots ${target.name} for ${damage} with ${weaponText} through ${coverText}${flashText}`;
+  } else if (hit) {
+    summary = `${attacker.name} hits ${target.name} for ${damage} with ${weaponText} through ${coverText}${flashText}`;
+  } else {
+    summary = `${attacker.name} misses ${target.name} with ${weaponText} through ${coverText}${flashText}`;
+  }
 
   return {
     id: `${Date.now()}:${attacker.id}:${target.id}`,
@@ -204,14 +257,24 @@ export function resolveShot(
     targetId: target.id,
     attackerName: attacker.name,
     targetName: target.name,
+    weaponId: attacker.weapon.id,
+    weaponName: attacker.weapon.name,
+    weaponCategory: attacker.weapon.category,
     hitChance: preview.hitChance,
     hit,
+    critical,
+    critChance: preview.critChance,
     damage,
+    targetHpBefore,
+    targetHpAfter,
+    killed,
     distance: preview.distance,
     rangePenalty: preview.rangePenalty,
     coverPenalty: preview.coverPenalty,
+    flashPenalty: preview.flashPenalty,
     coverLabel: preview.coverLabel,
     coverState: preview.coverState,
+    coverQuality: preview.coverQuality,
     aimBonus,
     tile: { ...targetTile },
     summary,

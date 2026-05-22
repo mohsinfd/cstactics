@@ -1,0 +1,434 @@
+/*
+ * CS Tactics HUD skin.
+ * This layer intentionally preserves the existing inline layout and data-testid
+ * contracts while giving every HUD surface one shared tactical cockpit language.
+ */
+
+[data-testid="hud-root"] {
+  --hud-bg: rgba(6, 10, 16, 0.86);
+  --hud-bg-strong: rgba(8, 13, 21, 0.94);
+  --hud-border: rgba(169, 190, 225, 0.18);
+  --hud-border-hot: rgba(244, 196, 48, 0.45);
+  --hud-text: #eef3ff;
+  --hud-muted: #7f8899;
+  --hud-red: #ff5f78;
+  --hud-amber: #f4c430;
+  --hud-blue: #65b7ff;
+  --hud-green: #68e6a1;
+  --hud-panel-radius: 10px;
+  --hud-glass:
+    linear-gradient(145deg, rgba(16, 23, 35, 0.93), rgba(5, 8, 13, 0.91) 58%, rgba(9, 12, 18, 0.96));
+  --hud-glass-soft:
+    linear-gradient(145deg, rgba(18, 25, 38, 0.78), rgba(8, 11, 18, 0.76));
+  color: var(--hud-text);
+  isolation: isolate;
+}
+
+:where(
+  [data-testid="hud-selected-unit-panel"],
+  [data-testid="hud-command-bar"],
+  [data-testid="hud-execute-planner"],
+  [data-testid="hud-contact-break-panel"],
+  [data-testid="hud-execute-timeline-panel"],
+  [data-testid="hud-combat-log"],
+  [data-testid="hud-bomb-objective-panel"],
+  [data-testid="hud-movement-legend"],
+  [data-testid="hud-view-controls"],
+  [data-testid="hud-ai-status"],
+  [data-testid="hud-tile-info"]
+) {
+  position: absolute;
+  background: var(--hud-glass) !important;
+  border: 1px solid var(--hud-border) !important;
+  border-radius: var(--hud-panel-radius) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+}
+
+:where(
+  [data-testid="hud-selected-unit-panel"],
+  [data-testid="hud-command-bar"],
+  [data-testid="hud-execute-planner"],
+  [data-testid="hud-contact-break-panel"],
+  [data-testid="hud-execute-timeline-panel"],
+  [data-testid="hud-combat-log"],
+  [data-testid="hud-bomb-objective-panel"],
+  [data-testid="hud-movement-legend"],
+  [data-testid="hud-view-controls"],
+  [data-testid="hud-ai-status"],
+  [data-testid="hud-tile-info"]
+) > * {
+  position: relative;
+  z-index: 1;
+}
+
+:where(
+  [data-testid="hud-selected-unit-panel"],
+  [data-testid="hud-command-bar"],
+  [data-testid="hud-execute-planner"],
+  [data-testid="hud-contact-break-panel"],
+  [data-testid="hud-execute-timeline-panel"],
+  [data-testid="hud-combat-log"],
+  [data-testid="hud-bomb-objective-panel"],
+  [data-testid="hud-movement-legend"],
+  [data-testid="hud-view-controls"],
+  [data-testid="hud-ai-status"],
+  [data-testid="hud-tile-info"]
+)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.04)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%);
+  opacity: 0.58;
+  z-index: 0;
+}
+
+[data-testid="hud-top-bar"] {
+  top: 10px !important;
+  gap: 0;
+  filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.46));
+}
+
+[data-testid="hud-top-bar"] > div {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(18, 25, 38, 0.96), rgba(7, 10, 17, 0.96)) !important;
+  border: 1px solid rgba(190, 207, 236, 0.14);
+  border-bottom-width: 2px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+[data-testid="hud-top-bar"] > div:first-child {
+  background:
+    linear-gradient(135deg, rgba(214, 158, 23, 0.98), rgba(110, 75, 10, 0.96)) !important;
+  border-color: rgba(244, 196, 48, 0.58) !important;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+}
+
+[data-testid="hud-top-bar"] > div:nth-child(2) {
+  border-left: 0;
+  border-right: 0;
+  min-width: 158px !important;
+}
+
+[data-testid="hud-top-bar"] > div:last-child {
+  background:
+    linear-gradient(135deg, rgba(28, 70, 130, 0.98), rgba(14, 34, 75, 0.96)) !important;
+  border-color: rgba(101, 183, 255, 0.52) !important;
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+}
+
+[data-testid="hud-team-roster"] {
+  top: 82px !important;
+  padding: 4px !important;
+  gap: 5px !important;
+  background: linear-gradient(90deg, rgba(6, 9, 15, 0.66), rgba(18, 25, 37, 0.72), rgba(6, 9, 15, 0.66));
+  border: 1px solid rgba(190, 207, 236, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-testid="hud-team-roster"] > div {
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)) !important;
+  border-color: rgba(190, 207, 236, 0.16) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-testid="hud-command-bar"] {
+  bottom: 14px !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(90deg, rgba(7, 10, 16, 0.93), rgba(17, 23, 34, 0.96), rgba(7, 10, 16, 0.93)) !important;
+  border-color: rgba(244, 196, 48, 0.24) !important;
+  box-shadow:
+    0 22px 46px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-testid="hud-command-bar"] > div:first-child {
+  border-left: 3px solid rgba(244, 196, 48, 0.82);
+  padding-left: 10px;
+}
+
+:where(
+  [data-testid^="hud-command-"],
+  [data-testid^="hud-action-"],
+  [data-testid^="hud-visible-target-"],
+  [data-testid="hud-contact-trade-shot"],
+  [data-testid^="hud-camera-"]
+) {
+  border: 1px solid rgba(194, 211, 240, 0.22) !important;
+  border-radius: 7px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.42),
+    0 8px 18px rgba(0, 0, 0, 0.24) !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  transition:
+    border-color 120ms ease,
+    filter 120ms ease,
+    transform 120ms ease;
+}
+
+:where(
+  [data-testid^="hud-command-"],
+  [data-testid^="hud-action-"],
+  [data-testid^="hud-visible-target-"],
+  [data-testid="hud-contact-trade-shot"],
+  [data-testid^="hud-camera-"]
+):hover:not(:disabled) {
+  border-color: rgba(238, 244, 255, 0.42) !important;
+  transform: translateY(-1px);
+}
+
+:where(
+  [data-testid^="hud-command-"],
+  [data-testid^="hud-action-"],
+  [data-testid^="hud-visible-target-"],
+  [data-testid="hud-contact-trade-shot"],
+  [data-testid^="hud-camera-"]
+):disabled {
+  opacity: 0.48 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+[data-testid="hud-command-plan"] {
+  color: #fff5c8 !important;
+  border-color: rgba(244, 196, 48, 0.45) !important;
+}
+
+[data-testid="hud-command-plan"][aria-label="Planning execute mode is on"] {
+  color: #090d13 !important;
+  background: linear-gradient(180deg, #f8ce54, #c99109) !important;
+  border-color: rgba(255, 226, 123, 0.92) !important;
+  text-shadow: none;
+}
+
+[data-testid="hud-command-contact-drill"] {
+  min-width: 96px !important;
+  color: #d9aab4 !important;
+  border-color: rgba(255, 95, 120, 0.26) !important;
+  background: linear-gradient(180deg, rgba(255, 95, 120, 0.105), rgba(255, 95, 120, 0.025)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-testid="hud-command-duel-lab"] {
+  min-width: 86px !important;
+  color: #abe8c9 !important;
+  border-color: rgba(104, 230, 161, 0.24) !important;
+  background: linear-gradient(180deg, rgba(104, 230, 161, 0.095), rgba(104, 230, 161, 0.025)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+:where([data-testid="hud-command-end-side"], [data-testid="hud-command-run-execute"]) {
+  color: #07100b !important;
+  background: linear-gradient(180deg, #f8ce54, #c99109) !important;
+  border-color: rgba(255, 226, 123, 0.88) !important;
+  text-shadow: none;
+}
+
+[data-testid="hud-command-run-execute"] {
+  background: linear-gradient(180deg, #74f0a9, #24a968) !important;
+}
+
+[data-testid="hud-selected-unit-panel"] {
+  border-left: 4px solid rgba(244, 196, 48, 0.72) !important;
+}
+
+[data-testid="hud-selected-unit-panel"] > div:first-child {
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(190, 207, 236, 0.1);
+}
+
+[data-testid^="hud-visible-target-"] {
+  background: linear-gradient(180deg, rgba(255, 95, 120, 0.2), rgba(255, 95, 120, 0.07)) !important;
+  border-color: rgba(255, 95, 120, 0.42) !important;
+}
+
+[data-testid="hud-action-done"] {
+  border-color: rgba(244, 196, 48, 0.5) !important;
+  background: linear-gradient(180deg, rgba(244, 196, 48, 0.18), rgba(244, 196, 48, 0.055)) !important;
+}
+
+[data-testid="hud-contact-break-panel"] {
+  border-color: rgba(255, 95, 120, 0.38) !important;
+  border-left: 4px solid var(--hud-red) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.56),
+    0 0 26px rgba(255, 95, 120, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  scrollbar-color: rgba(255, 95, 120, 0.5) rgba(255, 255, 255, 0.04);
+  scrollbar-width: thin;
+}
+
+[data-testid="hud-contact-decision-call"] {
+  color: #ffb7c2 !important;
+  font-size: 14px !important;
+}
+
+[data-testid="hud-contact-timeline-item"] {
+  border-top-color: rgba(194, 211, 240, 0.12) !important;
+}
+
+[data-testid="hud-execute-planner"] {
+  border-color: rgba(244, 196, 48, 0.28) !important;
+}
+
+[data-testid="hud-execute-timeline-panel"] {
+  border-color: rgba(104, 230, 161, 0.32) !important;
+}
+
+[data-testid="hud-combat-log"] {
+  border-left: 4px solid var(--hud-red) !important;
+}
+
+[data-testid="hud-bomb-objective-panel"] {
+  border-color: rgba(255, 209, 102, 0.34) !important;
+}
+
+[data-testid="hud-view-controls"] {
+  padding: 6px !important;
+  gap: 6px !important;
+}
+
+[data-testid^="hud-camera-"] {
+  background: linear-gradient(180deg, rgba(208, 224, 255, 0.12), rgba(208, 224, 255, 0.035)) !important;
+}
+
+[data-testid="hud-tile-info"] {
+  border-color: rgba(104, 230, 161, 0.24) !important;
+}
+
+[data-testid="hud-map-label"] {
+  bottom: 54px !important;
+}
+
+[data-testid="hud-map-label"] > div:first-child {
+  color: rgba(238, 243, 255, 0.16) !important;
+  text-shadow: 0 0 22px rgba(101, 183, 255, 0.12);
+}
+
+[data-testid="hud-map-label"] > div:last-child {
+  color: rgba(244, 196, 48, 0.2) !important;
+}
+
+@media (max-width: 760px), (max-height: 640px) {
+  [data-testid="hud-top-bar"] {
+    top: 0 !important;
+  }
+
+  [data-testid="hud-top-bar"] > div:nth-child(2) {
+    min-width: 96px !important;
+  }
+
+  [data-testid="hud-team-roster"] {
+    top: 44px !important;
+    padding: 2px !important;
+    gap: 3px !important;
+  }
+
+  [data-testid="hud-command-bar"] {
+    bottom: 5px !important;
+    border-radius: 8px !important;
+  }
+
+  [data-testid="hud-view-controls"] {
+    padding: 3px !important;
+    gap: 3px !important;
+  }
+
+  [data-testid="hud-phase-announcement"] {
+    display: none;
+  }
+
+  [data-testid="hud-command-bar"] > div:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  [data-testid="hud-selected-unit-panel"] {
+    border-left-width: 3px !important;
+  }
+
+  :where(
+    [data-testid^="hud-command-"],
+    [data-testid^="hud-action-"],
+    [data-testid^="hud-visible-target-"],
+    [data-testid="hud-contact-trade-shot"],
+    [data-testid^="hud-camera-"]
+  ) {
+    border-radius: 6px !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  }
+
+  [data-testid="hud-command-contact-drill"],
+  [data-testid="hud-command-duel-lab"] {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-height: 920px) {
+  [data-testid="hud-meta-setup-guide"],
+  [data-testid="hud-phase-announcement"],
+  [data-testid="hud-map-label"] {
+    display: none !important;
+  }
+
+  [data-testid="hud-top-bar"] {
+    top: 0 !important;
+    transform: translateX(-50%) scale(0.86) !important;
+    transform-origin: top center;
+  }
+
+  [data-testid="hud-top-bar"] > div:nth-child(2) {
+    min-width: 118px !important;
+  }
+
+  [data-testid="hud-team-roster"] {
+    top: 44px !important;
+    padding: 2px !important;
+    gap: 3px !important;
+    transform: translateX(-50%) scale(0.9) !important;
+    transform-origin: top center;
+  }
+
+  [data-testid="hud-next-action-panel"] {
+    max-width: 330px !important;
+  }
+
+  [data-testid="hud-command-bar"] {
+    bottom: 5px !important;
+    max-width: 500px !important;
+    border-radius: 8px !important;
+  }
+
+  [data-testid="hud-view-controls"] {
+    padding: 3px !important;
+    gap: 3px !important;
+  }
+
+  :where(
+    [data-testid^="hud-command-"],
+    [data-testid^="hud-action-"],
+    [data-testid^="hud-visible-target-"],
+    [data-testid="hud-contact-trade-shot"],
+    [data-testid^="hud-camera-"]
+  ) {
+    border-radius: 5px !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  }
+}

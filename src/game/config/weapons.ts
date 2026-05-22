@@ -1,5 +1,5 @@
 // Ported from CS2_WeaponData.ini — all values preserved exactly.
-import type { WeaponData } from '../types';
+import type { RoleId, Team, WeaponData } from '../types';
 
 export const WEAPONS: Record<string, WeaponData> = {
   ak47: {
@@ -76,4 +76,33 @@ export const WEAPONS: Record<string, WeaponData> = {
 
 export function getDefaultWeapon(team: 'T' | 'CT'): WeaponData {
   return team === 'T' ? WEAPONS.glock : WEAPONS.usp;
+}
+
+const ROLE_LOADOUTS: Record<Team, Record<RoleId, string>> = {
+  T: {
+    awper: 'awp',
+    entry: 'ak47',
+    igl: 'galil',
+    support: 'galil',
+    lurker: 'ak47',
+  },
+  CT: {
+    awper: 'awp',
+    entry: 'm4a4',
+    igl: 'm4a4',
+    support: 'famas',
+    lurker: 'm4a4',
+  },
+};
+
+export function getDefaultWeaponForRole(team: Team, roleId: RoleId): WeaponData {
+  return WEAPONS[ROLE_LOADOUTS[team][roleId]] ?? getDefaultWeapon(team);
+}
+
+export function getWeaponShotApCost(weapon: WeaponData): number {
+  if (weapon.category === 'pistol' || weapon.category === 'smg' || weapon.category === 'melee') {
+    return 1;
+  }
+
+  return 2;
 }

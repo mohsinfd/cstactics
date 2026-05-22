@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "name": "Banana to B Site Whitebox Slice",
+  "size": { "width": 30, "depth": 30 },
+  "origin": { "x": -15, "y": 5, "z": -15 },
+  "floors": [
+    { "id": "t_spawn_entry", "surface": "spawn_t", "x": 12, "z": 0, "w": 6, "d": 5 },
+    { "id": "banana_lane", "surface": "floor", "x": 12, "z": 4, "w": 5, "d": 10 },
+    { "id": "top_banana", "surface": "floor", "x": 9, "z": 12, "w": 9, "d": 5 },
+    { "id": "b_site", "surface": "site_b", "x": 5, "z": 16, "w": 17, "d": 11 },
+    { "id": "coffins_pocket", "surface": "floor", "x": 2, "z": 21, "w": 5, "d": 6 },
+    { "id": "ct_lane", "surface": "spawn_ct", "x": 21, "z": 18, "w": 8, "d": 6 },
+    { "id": "construction_lip", "surface": "floor", "x": 18, "z": 23, "w": 7, "d": 4 }
+  ],
+  "walls": [
+    { "id": "banana_left_wall", "x": 10, "z": 1, "w": 2, "d": 12, "h": 4 },
+    { "id": "banana_right_wall", "x": 17, "z": 1, "w": 2, "d": 13, "h": 4 },
+    { "id": "top_banana_left_corner", "x": 7, "z": 12, "w": 3, "d": 5, "h": 4 },
+    { "id": "site_south_wall_left", "x": 4, "z": 15, "w": 7, "d": 1, "h": 4 },
+    { "id": "site_south_wall_right", "x": 15, "z": 15, "w": 8, "d": 1, "h": 4 },
+    { "id": "coffins_back_wall", "x": 1, "z": 20, "w": 1, "d": 8, "h": 4 },
+    { "id": "site_west_wall", "x": 3, "z": 16, "w": 1, "d": 5, "h": 4 },
+    { "id": "site_north_wall", "x": 4, "z": 27, "w": 20, "d": 2, "h": 4 },
+    { "id": "site_east_wall", "x": 22, "z": 15, "w": 2, "d": 10, "h": 4 },
+    { "id": "ct_back_wall", "x": 29, "z": 18, "w": 1, "d": 7, "h": 4 },
+    { "id": "construction_wall", "x": 24, "z": 23, "w": 4, "d": 1, "h": 4 },
+    { "id": "pillar_left", "x": 8, "z": 19, "w": 1, "d": 1, "h": 3 },
+    { "id": "pillar_right", "x": 20, "z": 18, "w": 1, "d": 1, "h": 3 }
+  ],
+  "props": [
+    { "id": "banana_car", "type": "crate", "x": 12, "z": 8, "w": 1, "d": 2, "h": 1 },
+    { "id": "logs", "type": "barrel", "x": 16, "z": 11, "w": 1, "d": 2, "h": 1 },
+    { "id": "sandbags", "type": "sandbag", "x": 11, "z": 14, "w": 3, "d": 1, "h": 1 },
+    { "id": "b_fountain", "type": "fountain", "x": 12, "z": 21, "w": 2, "d": 2, "h": 1 },
+    { "id": "coffins", "type": "coffin", "x": 3, "z": 23, "w": 1, "d": 3, "h": 1 },
+    { "id": "first_oranges", "type": "orange", "x": 18, "z": 19, "w": 1, "d": 2, "h": 2 },
+    { "id": "second_oranges", "type": "orange", "x": 19, "z": 22, "w": 1, "d": 2, "h": 2 },
+    { "id": "new_box", "type": "crate", "x": 7, "z": 18, "w": 2, "d": 1, "h": 1 },
+    { "id": "ct_crates", "type": "crate", "x": 24, "z": 20, "w": 2, "d": 2, "h": 1 },
+    { "id": "b_letter_marker", "type": "b_marker", "x": 7, "z": 20, "w": 1, "d": 1, "h": 1 }
+  ],
+  "units": [
+    { "id": "T_ENT", "team": "T", "role": "entry", "x": 14, "z": 2, "facing": { "x": 0, "z": 1 } },
+    { "id": "T_AWP", "team": "T", "role": "awper", "x": 16, "z": 2, "facing": { "x": 0, "z": 1 } },
+    { "id": "T_IGL", "team": "T", "role": "igl", "x": 13, "z": 3, "facing": { "x": 0, "z": 1 } },
+    { "id": "T_SUP", "team": "T", "role": "support", "x": 15, "z": 4, "facing": { "x": 0, "z": 1 } },
+    { "id": "T_LRK", "team": "T", "role": "lurker", "x": 16, "z": 3, "facing": { "x": -1, "z": 1 } },
+    { "id": "CT_ENT", "team": "CT", "role": "entry", "x": 26, "z": 21, "facing": { "x": -1, "z": -1 } },
+    { "id": "CT_AWP", "team": "CT", "role": "awper", "x": 20, "z": 24, "facing": { "x": -1, "z": -1 } },
+    { "id": "CT_IGL", "team": "CT", "role": "igl", "x": 17, "z": 25, "facing": { "x": -1, "z": -1 } },
+    { "id": "CT_SUP", "team": "CT", "role": "support", "x": 6, "z": 23, "facing": { "x": 1, "z": -1 } },
+    { "id": "CT_LRK", "team": "CT", "role": "lurker", "x": 10, "z": 18, "facing": { "x": 1, "z": -1 } }
+  ],
+  "tactical": {
+    "selectedUnit": "T_ENT",
+    "movePoints": 6,
+    "initialPath": [
+      { "x": 14, "z": 2 },
+      { "x": 14, "z": 3 },
+      { "x": 14, "z": 4 },
+      { "x": 14, "z": 5 },
+      { "x": 14, "z": 6 },
+      { "x": 14, "z": 7 },
+      { "x": 14, "z": 8 },
+      { "x": 14, "z": 9 },
+      { "x": 14, "z": 10 },
+      { "x": 14, "z": 11 },
+      { "x": 14, "z": 12 },
+      { "x": 14, "z": 13 },
+      { "x": 14, "z": 14 }
+    ],
+    "dangerCone": [
+      { "x": 13, "z": 12 }, { "x": 14, "z": 12 }, { "x": 15, "z": 12 },
+      { "x": 12, "z": 13 }, { "x": 13, "z": 13 }, { "x": 14, "z": 13 }, { "x": 15, "z": 13 }, { "x": 16, "z": 13 },
+      { "x": 14, "z": 14 }, { "x": 15, "z": 14 }, { "x": 16, "z": 14 },
+      { "x": 11, "z": 15 }, { "x": 12, "z": 15 }, { "x": 13, "z": 15 }, { "x": 14, "z": 15 },
+      { "x": 10, "z": 16 }, { "x": 11, "z": 16 }, { "x": 12, "z": 16 }, { "x": 13, "z": 16 }, { "x": 14, "z": 16 }, { "x": 15, "z": 16 }, { "x": 16, "z": 16 }
+    ]
+  }
+}

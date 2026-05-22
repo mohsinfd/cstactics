@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import type { CombatEvent, FeedbackEvent } from '../game/types';
+import { getShotPresentation } from '../game/shotPresentation';
+import { FEEDBACK_CUE_BUS, clampAudioIntensity, mixGain } from './audioPresentation';
 
 type AudioWindow = Window & typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
@@ -45,6 +47,44 @@ function playNoiseBurst(ctx: AudioContext, when: number, duration: number, gainV
   source.stop(when + duration);
 }
 
+function playFilteredNoiseBurst(
+  ctx: AudioContext,
+  when: number,
+  duration: number,
+  gainValue: number,
+  filterType: BiquadFilterType,
+  frequency: number
+): void {
+  const samples = Math.max(1, Math.floor(ctx.sampleRate * duration));
+  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < samples; i++) {
+    const progress = i / samples;
+    const attack = Math.min(1, progress / 0.08);
+    const decay = 1 - progress;
+    data[i] = (Math.random() * 2 - 1) * attack * decay * decay;
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = filterType;
+  filter.frequency.setValueAtTime(frequency, when);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(gainValue, when + 0.018);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(when);
+  source.stop(when + duration);
+}
+
 function playTone(
   ctx: AudioContext,
   when: number,
@@ -74,93 +114,231 @@ function playUiTick(ctx: AudioContext, when: number, frequency: number, gainValu
   playTone(ctx, when, frequency, 0.045, gainValue, 'triangle');
 }
 
-function playCombatCue(event: CombatEvent): void {
-  const ctx = getAudioContext();
-  if (!ctx) return;
+function getFeedbackSequence(event: FeedbackEvent): number {
+  const sequence = Number(event.id.split(':')[1]);
+  return Number.isFinite(sequence) ? sequence : 0;
+}
 
-  void ctx.resume();
+function playFootstepCue(ctx: AudioContext, when: number, event: FeedbackEvent, intensity: number): void {
+  const isLeftStep = getFeedbackSequence(event) % 2 === 0;
+  const baseFrequency = event.team === 'CT' ? 92 : 112;
+  const pitch = baseFrequency + (isLeftStep ? -7 : 9);
+  const busGain = (gainValue: number) => mixGain('movement', gainValue, intensity);
 
-  const now = ctx.currentTime + 0.015;
-  const isReaction = event.type === 'reaction_fire';
-  const baseGain = isReaction ? 0.12 : 0.095;
+  playFilteredNoiseBurst(ctx, when, 0.032, busGain(0.014), 'bandpass', isLeftStep ? 520 : 610);
+  playTone(ctx, when + 0.006, pitch, 0.048, busGain(0.009), 'sine');
+  playFilteredNoiseBurst(ctx, when + 0.036, 0.028, busGain(0.007), 'lowpass', 360);
+}
 
-  playNoiseBurst(ctx, now, isReaction ? 0.115 : 0.085, event.hit ? baseGain : baseGain * 0.7);
-  playTone(ctx, now, isReaction ? 130 : 170, isReaction ? 0.12 : 0.09, event.hit ? 0.035 : 0.02, 'square');
+function playReactionSting(
+  ctx: AudioContext,
+  when: number,
+  event: CombatEvent,
+  shot: ReturnType<typeof getShotPresentation>
+): void {
+  const weight = shot.audioGainScale;
+  const hitWeight = event.hit ? 1 : 0.62;
+
+  playTone(ctx, when + 0.012, shot.shotToneHz * 1.55, 0.07, mixGain('reaction', 0.018, weight * hitWeight), 'triangle');
+  playNoiseBurst(ctx, when + 0.025, shot.noiseDurationSeconds + 0.06, mixGain('reaction', 0.045, weight * hitWeight));
 
   if (event.hit) {
-    playTone(ctx, now + 0.045, event.damage >= 45 ? 70 : 92, 0.16, 0.055, 'sine');
-  } else {
-    playTone(ctx, now + 0.055, 310, 0.07, 0.018, 'triangle');
+    playTone(ctx, when + 0.055, Math.max(42, shot.impactToneHz * 0.72), 0.2, mixGain('impact', 0.052, weight), 'sawtooth');
+    playTone(ctx, when + 0.085, 240 + shot.impactToneHz, 0.075, mixGain('impact', 0.022, weight), 'triangle');
+  }
+
+  if (event.killed) {
+    playTone(ctx, when + 0.12, 44, 0.34, mixGain('impact', 0.082, weight), 'sawtooth');
+    playNoiseBurst(ctx, when + 0.14, 0.18, mixGain('impact', 0.052, weight));
   }
 }
 
-function playFeedbackCue(event: FeedbackEvent): void {
+function playCombatCue(event: CombatEvent, scheduleOffsetSeconds = 0): void {
   const ctx = getAudioContext();
   if (!ctx) return;
 
   void ctx.resume();
 
-  const now = ctx.currentTime + 0.01;
-  const intensity = event.intensity ?? 1;
+  const now = ctx.currentTime + 0.015 + scheduleOffsetSeconds;
+  const isReaction = event.type === 'reaction_fire';
+  const shot = getShotPresentation(event.weaponCategory);
+  const baseGain = isReaction ? 0.12 : 0.095;
+  const shotBus = isReaction ? 'reaction' : 'combat';
+
+  playNoiseBurst(
+    ctx,
+    now,
+    shot.noiseDurationSeconds + (isReaction ? 0.025 : 0),
+    mixGain(shotBus, event.hit ? baseGain : baseGain * 0.7, shot.audioGainScale)
+  );
+  playTone(
+    ctx,
+    now,
+    isReaction ? shot.shotToneHz * 0.82 : shot.shotToneHz,
+    isReaction ? 0.12 : 0.09,
+    mixGain(shotBus, event.hit ? 0.035 : 0.02, shot.audioGainScale),
+    event.weaponCategory === 'sniper' ? 'sawtooth' : 'square'
+  );
+  if (isReaction) {
+    playReactionSting(ctx, now, event, shot);
+  }
+
+  if (event.hit) {
+    playTone(ctx, now + 0.045, event.damage >= 45 ? shot.impactToneHz : Math.max(70, shot.impactToneHz * 1.18), 0.16, mixGain('impact', 0.055, shot.audioGainScale), 'sine');
+    if (event.critical) {
+      playTone(ctx, now + 0.025, 720, 0.09, mixGain('impact', 0.035), 'triangle');
+      playTone(ctx, now + 0.07, 420, 0.12, mixGain('impact', 0.026), 'square');
+    }
+    if (event.killed) {
+      playTone(ctx, now + 0.12, 48, 0.24, mixGain('impact', 0.06), 'sawtooth');
+      playNoiseBurst(ctx, now + 0.1, 0.15, mixGain('impact', 0.035));
+    }
+  } else {
+    playTone(ctx, now + 0.055, 310, 0.07, mixGain('combat', 0.018), 'triangle');
+  }
+}
+
+function playFeedbackCue(event: FeedbackEvent, scheduleOffsetSeconds = 0): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  void ctx.resume();
+
+  const now = ctx.currentTime + 0.01 + scheduleOffsetSeconds;
+  const intensity = clampAudioIntensity(event.intensity);
+  const gain = (gainValue: number) => mixGain(FEEDBACK_CUE_BUS[event.type], gainValue, intensity);
 
   if (event.type === 'move_step') {
-    playNoiseBurst(ctx, now, 0.038, 0.018 * intensity);
-    playTone(ctx, now, event.team === 'CT' ? 96 : 116, 0.055, 0.012 * intensity, 'sine');
+    playFootstepCue(ctx, now, event, intensity);
     return;
   }
 
   if (event.type === 'move_complete') {
-    playUiTick(ctx, now, 185, 0.022 * intensity);
-    playUiTick(ctx, now + 0.035, 245, 0.016 * intensity);
+    playUiTick(ctx, now, 185, gain(0.022));
+    playUiTick(ctx, now + 0.035, 245, gain(0.016));
     return;
   }
 
   if (event.type === 'select_unit') {
-    playUiTick(ctx, now, event.team === 'CT' ? 360 : 430, 0.012 * intensity);
+    playUiTick(ctx, now, event.team === 'CT' ? 360 : 430, gain(0.012));
+    return;
+  }
+
+  if (event.type === 'invalid_action') {
+    playTone(ctx, now, 190, 0.055, gain(0.018), 'triangle');
+    playTone(ctx, now + 0.038, 124, 0.085, gain(0.014), 'sine');
+    playFilteredNoiseBurst(ctx, now + 0.012, 0.035, gain(0.01), 'bandpass', 760);
     return;
   }
 
   if (event.type === 'plan_add') {
-    playUiTick(ctx, now, 280, 0.016 * intensity);
-    playUiTick(ctx, now + 0.045, 410, 0.011 * intensity);
+    playUiTick(ctx, now, 280, gain(0.016));
+    playUiTick(ctx, now + 0.045, 410, gain(0.011));
     return;
   }
 
   if (event.type === 'hold_angle') {
-    playTone(ctx, now, 150, 0.075, 0.018 * intensity, 'sawtooth');
-    playUiTick(ctx, now + 0.055, 320, 0.01 * intensity);
+    playTone(ctx, now, 150, 0.075, gain(0.018), 'sawtooth');
+    playUiTick(ctx, now + 0.055, 320, gain(0.01));
+    return;
+  }
+
+  if (event.type === 'reload_weapon') {
+    playFilteredNoiseBurst(ctx, now, 0.055, gain(0.02), 'highpass', 1400);
+    playTone(ctx, now + 0.045, 185, 0.065, gain(0.016), 'triangle');
+    playFilteredNoiseBurst(ctx, now + 0.105, 0.06, gain(0.018), 'bandpass', 920);
+    playUiTick(ctx, now + 0.17, 310, gain(0.012));
     return;
   }
 
   if (event.type === 'smoke_throw') {
-    playNoiseBurst(ctx, now, 0.12, 0.04 * intensity);
-    playTone(ctx, now + 0.02, 85, 0.11, 0.018 * intensity, 'sine');
+    playFilteredNoiseBurst(ctx, now, 0.09, gain(0.032), 'highpass', 1200);
+    playTone(ctx, now + 0.02, 85, 0.11, gain(0.018), 'sine');
+    return;
+  }
+
+  if (event.type === 'smoke_bloom') {
+    playFilteredNoiseBurst(ctx, now + 0.055, 0.34, gain(0.05), 'lowpass', 520);
+    playTone(ctx, now + 0.08, 58, 0.26, gain(0.016), 'sine');
+    return;
+  }
+
+  if (event.type === 'flash_throw') {
+    playUiTick(ctx, now, 620, gain(0.018));
+    playTone(ctx, now + 0.02, 1240, 0.09, gain(0.018), 'triangle');
+    playFilteredNoiseBurst(ctx, now + 0.035, 0.05, gain(0.025), 'highpass', 2600);
+    return;
+  }
+
+  if (event.type === 'flash_pop') {
+    playTone(ctx, now, 1720, 0.055, gain(0.025), 'sine');
+    playFilteredNoiseBurst(ctx, now + 0.012, 0.075, gain(0.033), 'bandpass', 3200);
+    playTone(ctx, now + 0.07, 480, 0.09, gain(0.012), 'triangle');
+    return;
+  }
+
+  if (event.type === 'bomb_pickup') {
+    playTone(ctx, now, 130, 0.08, gain(0.02), 'triangle');
+    playUiTick(ctx, now + 0.06, 250, gain(0.016));
+    return;
+  }
+
+  if (event.type === 'bomb_plant') {
+    playTone(ctx, now, 110, 0.12, gain(0.024), 'sawtooth');
+    playUiTick(ctx, now + 0.08, 360, gain(0.018));
+    playUiTick(ctx, now + 0.18, 360, gain(0.014));
+    playTone(ctx, now + 0.24, 72, 0.22, gain(0.022), 'sine');
+    return;
+  }
+
+  if (event.type === 'bomb_tick') {
+    const urgency = intensity > 1 ? 1.08 : 0.88;
+    playUiTick(ctx, now, 300 * urgency, gain(0.018));
+    playTone(ctx, now + 0.055, 82, 0.13, gain(0.018), 'sine');
+    return;
+  }
+
+  if (event.type === 'bomb_defuse') {
+    playUiTick(ctx, now, 420, gain(0.018));
+    playUiTick(ctx, now + 0.07, 520, gain(0.016));
+    playTone(ctx, now + 0.15, 220, 0.16, gain(0.022), 'triangle');
+    playTone(ctx, now + 0.24, 620, 0.08, gain(0.014), 'sine');
     return;
   }
 
   if (event.type === 'turn_change' || event.type === 'ai_start' || event.type === 'ai_end') {
-    playUiTick(ctx, now, event.type === 'ai_end' ? 260 : 210, 0.02 * intensity);
-    playUiTick(ctx, now + 0.055, event.type === 'ai_end' ? 360 : 300, 0.014 * intensity);
+    playUiTick(ctx, now, event.type === 'ai_end' ? 260 : 210, gain(0.02));
+    playUiTick(ctx, now + 0.055, event.type === 'ai_end' ? 360 : 300, gain(0.014));
   }
 }
 
 export function AudioFeedback() {
-  const latestCombatEvent = useGameStore((state) => state.combatLog[0]);
-  const latestFeedbackEvent = useGameStore((state) => state.feedbackEvents[0]);
-  const lastCombatPlayedId = useRef<string | null>(null);
-  const lastFeedbackPlayedId = useRef<string | null>(null);
+  const combatEvents = useGameStore((state) => state.combatLog);
+  const feedbackEvents = useGameStore((state) => state.feedbackEvents);
+  const playedCombatIds = useRef<Set<string>>(new Set());
+  const playedFeedbackIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!latestCombatEvent || lastCombatPlayedId.current === latestCombatEvent.id) return;
-    lastCombatPlayedId.current = latestCombatEvent.id;
-    playCombatCue(latestCombatEvent);
-  }, [latestCombatEvent]);
+    const newEvents = combatEvents
+      .filter((event) => !playedCombatIds.current.has(event.id))
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    newEvents.forEach((event, index) => {
+      playedCombatIds.current.add(event.id);
+      playCombatCue(event, index * 0.055);
+    });
+  }, [combatEvents]);
 
   useEffect(() => {
-    if (!latestFeedbackEvent || lastFeedbackPlayedId.current === latestFeedbackEvent.id) return;
-    lastFeedbackPlayedId.current = latestFeedbackEvent.id;
-    playFeedbackCue(latestFeedbackEvent);
-  }, [latestFeedbackEvent]);
+    const newEvents = feedbackEvents
+      .filter((event) => !playedFeedbackIds.current.has(event.id))
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    newEvents.forEach((event, index) => {
+      playedFeedbackIds.current.add(event.id);
+      playFeedbackCue(event, index * 0.035);
+    });
+  }, [feedbackEvents]);
 
   return null;
 }

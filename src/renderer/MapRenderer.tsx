@@ -14,7 +14,7 @@
 // - LOS shot previews and watched-lane overlays
 // - Interactive invisible plane for click/hover
 //
-// Missing: flash/molly utility volumes, richer animation, and final art assets.
+// Missing: molly/HE utility volumes, richer animation, and final art assets.
 // ============================================================
 import { Suspense, useMemo, useCallback, useRef, type ComponentProps } from 'react';
 import * as THREE from 'three';
@@ -22,10 +22,16 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Line, Text } from '@react-three/drei';
 import { useGameStore } from '../game/store';
 import { getCalloutLabels } from '../game/maps/inferno';
-import type { CoverObject, MapData, TileCoord } from '../game/types';
+import type { CombatEvent, FlashBurst, MapData, Tile, TileCoord, Unit } from '../game/types';
 import { getCrossingHeldAngles } from '../game/threats';
 import { getShotPreview } from '../game/combat';
-import { getWatchedLane } from '../game/los';
+import { getPlannedActionBeat, sortPlannedActionsByBeat } from '../game/executeTimeline';
+import { getWatchedLane, hasLineOfSight } from '../game/los';
+import { getShotPresentation } from '../game/shotPresentation';
+import { buildTeamVisibleTileKeys, isUnitVisibleToTeam, visibilityTileKey } from '../game/visibility';
+import { ART, standardMaterialProps, type ArtMaterialProfile, type ArtPaletteToken } from './artDirection';
+import { InfernoSetDressingLayer } from './diorama/InfernoSetDressing';
+import { LandmarkCoverProp } from './diorama/LandmarkProps';
 
 const CLICK_DRAG_THRESHOLD_PX = 4;
 
@@ -37,40 +43,72 @@ function SafeText(props: ComponentProps<typeof Text>) {
   );
 }
 
-// --- Color palette: muted tactical tones ---
+type ArtColor = ArtPaletteToken | THREE.ColorRepresentation;
+
+const WHITEBOX = {
+  floor: ART.palette.floorTop,
+  floorSite: ART.palette.floorSite,
+  floorSpawnT: '#e7dfd9',
+  floorSpawnCT: '#e0e9ee',
+  slabSide: '#c3c7c4',
+  slabSideDark: '#9fa8a9',
+  wallTop: ART.palette.wallTop,
+  wallCapSide: '#d5d4cc',
+  wallSide: '#d7d7d1',
+  wallPlinth: '#b8bebc',
+  wallDark: '#9ea8a9',
+  archLight: '#eee9df',
+  archMid: '#d0d2cf',
+  archDark: '#aab2b0',
+  siteA: '#d26c65',
+  siteB: '#dfc861',
+} as const;
+
+// --- Color palette: muted low-poly diorama tones ---
 const TILE_COLORS: Record<string, string> = {
-  floor:       '#6f7b8e',
-  bombsite_a:  '#963d3d',
-  bombsite_b:  '#963d3d',
-  spawn_t:     '#c59b2f',
-  spawn_ct:    '#2d80bd',
-  wall:        '#171b24',
-  cover_half:  '#c0a661',
-  cover_full:  '#8d7650',
-  out_of_bounds: '#11151d',
+  floor: WHITEBOX.floor,
+  bombsite_a: WHITEBOX.floorSite,
+  bombsite_b: WHITEBOX.floorSite,
+  spawn_t: WHITEBOX.floorSpawnT,
+  spawn_ct: WHITEBOX.floorSpawnCT,
+  wall: WHITEBOX.wallSide,
+  cover_half: WHITEBOX.archMid,
+  cover_full: WHITEBOX.archMid,
+  out_of_bounds: ART.palette.void,
 };
 
-const WALL_HEIGHT = 0.95;
-const COVER_HALF_H = 0.9;
-const COVER_FULL_H = 1.8;
-const FLOOR_H = 0.1;
-const GRID_GAP = 0.003; // nearly seamless so the silhouette reads before the grid
-const MOVE_ONE_AP_COLOR = '#5df2ff';
-const MOVE_TWO_AP_COLOR = '#f7cf5f';
-const MOVE_BOUNDARY_COLOR = '#9dfcff';
-const THREAT_COLOR = '#ff8a3d';
-const SMOKE_PREVIEW_COLOR = '#c5d1df';
+const WALL_HEIGHT = ART.heights.wall * 2.18;
+const WALL_CAP_H = Math.max(0.22, ART.heights.wallCap * 1.65);
+const WALL_PLINTH_H = 0.2;
+const COVER_HALF_H = ART.heights.coverHalf;
+const COVER_FULL_H = ART.heights.coverFull;
+const FLOOR_H = ART.heights.floor;
+const GRID_GAP = ART.heights.gridGap; // nearly seamless so the silhouette reads before the grid
+const MOVE_ONE_AP_COLOR = ART.palette.moveOneAP;
+const MOVE_TWO_AP_COLOR = ART.palette.moveTwoAP;
+const MOVE_BOUNDARY_COLOR = ART.palette.selected;
+const THREAT_COLOR = ART.palette.danger;
+const SMOKE_PREVIEW_COLOR = ART.palette.smoke;
+const FLASH_PREVIEW_COLOR = ART.palette.flash;
+const FOG_COLOR = '#26313b';
 const SMOKE_THROW_RANGE = 12;
 const SMOKE_RADIUS_TILES = 2;
+const FLASH_THROW_RANGE = 12;
+const FLASH_RADIUS_TILES = 5;
 const KEY_CALLOUTS = new Set([
   'T Spawn',
   'Upper Banana',
   'B Site',
   'Mid',
+  'Top Mid',
   'Second Mid',
+  'Boiler',
   'Apartments',
+  'Pit',
   'A Site',
   'Arch',
+  'Construction',
+  'Moto',
   'CT Spawn',
 ]);
 
@@ -85,6 +123,312 @@ function tileWorld(x: number, y: number, ts: number): [number, number, number] {
   return [(90 - 1 - x) * ts + ts / 2, 0, y * ts + ts / 2];
 }
 
+function tileElevationY(elevation: number, ts: number): number {
+  return elevation * ts * ART.heights.elevationStep;
+}
+
+function tileSurfaceY(elevation: number, ts: number): number {
+  return tileElevationY(elevation, ts) + FLOOR_H / 2;
+}
+
+function tileSlabBottomY(elevation: number, ts: number): number {
+  return tileSurfaceY(elevation, ts) - ART.heights.slabDepth;
+}
+
+function footprintKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+const CARDINAL_DIRECTIONS = [
+  { dx: 1, dy: 0, shade: 0.9 },
+  { dx: -1, dy: 0, shade: 1 },
+  { dx: 0, dy: 1, shade: 0.84 },
+  { dx: 0, dy: -1, shade: 0.96 },
+] as const;
+
+type WallRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  elevation: number;
+};
+
+function buildCoverFootprintKeys(map: MapData): Set<string> {
+  const keys = new Set<string>();
+
+  for (const cover of map.coverObjects) {
+    for (let y = cover.y; y < cover.y + cover.height; y++) {
+      for (let x = cover.x; x < cover.x + cover.width; x++) {
+        if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
+          keys.add(footprintKey(x, y));
+        }
+      }
+    }
+  }
+
+  return keys;
+}
+
+function isCoverFootprintTile(
+  tile: Tile | undefined,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return tile?.type === 'cover_half' || tile?.type === 'cover_full' || coverFootprint.has(footprintKey(x, y));
+}
+
+function isRenderedFloorFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  const tile = map.grid[y]?.[x];
+  return Boolean(tile && (tile.walkable || isCoverFootprintTile(tile, coverFootprint, x, y)));
+}
+
+function isRenderedWallFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  const tile = map.grid[y]?.[x];
+  if (tile?.type !== 'wall') return false;
+  return CARDINAL_DIRECTIONS.some(({ dx, dy }) => isRenderedFloorFootprintTile(map, coverFootprint, x + dx, y + dy));
+}
+
+function isBoardFootprintTile(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return isRenderedFloorFootprintTile(map, coverFootprint, x, y) ||
+    isRenderedWallFootprintTile(map, coverFootprint, x, y);
+}
+
+function isTrueVoidAt(
+  map: MapData,
+  coverFootprint: ReadonlySet<string>,
+  x: number,
+  y: number,
+): boolean {
+  return !isBoardFootprintTile(map, coverFootprint, x, y);
+}
+
+function buildWallRects(map: MapData, coverFootprint: ReadonlySet<string>): WallRect[] {
+  const used = new Set<string>();
+  const rects: WallRect[] = [];
+
+  const isMergeableWall = (x: number, y: number, elevation: number): boolean => {
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
+    if (used.has(footprintKey(x, y))) return false;
+    const tile = map.grid[y]?.[x];
+    return Boolean(
+      tile &&
+      tile.elevation === elevation &&
+      isRenderedWallFootprintTile(map, coverFootprint, x, y)
+    );
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const key = footprintKey(x, y);
+      if (used.has(key)) continue;
+      const tile = map.grid[y]?.[x];
+      if (!tile || !isRenderedWallFootprintTile(map, coverFootprint, x, y)) continue;
+
+      const elevation = tile.elevation;
+      let width = 1;
+      while (isMergeableWall(x + width, y, elevation)) width += 1;
+
+      let height = 1;
+      let canGrow = true;
+      while (canGrow && y + height < map.height) {
+        for (let dx = 0; dx < width; dx++) {
+          if (!isMergeableWall(x + dx, y + height, elevation)) {
+            canGrow = false;
+            break;
+          }
+        }
+        if (canGrow) height += 1;
+      }
+
+      for (let yy = y; yy < y + height; yy++) {
+        for (let xx = x; xx < x + width; xx++) {
+          used.add(footprintKey(xx, yy));
+        }
+      }
+
+      rects.push({ x, y, width, height, elevation });
+    }
+  }
+
+  return rects;
+}
+
+function buildFloorSlabEdgeGeometry(map: MapData, ts: number): THREE.BufferGeometry | null {
+  const vertices: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const coverFootprint = buildCoverFootprintKeys(map);
+  const slabColor = new THREE.Color(WHITEBOX.slabSide);
+  const half = ts / 2;
+
+  const addFace = (corners: [number, number, number][], shade: number) => {
+    const start = vertices.length / 3;
+    const color = slabColor.clone().multiplyScalar(shade);
+
+    corners.forEach(([x, y, z]) => {
+      vertices.push(x, y, z);
+      colors.push(color.r, color.g, color.b);
+    });
+    indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (!isBoardFootprintTile(map, coverFootprint, x, y)) continue;
+      const tile = map.grid[y]?.[x];
+      if (!tile) continue;
+
+      const [wx, , wz] = tileWorld(x, y, ts);
+      const topY = tileSurfaceY(tile.elevation, ts);
+      const bottomY = tileSlabBottomY(tile.elevation, ts);
+
+      CARDINAL_DIRECTIONS.forEach(({ dx, dy, shade }) => {
+        if (!isTrueVoidAt(map, coverFootprint, x + dx, y + dy)) return;
+
+        if (dx === 1) {
+          const edgeX = wx - half;
+          addFace([
+            [edgeX, bottomY, wz + half],
+            [edgeX, bottomY, wz - half],
+            [edgeX, topY, wz - half],
+            [edgeX, topY, wz + half],
+          ], shade);
+        } else if (dx === -1) {
+          const edgeX = wx + half;
+          addFace([
+            [edgeX, bottomY, wz - half],
+            [edgeX, bottomY, wz + half],
+            [edgeX, topY, wz + half],
+            [edgeX, topY, wz - half],
+          ], shade);
+        } else if (dy === 1) {
+          const edgeZ = wz + half;
+          addFace([
+            [wx - half, bottomY, edgeZ],
+            [wx + half, bottomY, edgeZ],
+            [wx + half, topY, edgeZ],
+            [wx - half, topY, edgeZ],
+          ], shade);
+        } else {
+          const edgeZ = wz - half;
+          addFace([
+            [wx + half, bottomY, edgeZ],
+            [wx - half, bottomY, edgeZ],
+            [wx - half, topY, edgeZ],
+            [wx + half, topY, edgeZ],
+          ], shade);
+        }
+      });
+    }
+  }
+
+  if (vertices.length === 0) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function buildFloorTopGeometry(map: MapData, ts: number): THREE.BufferGeometry | null {
+  const vertices: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const half = ts / 2;
+
+  const addTopFace = (x: number, y: number, tile: Tile) => {
+    const [wx, , wz] = tileWorld(x, y, ts);
+    const topY = tileSurfaceY(tile.elevation, ts) + 0.002;
+    const start = vertices.length / 3;
+    const color = new THREE.Color(TILE_COLORS[tile.type] || TILE_COLORS.floor);
+
+    vertices.push(
+      wx - half, topY, wz - half,
+      wx - half, topY, wz + half,
+      wx + half, topY, wz + half,
+      wx + half, topY, wz - half,
+    );
+
+    for (let i = 0; i < 4; i++) {
+      colors.push(color.r, color.g, color.b);
+    }
+
+    indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  };
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const tile = map.grid[y]?.[x];
+      if (!tile || !tile.walkable) continue;
+      addTopFace(x, y, tile);
+    }
+  }
+
+  if (vertices.length === 0) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeStandardMaterial(
+  color: ArtColor,
+  profile: ArtMaterialProfile,
+  overrides: THREE.MeshStandardMaterialParameters = {},
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial(standardMaterialProps(color, profile, overrides));
+}
+
+function makeBoxMaterials({
+  top,
+  side,
+  bottom = side,
+  profile,
+  vertexColors = false,
+  overrides = {},
+}: {
+  top: ArtColor;
+  side: ArtColor;
+  bottom?: ArtColor;
+  profile: ArtMaterialProfile;
+  vertexColors?: boolean;
+  overrides?: THREE.MeshStandardMaterialParameters;
+}): THREE.MeshStandardMaterial[] {
+  const sideProps = { vertexColors, ...overrides };
+  const topProps = { vertexColors, ...overrides };
+
+  return [
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(top, profile, topProps),
+    makeStandardMaterial(bottom, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+    makeStandardMaterial(side, profile, sideProps),
+  ];
+}
+
 function gridDistance(a: TileCoord, b: TileCoord): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -93,6 +437,272 @@ function gridDistance(a: TileCoord, b: TileCoord): number {
 
 type LinePoint = [number, number, number];
 type BoundarySegment = [LinePoint, LinePoint];
+
+function curvedLinePoints(points: LinePoint[], segmentsPerPoint = 8): LinePoint[] {
+  if (points.length <= 2) return points;
+  const curve = new THREE.CatmullRomCurve3(
+    points.map((point) => new THREE.Vector3(...point)),
+    false,
+    'centripetal',
+    0.32,
+  );
+  return curve.getPoints(Math.max(14, points.length * segmentsPerPoint)).map((point) => [point.x, point.y, point.z]);
+}
+
+function arrowHeadSegments(points: LinePoint[], size: number): BoundarySegment[] {
+  if (points.length < 2) return [];
+  const end = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const dx = end[0] - prev[0];
+  const dz = end[2] - prev[2];
+  const len = Math.sqrt(dx * dx + dz * dz) || 1;
+  const ux = dx / len;
+  const uz = dz / len;
+  const px = -uz;
+  const pz = ux;
+  const back: LinePoint = [end[0] - ux * size, end[1], end[2] - uz * size];
+  const left: LinePoint = [back[0] + px * size * 0.44, end[1], back[2] + pz * size * 0.44];
+  const right: LinePoint = [back[0] - px * size * 0.44, end[1], back[2] - pz * size * 0.44];
+  return [[end, left], [end, right]];
+}
+
+function ArrowHeadLines({
+  points,
+  color,
+  size,
+  lineWidth,
+  renderOrder,
+}: {
+  points: LinePoint[];
+  color: string;
+  size: number;
+  lineWidth: number;
+  renderOrder: number;
+}) {
+  return (
+    <>
+      {arrowHeadSegments(points, size).map((segment, index) => (
+        <Line
+          key={index}
+          points={segment}
+          color={color}
+          lineWidth={lineWidth}
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          renderOrder={renderOrder}
+        />
+      ))}
+    </>
+  );
+}
+
+function buildFacingConeGeometry(tileSize: number): THREE.BufferGeometry {
+  const range = tileSize * 3.4;
+  const halfAngle = Math.PI / 8;
+  const segments = 12;
+  const vertices: number[] = [0, 0, 0];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = -halfAngle + halfAngle * 2 * t;
+    vertices.push(
+      Math.sin(angle) * range,
+      0,
+      Math.cos(angle) * range,
+    );
+  }
+
+  for (let i = 1; i <= segments; i++) {
+    indices.push(0, i, i + 1);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function UnitFacingCone({ unit, tileSize, selected }: {
+  unit: Unit;
+  tileSize: number;
+  selected: boolean;
+}) {
+  const geometry = useMemo(
+    () => buildFacingConeGeometry(tileSize),
+    [tileSize],
+  );
+  const [wx, , wz] = tileWorld(unit.position.x, unit.position.y, tileSize);
+  const worldDx = -unit.facing.x;
+  const worldDz = unit.facing.y;
+  const yaw = Math.atan2(worldDx, worldDz);
+  const color = unit.team === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+  return (
+    <mesh
+      geometry={geometry}
+      position={[wx, ART.overlayY.threatBand + 0.012, wz]}
+      rotation={[0, yaw, 0]}
+      renderOrder={ART.overlayOrder.threatBand}
+      raycast={() => null}
+    >
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={selected ? 0.15 : 0.045}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+        depthTest={false}
+      />
+    </mesh>
+  );
+}
+
+function UnitTacticalOverlayLayer() {
+  const units = useGameStore((s) => s.units);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const visibleUnits = useMemo(
+    () => units.filter((unit) => unit.alive && isUnitVisibleToTeam(map, units, activeTeam, unit, smokes)),
+    [activeTeam, map, smokes, units],
+  );
+
+  return (
+    <>
+      {visibleUnits.map((unit) => {
+        const [wx, , wz] = tileWorld(unit.position.x, unit.position.y, ts);
+        const selected = unit.id === selectedUnitId;
+        const color = unit.team === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+        return (
+          <group key={`unit-tactical-${unit.id}`}>
+            <mesh
+              position={[wx, ART.overlayY.siteMarker + 0.012, wz]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={ART.overlayOrder.movementBand}
+              raycast={() => null}
+            >
+              <circleGeometry args={[ts * (selected ? 1.45 : 1.08), 32]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={selected ? 0.12 : 0.055}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                depthTest={false}
+              />
+            </mesh>
+            <UnitFacingCone unit={unit} tileSize={ts} selected={selected} />
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+function FogOfWarLayer() {
+  const map = useGameStore((s) => s.map);
+  const units = useGameStore((s) => s.units);
+  const activeTeam = useGameStore((s) => s.round.activeTeam);
+  const smokes = useGameStore((s) => s.smokes);
+  const ts = map.tileSize;
+
+  const fog = useMemo(() => {
+    const visible = buildTeamVisibleTileKeys(map, units, activeTeam, smokes);
+    const shrouded: TileCoord[] = [];
+    const frontier: TileCoord[] = [];
+
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tile = map.grid[y]?.[x];
+        if (!tile?.walkable) continue;
+
+        const key = visibilityTileKey(tile);
+        if (!visible.has(key)) {
+          shrouded.push({ x, y });
+          continue;
+        }
+
+        const touchesUnknown = CARDINAL_DIRECTIONS.some(({ dx, dy }) => {
+          const neighbor = map.grid[y + dy]?.[x + dx];
+          return Boolean(neighbor?.walkable && !visible.has(visibilityTileKey(neighbor)));
+        });
+        if (touchesUnknown) frontier.push({ x, y });
+      }
+    }
+
+    return { shrouded, frontier };
+  }, [activeTeam, map, smokes, units]);
+
+  if (fog.shrouded.length === 0) return null;
+
+  const frontierColor = activeTeam === 'CT' ? ART.palette.controlZoneBlue : ART.palette.dangerZoneRed;
+
+  return (
+    <>
+      <MovementBand
+        tiles={fog.shrouded}
+        color={FOG_COLOR}
+        opacity={0.46}
+        tileSize={ts}
+        y={ART.overlayY.fog}
+        renderOrder={ART.overlayOrder.fog}
+      />
+      <MovementBand
+        tiles={fog.frontier}
+        color={frontierColor}
+        opacity={0.055}
+        tileSize={ts}
+        y={ART.overlayY.fogEdge}
+        renderOrder={ART.overlayOrder.fogEdge}
+      />
+      <MovementBoundary
+        tiles={fog.frontier}
+        color={frontierColor}
+        tileSize={ts}
+        y={ART.overlayY.fogEdge + 0.01}
+        lineWidth={0.9}
+        opacity={0.3}
+        renderOrder={ART.overlayOrder.fogEdge}
+      />
+    </>
+  );
+}
+
+function getCombatEventColor(event: CombatEvent): string {
+  const shot = getShotPresentation(event.weaponCategory);
+  if (event.critical || event.killed) return shot.color;
+  if (event.hit) return shot.secondaryColor;
+  return shot.missColor;
+}
+
+function getCombatEventLabel(event: CombatEvent): string {
+  if (!event.hit) return 'MISS';
+  if (event.killed && event.critical) return `HS KILL\n-${event.damage}`;
+  if (event.killed) return `KILL\n-${event.damage}`;
+  if (event.critical) return `HEADSHOT\n-${event.damage}`;
+  return `-${event.damage}`;
+}
+
+function setObjectOpacity(root: THREE.Object3D | null, opacity: number): void {
+  if (!root) return;
+
+  root.traverse((child) => {
+    const material = (child as THREE.Object3D & { material?: THREE.Material | THREE.Material[] }).material;
+    const materials = Array.isArray(material) ? material : material ? [material] : [];
+
+    materials.forEach((mat) => {
+      mat.transparent = true;
+      mat.opacity = opacity;
+      mat.depthWrite = false;
+    });
+  });
+}
 
 function areaCenterWorldX(mapWidth: number, x: number, width: number, ts: number): number {
   return (mapWidth - x - width / 2) * ts;
@@ -103,51 +713,43 @@ function FloorLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  const groups = useMemo(() => {
-    const g: Record<string, { pos: [number, number, number][]; elev: number[] }> = {};
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        const t = map.grid[y]?.[x];
-        if (!t || !t.walkable) continue;
-        const key = t.type;
-        if (!g[key]) g[key] = { pos: [], elev: [] };
-        g[key].pos.push(tileWorld(x, y, ts));
-        g[key].elev.push(t.elevation);
-      }
-    }
-    return g;
-  }, [map, ts]);
-
-  return (
-    <>
-      {Object.entries(groups).map(([type, data]) => (
-        <InstancedFloor key={type} positions={data.pos} elevations={data.elev}
-          color={TILE_COLORS[type] || TILE_COLORS.floor} tileSize={ts} />
-      ))}
-    </>
+  const geometry = useMemo(
+    () => buildFloorTopGeometry(map, ts),
+    [map, ts],
   );
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial(standardMaterialProps(WHITEBOX.floor, 'floor', {
+      vertexColors: true,
+      emissive: WHITEBOX.floor,
+      emissiveIntensity: 0.012,
+    })),
+    [],
+  );
+
+  if (!geometry) return null;
+  return <mesh geometry={geometry} material={material} receiveShadow raycast={() => null} />;
 }
 
-function InstancedFloor({ positions, elevations, color, tileSize }: {
-  positions: [number, number, number][]; elevations: number[];
-  color: string; tileSize: number;
-}) {
-  const mesh = useMemo(() => {
-    const size = tileSize - GRID_GAP;
-    const geo = new THREE.BoxGeometry(size, FLOOR_H, size);
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.02 });
-    const inst = new THREE.InstancedMesh(geo, mat, positions.length);
-    const d = new THREE.Object3D();
-    positions.forEach(([x, , z], i) => {
-      d.position.set(x, elevations[i] * tileSize * 0.4, z);
-      d.updateMatrix();
-      inst.setMatrixAt(i, d.matrix);
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    inst.receiveShadow = true;
-    return inst;
-  }, [positions, elevations, color, tileSize]);
-  return <primitive object={mesh} />;
+function FloorSlabEdgeLayer() {
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const geometry = useMemo(
+    () => buildFloorSlabEdgeGeometry(map, ts),
+    [map, ts],
+  );
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial(standardMaterialProps(WHITEBOX.slabSide, 'stone', {
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      emissive: WHITEBOX.slabSideDark,
+      emissiveIntensity: 0.04,
+    })),
+    [],
+  );
+
+  if (!geometry) return null;
+  return <mesh geometry={geometry} material={material} receiveShadow raycast={() => null} />;
 }
 
 // ---- Walls (readable perimeter mass, not full black building slabs) ----
@@ -155,63 +757,95 @@ function WallLayer() {
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
 
-  const wallPositions = useMemo(() => {
-    const p: [number, number, number][] = [];
-    const dirs = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ];
+  const wallRects = useMemo(() => {
+    const coverFootprint = buildCoverFootprintKeys(map);
+    return buildWallRects(map, coverFootprint);
+  }, [map]);
 
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        if (map.grid[y]?.[x]?.type !== 'wall') continue;
-        const touchesFloor = dirs.some(([dx, dy]) => map.grid[y + dy]?.[x + dx]?.walkable);
-        if (touchesFloor) p.push(tileWorld(x, y, ts));
-      }
-    }
-    return p;
-  }, [map, ts]);
-
-  const mesh = useMemo(() => {
-    if (wallPositions.length === 0) return null;
-    const geo = new THREE.BoxGeometry(ts - GRID_GAP, WALL_HEIGHT, ts - GRID_GAP);
-    const mat = new THREE.MeshStandardMaterial({
-      color: TILE_COLORS.wall,
-      roughness: 0.86,
-      metalness: 0.02,
-      emissive: '#05070b',
-      emissiveIntensity: 0.08,
+  const meshes = useMemo(() => {
+    if (wallRects.length === 0) return null;
+    const bodyHeight = Math.max(0.01, WALL_HEIGHT - WALL_CAP_H - WALL_PLINTH_H);
+    const plinthGeo = new THREE.BoxGeometry(1, 1, 1);
+    const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
+    const capGeo = new THREE.BoxGeometry(1, 1, 1);
+    const plinthMat = makeBoxMaterials({
+      top: WHITEBOX.wallPlinth,
+      side: WHITEBOX.wallDark,
+      bottom: WHITEBOX.wallDark,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallDark,
+        emissiveIntensity: 0.025,
+      },
     });
-    const inst = new THREE.InstancedMesh(geo, mat, wallPositions.length);
+    const bodyMat = makeBoxMaterials({
+      top: WHITEBOX.wallSide,
+      side: WHITEBOX.wallSide,
+      bottom: WHITEBOX.wallDark,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallDark,
+        emissiveIntensity: 0.03,
+      },
+    });
+    const capMat = makeBoxMaterials({
+      top: WHITEBOX.wallTop,
+      side: WHITEBOX.wallCapSide,
+      bottom: WHITEBOX.wallSide,
+      profile: 'wall',
+      overrides: {
+        emissive: WHITEBOX.wallTop,
+        emissiveIntensity: 0.018,
+      },
+    });
+    const plinth = new THREE.InstancedMesh(plinthGeo, plinthMat, wallRects.length);
+    const body = new THREE.InstancedMesh(bodyGeo, bodyMat, wallRects.length);
+    const cap = new THREE.InstancedMesh(capGeo, capMat, wallRects.length);
     const d = new THREE.Object3D();
 
-    // Add slight random color variation per instance
-    const colorAttr = new Float32Array(wallPositions.length * 3);
-    const baseColor = new THREE.Color(TILE_COLORS.wall);
-    wallPositions.forEach(([x, , z], i) => {
-      d.position.set(x, WALL_HEIGHT / 2, z);
-      d.updateMatrix();
-      inst.setMatrixAt(i, d.matrix);
+    wallRects.forEach((rect, i) => {
+      const x = areaCenterWorldX(map.width, rect.x, rect.width, ts);
+      const z = (rect.y + rect.height / 2) * ts;
+      const baseY = tileSurfaceY(rect.elevation, ts);
+      const width = rect.width * ts - GRID_GAP;
+      const depth = rect.height * ts - GRID_GAP;
 
-      // Subtle variation keeps the boundary from looking tiled-flat.
-      const hash = ((x * 73 + z * 137) % 100) / 100;
-      const variation = 0.82 + hash * 0.14;
-      colorAttr[i * 3] = baseColor.r * variation;
-      colorAttr[i * 3 + 1] = baseColor.g * variation;
-      colorAttr[i * 3 + 2] = baseColor.b * variation;
+      d.position.set(x, baseY + WALL_PLINTH_H / 2, z);
+      d.scale.set(width + ts * 0.16, WALL_PLINTH_H, depth + ts * 0.16);
+      d.updateMatrix();
+      plinth.setMatrixAt(i, d.matrix);
+
+      d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight / 2, z);
+      d.scale.set(width, bodyHeight, depth);
+      d.updateMatrix();
+      body.setMatrixAt(i, d.matrix);
+
+      d.position.set(x, baseY + WALL_PLINTH_H + bodyHeight + WALL_CAP_H / 2, z);
+      d.scale.set(width + ts * 0.16, WALL_CAP_H, depth + ts * 0.16);
+      d.updateMatrix();
+      cap.setMatrixAt(i, d.matrix);
     });
 
-    inst.instanceMatrix.needsUpdate = true;
-    inst.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-    inst.castShadow = true;
-    inst.receiveShadow = true;
-    return inst;
-  }, [wallPositions, ts]);
+    plinth.instanceMatrix.needsUpdate = true;
+    plinth.castShadow = true;
+    plinth.receiveShadow = true;
+    body.instanceMatrix.needsUpdate = true;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    cap.instanceMatrix.needsUpdate = true;
+    cap.castShadow = true;
+    cap.receiveShadow = true;
+    return { plinth, body, cap };
+  }, [map.width, wallRects, ts]);
 
-  if (!mesh) return null;
-  return <primitive object={mesh} />;
+  if (!meshes) return null;
+  return (
+    <group>
+      <primitive object={meshes.plinth} />
+      <primitive object={meshes.body} />
+      <primitive object={meshes.cap} />
+    </group>
+  );
 }
 
 // ---- Cover objects ----
@@ -228,18 +862,18 @@ function CoverLayer() {
 
         return (
           <group key={i}>
-            <CoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
-            {/* Cover label */}
+            <LandmarkCoverProp cover={c} x={cx} z={cz} h={h} tileSize={ts} />
             <SafeText
               position={[cx, h + 0.08, cz]}
               rotation={[-Math.PI / 2, 0, Math.PI]}
-              fontSize={0.18}
-              color="#dcc77e"
-              fillOpacity={0.45}
+              fontSize={0.12}
+              color={ART.props.coverLabel}
+              fillOpacity={0.16}
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.015}
-              outlineColor="#000000"
+              outlineWidth={0.01}
+              outlineColor={ART.props.outline}
+              outlineOpacity={0.28}
               font={undefined}
             >
               {c.label}
@@ -273,24 +907,36 @@ function BombsiteMarkers() {
       {sites.map(({ site, cx, cz, w, h }) => (
         <group key={site}>
           {/* Glowing plant zone */}
-          <mesh position={[cx, FLOOR_H + 0.03, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh
+            position={[cx, ART.overlayY.siteMarker, cz]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            renderOrder={ART.overlayOrder.siteLabel}
+          >
             <planeGeometry args={[w, h]} />
-            <meshBasicMaterial color="#e44740" transparent opacity={0.32} side={THREE.DoubleSide} />
+            <meshBasicMaterial
+              color={site === 'A' ? WHITEBOX.siteA : WHITEBOX.siteB}
+              transparent
+              opacity={0.2}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
           </mesh>
           {/* Site letter */}
           <SafeText
-            position={[cx, FLOOR_H + 0.08, cz]}
+            position={[cx, ART.overlayY.siteText, cz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
-            fontSize={2.65}
-            color="#ffdad5"
-            fillOpacity={0.94}
+            fontSize={2.25}
+            color={ART.palette.labelInk}
+            fillOpacity={0.72}
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.06}
-            outlineColor="#3f0f0d"
+            outlineWidth={0.08}
+            outlineColor={ART.palette.labelHalo}
+            outlineOpacity={0.82}
+            renderOrder={ART.overlayOrder.siteLabel}
             font={undefined}
           >
-            {site}
+            {`${site} SITE`}
           </SafeText>
         </group>
       ))}
@@ -323,16 +969,17 @@ function CalloutLabels() {
         return (
           <SafeText
             key={l.name}
-            position={[wx, FLOOR_H + 0.09, wz]}
+            position={[wx, ART.overlayY.calloutText, wz]}
             rotation={[-Math.PI / 2, 0, Math.PI]}
             fontSize={1.55}
-            color="#f4f7fb"
-            fillOpacity={0.82}
+            color={ART.palette.labelInk}
+            fillOpacity={0.58}
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.12}
-            outlineColor="#0b0d12"
-            outlineOpacity={0.85}
+            outlineWidth={0.14}
+            outlineColor={ART.palette.labelHalo}
+            outlineOpacity={0.72}
+            renderOrder={ART.overlayOrder.siteLabel}
             font={undefined}
           >
             {displayCalloutName(l.name).toUpperCase()}
@@ -355,7 +1002,7 @@ function SmokeLayer() {
       {smokes.map((smoke) => {
         const [wx, , wz] = tileWorld(smoke.position.x, smoke.position.y, ts);
         const radius = smoke.radius * ts;
-        const color = smoke.team === 'CT' ? '#a9c7e8' : '#d9c89a';
+        const color = smoke.team === 'CT' ? ART.palette.ctAccent : ART.palette.tAccent;
         return (
           <group key={smoke.id} position={[wx, 0, wz]} raycast={() => null}>
             <mesh position={[0, FLOOR_H + 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -365,7 +1012,7 @@ function SmokeLayer() {
             <mesh position={[0, FLOOR_H + 0.48, 0]}>
               <cylinderGeometry args={[radius * 0.94, radius * 0.72, 0.78, 36, 1, true]} />
               <meshStandardMaterial
-                color="#b8c0ca"
+                color={ART.palette.smoke}
                 transparent
                 opacity={0.26}
                 roughness={1}
@@ -376,17 +1023,17 @@ function SmokeLayer() {
             </mesh>
             <mesh position={[0, FLOOR_H + 0.91, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[radius * 0.48, radius * 0.92, 40]} />
-              <meshBasicMaterial color="#eef4fb" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
+              <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
             <SafeText
               position={[0, FLOOR_H + 0.98, 0]}
               rotation={[-Math.PI / 2, 0, 0]}
               fontSize={0.2}
-              color="#eef4fb"
+              color={ART.palette.textLight}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}
-              outlineColor="#313943"
+              outlineColor={ART.props.outline}
               font={undefined}
             >
               SMOKE
@@ -395,6 +1042,113 @@ function SmokeLayer() {
         );
       })}
     </>
+  );
+}
+
+function FlashBurstMarker({ burst }: { burst: FlashBurst }) {
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const discMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const [wx, , wz] = tileWorld(burst.position.x, burst.position.y, ts);
+  const radius = burst.radius * ts;
+
+  useFrame(() => {
+    const age = performance.now() - burst.createdAt;
+    const progress = THREE.MathUtils.clamp(age / 1400, 0, 1);
+    const opacity = Math.max(0, 0.42 * (1 - progress));
+    const scale = 0.55 + progress * 0.65;
+    if (groupRef.current) groupRef.current.scale.setScalar(scale);
+    if (discMaterialRef.current) discMaterialRef.current.opacity = opacity;
+    if (ringMaterialRef.current) ringMaterialRef.current.opacity = Math.max(0, 0.86 * (1 - progress));
+  });
+
+  return (
+    <group ref={groupRef} position={[wx, FLOOR_H + 0.32, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius, 44]} />
+        <meshBasicMaterial ref={discMaterialRef} color={ART.palette.flash} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.16, radius, 48]} />
+        <meshBasicMaterial ref={ringMaterialRef} color={ART.palette.textLight} transparent opacity={0.86} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0.04, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.34}
+        color={ART.palette.textDark}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.04}
+        outlineColor={ART.palette.flash}
+        font={undefined}
+      >
+        {burst.affectedUnitIds.length > 0 ? `FLASH ${burst.affectedUnitIds.length}` : 'FLASH'}
+      </SafeText>
+    </group>
+  );
+}
+
+function FlashLayer() {
+  const flashBursts = useGameStore((s) => s.flashBursts);
+  if (flashBursts.length === 0) return null;
+
+  return (
+    <>
+      {flashBursts.map((burst) => (
+        <FlashBurstMarker key={burst.id} burst={burst} />
+      ))}
+    </>
+  );
+}
+
+function PlantedBombMarker() {
+  const round = useGameStore((s) => s.round);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  const isDropped = !round.bombPlanted && round.bombCarrierId === null;
+  if ((!round.bombPlanted && !isDropped) || !round.bombPosition) return null;
+
+  const [wx, , wz] = tileWorld(round.bombPosition.x, round.bombPosition.y, ts);
+  const isDefused = round.bombDefused;
+  const color = isDefused ? ART.palette.ctAccent : (isDropped ? ART.palette.tAccent : ART.palette.bombAccent);
+
+  return (
+    <group position={[wx, FLOOR_H + 0.18, wz]} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ts * 0.34, ts * 0.58, 34]} />
+        <meshBasicMaterial color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0.13, 0]} castShadow>
+        <boxGeometry args={[0.42, 0.22, 0.28]} />
+        <meshStandardMaterial
+          {...standardMaterialProps('wallDark', 'metal', {
+            emissive: isDefused ? ART.palette.ctAccent : (isDropped ? ART.palette.tAccent : ART.palette.bombAccent),
+            emissiveIntensity: 0.18,
+          })}
+        />
+      </mesh>
+      <mesh position={[0.13, 0.26, 0.02]}>
+        <sphereGeometry args={[0.045, 8, 6]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      <Text
+        position={[0, 0.08, ts * 0.64]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.22}
+        color={isDefused ? ART.palette.textLight : (isDropped ? ART.palette.flash : ART.palette.textLight)}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.03}
+        outlineColor={ART.props.outline}
+        font={undefined}
+      >
+        {isDefused ? 'DEFUSED' : (isDropped ? 'DROPPED' : `${round.bombTimer}T`)}
+      </Text>
+    </group>
   );
 }
 
@@ -412,330 +1166,40 @@ function WalkableHighlight() {
 
   return (
     <>
-      <MovementBand tiles={groups.twoAp} color={MOVE_TWO_AP_COLOR} opacity={0.15} tileSize={ts} />
-      <MovementBand tiles={groups.oneAp} color={MOVE_ONE_AP_COLOR} opacity={0.18} tileSize={ts} />
+      <MovementBand
+        tiles={groups.twoAp}
+        color={MOVE_TWO_AP_COLOR}
+        opacity={0.17}
+        tileSize={ts}
+        y={ART.overlayY.movementBand}
+        renderOrder={ART.overlayOrder.movementBand}
+      />
+      <MovementBand
+        tiles={groups.oneAp}
+        color={MOVE_ONE_AP_COLOR}
+        opacity={0.2}
+        tileSize={ts}
+        y={ART.overlayY.movementBand}
+        renderOrder={ART.overlayOrder.movementBand}
+      />
       <MovementBoundary
         tiles={movementTiles}
         color={MOVE_BOUNDARY_COLOR}
         tileSize={ts}
-        y={FLOOR_H + 0.125}
+        y={ART.overlayY.movementBoundary}
         lineWidth={2.4}
+        renderOrder={ART.overlayOrder.movementBoundary}
       />
       <MovementBoundary
         tiles={groups.oneAp}
         color={MOVE_ONE_AP_COLOR}
         tileSize={ts}
-        y={FLOOR_H + 0.135}
+        y={ART.overlayY.oneApBoundary}
         lineWidth={1.35}
         opacity={0.72}
+        renderOrder={ART.overlayOrder.movementBoundary}
       />
     </>
-  );
-}
-
-function CoverProp({
-  cover,
-  x,
-  z,
-  h,
-  tileSize,
-}: {
-  cover: CoverObject;
-  x: number;
-  z: number;
-  h: number;
-  tileSize: number;
-}) {
-  const width = cover.width * tileSize * 0.88;
-  const depth = cover.height * tileSize * 0.88;
-  const label = cover.label.toLowerCase();
-
-  if (label.includes('fountain')) {
-    return <FountainProp x={x} z={z} width={width} depth={depth} />;
-  }
-  if (label.includes('banana car') || label === 'truck') {
-    return <VehicleProp x={x} z={z} width={width} depth={depth} isTruck={label === 'truck'} />;
-  }
-  if (label.includes('coffin')) {
-    return <CoffinsProp x={x} z={z} width={width} depth={depth} height={h} />;
-  }
-  if (label.includes('orange')) {
-    return <OrangesProp x={x} z={z} width={width} depth={depth} height={h} />;
-  }
-  if (label.includes('logs')) {
-    return <LogsProp x={x} z={z} width={width} depth={depth} />;
-  }
-  if (label.includes('sandbags')) {
-    return <SandbagsProp x={x} z={z} width={width} depth={depth} />;
-  }
-  if (label.includes('library shelf')) {
-    return <LibraryShelfProp x={x} z={z} width={width} depth={depth} height={h} />;
-  }
-  if (label.includes('pillar')) {
-    return <PillarProp x={x} z={z} height={h} />;
-  }
-  if (label.includes('rail') || label.includes('wall')) {
-    return <WallStripProp x={x} z={z} width={width} depth={depth} height={h} />;
-  }
-
-  const color = cover.coverType === 'half' ? '#8a7d5a' : '#6a6050';
-  return (
-    <mesh position={[x, h / 2, z]} castShadow receiveShadow>
-      <boxGeometry args={[width, h, depth]} />
-      <meshStandardMaterial color={color} roughness={0.82} metalness={0.03} />
-    </mesh>
-  );
-}
-
-function VehicleProp({
-  x,
-  z,
-  width,
-  depth,
-  isTruck,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  isTruck: boolean;
-}) {
-  const bodyColor = isTruck ? '#6f776f' : '#56473b';
-  const trimColor = isTruck ? '#b9c2b5' : '#2d2b28';
-  const bodyH = isTruck ? 0.68 : 0.46;
-  const cabinH = isTruck ? 0.55 : 0.34;
-
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, bodyH, depth * 0.8]} />
-        <meshStandardMaterial color={bodyColor} roughness={0.58} metalness={0.22} />
-      </mesh>
-      <mesh position={[width * 0.18, bodyH + cabinH / 2 - 0.04, -depth * 0.02]} castShadow>
-        <boxGeometry args={[width * 0.42, cabinH, depth * 0.62]} />
-        <meshStandardMaterial color={trimColor} roughness={0.5} metalness={0.25} />
-      </mesh>
-      {[-0.34, 0.34].map((sx) => [-0.35, 0.35].map((sz) => (
-        <mesh key={`${sx}-${sz}`} position={[sx * width, 0.14, sz * depth]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.14, 0.14, 0.12, 12]} />
-          <meshStandardMaterial color="#111216" roughness={0.72} metalness={0.08} />
-        </mesh>
-      )))}
-      <mesh position={[-width * 0.46, bodyH * 0.58, 0]} castShadow>
-        <boxGeometry args={[0.08, 0.18, depth * 0.5]} />
-        <meshStandardMaterial color="#f6d76a" roughness={0.35} emissive="#9b6b18" emissiveIntensity={0.12} />
-      </mesh>
-    </group>
-  );
-}
-
-function FountainProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  const radius = Math.min(width, depth) * 0.38;
-
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius, radius * 1.12, 0.34, 36]} />
-        <meshStandardMaterial color="#8f8775" roughness={0.78} metalness={0.02} />
-      </mesh>
-      <mesh position={[0, 0.37, 0]} castShadow>
-        <cylinderGeometry args={[radius * 0.58, radius * 0.66, 0.12, 32]} />
-        <meshStandardMaterial color="#2f6e82" roughness={0.36} metalness={0.05} emissive="#1d5060" emissiveIntensity={0.18} />
-      </mesh>
-      <mesh position={[0, 0.56, 0]} castShadow>
-        <cylinderGeometry args={[radius * 0.12, radius * 0.18, 0.36, 18]} />
-        <meshStandardMaterial color="#b4a27d" roughness={0.6} />
-      </mesh>
-    </group>
-  );
-}
-
-function CoffinsProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      {[-0.22, 0.22].map((offset) => (
-        <mesh key={offset} position={[offset * width, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width * 0.36, height, depth * 0.9]} />
-          <meshStandardMaterial color="#403b37" roughness={0.7} metalness={0.04} />
-        </mesh>
-      ))}
-      <mesh position={[0, height + 0.04, 0]} castShadow>
-        <boxGeometry args={[width * 0.86, 0.08, depth * 0.78]} />
-        <meshStandardMaterial color="#1c1a18" roughness={0.82} />
-      </mesh>
-    </group>
-  );
-}
-
-function OrangesProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color="#8c6540" roughness={0.76} metalness={0.02} />
-      </mesh>
-      {[-0.25, 0.05, 0.35].map((sx, index) => (
-        <mesh key={sx} position={[sx * width, height + 0.13, (index - 1) * depth * 0.2]} castShadow>
-          <sphereGeometry args={[0.13, 12, 8]} />
-          <meshStandardMaterial color="#d9822b" roughness={0.7} emissive="#6d2e0d" emissiveIntensity={0.07} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function LogsProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      {[-0.22, 0, 0.22].map((offset, index) => (
-        <mesh key={offset} position={[0, 0.2 + index * 0.06, offset * depth]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.16, 0.16, width * 0.92, 14]} />
-          <meshStandardMaterial color={index % 2 === 0 ? '#6f4a2d' : '#7a5636'} roughness={0.8} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function SandbagsProp({
-  x,
-  z,
-  width,
-  depth,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-}) {
-  const bags = [
-    [-0.28, -0.18, 0],
-    [0.05, -0.18, 0.03],
-    [0.34, -0.14, -0.02],
-    [-0.12, 0.18, 0.08],
-    [0.22, 0.18, 0.04],
-  ];
-
-  return (
-    <group position={[x, 0, z]}>
-      {bags.map(([sx, sz, lift], index) => (
-        <mesh key={index} position={[sx * width, 0.18 + lift, sz * depth]} scale={[0.38, 0.12, 0.22]} castShadow receiveShadow>
-          <sphereGeometry args={[1, 16, 8]} />
-          <meshStandardMaterial color={index % 2 ? '#9b8a63' : '#ab9a70'} roughness={0.92} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function LibraryShelfProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color="#4d3929" roughness={0.66} />
-      </mesh>
-      {[-0.25, 0, 0.25].map((sx, index) => (
-        <mesh key={sx} position={[sx * width, height * 0.65, depth * 0.51]} castShadow>
-          <boxGeometry args={[width * 0.12, height * 0.42, 0.04]} />
-          <meshStandardMaterial color={['#9a3430', '#d0ac56', '#2f6f82'][index]} roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function PillarProp({
-  x,
-  z,
-  height,
-}: {
-  x: number;
-  z: number;
-  height: number;
-}) {
-  return (
-    <mesh position={[x, height / 2, z]} castShadow receiveShadow>
-      <cylinderGeometry args={[0.38, 0.44, height, 12]} />
-      <meshStandardMaterial color="#73695b" roughness={0.78} />
-    </mesh>
-  );
-}
-
-function WallStripProp({
-  x,
-  z,
-  width,
-  depth,
-  height,
-}: {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  return (
-    <mesh position={[x, Math.min(height, 1.05) / 2, z]} castShadow receiveShadow>
-      <boxGeometry args={[width, Math.min(height, 1.05), depth]} />
-      <meshStandardMaterial color="#8d7f68" roughness={0.84} metalness={0.02} />
-    </mesh>
   );
 }
 
@@ -781,16 +1245,38 @@ function ThreatenedMovementOverlay() {
 
   return (
     <>
-      <MovementBand tiles={threatenedTiles.protected} color="#d8c170" opacity={0.13} tileSize={ts} />
-      <MovementBand tiles={threatenedTiles.flanked} color={THREAT_COLOR} opacity={0.2} tileSize={ts} />
-      <MovementBand tiles={threatenedTiles.exposed} color="#ff4e6a" opacity={0.24} tileSize={ts} />
+      <MovementBand
+        tiles={threatenedTiles.protected}
+        color={ART.palette.moveTwoAP}
+        opacity={0.13}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
+      <MovementBand
+        tiles={threatenedTiles.flanked}
+        color={ART.palette.dangerZoneRed}
+        opacity={0.2}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
+      <MovementBand
+        tiles={threatenedTiles.exposed}
+        color={ART.palette.dangerZoneRed}
+        opacity={0.28}
+        tileSize={ts}
+        y={ART.overlayY.threatBand}
+        renderOrder={ART.overlayOrder.threatBand}
+      />
       <MovementBoundary
         tiles={[...threatenedTiles.exposed, ...threatenedTiles.flanked]}
-        color={THREAT_COLOR}
+        color={ART.palette.fireLineRed}
         tileSize={ts}
-        y={FLOOR_H + 0.155}
+        y={ART.overlayY.threatBoundary}
         lineWidth={1.6}
         opacity={0.78}
+        renderOrder={ART.overlayOrder.threatBoundary}
       />
     </>
   );
@@ -814,10 +1300,14 @@ function HoveredTileHighlight() {
     return movementTiles.find((tile) => tile.x === hoveredTile.x && tile.y === hoveredTile.y) ?? null;
   }, [hoveredTile, movementTiles, selectedUnitId]);
 
-  if (!hoveredTile || !hoveredMovementTile) return null;
+  const isSmokeMode = inputMode === 'smoke';
+  const isFlashMode = inputMode === 'flash';
+  const isUtilityMode = isSmokeMode || isFlashMode;
+
+  if (!hoveredTile || (!hoveredMovementTile && !isUtilityMode)) return null;
 
   const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
-  const isOneAp = hoveredMovementTile.apCost <= 1;
+  const isOneAp = (hoveredMovementTile?.apCost ?? 2) <= 1;
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId);
   const crossedHeldAngles = selectedUnit
     && phase !== 'setup'
@@ -834,20 +1324,24 @@ function HoveredTileHighlight() {
   const topKnownThreat = knownThreats[0] ?? null;
   const isWatched = crossedHeldAngles.length > 0;
   const isThreatened = knownThreats.length > 0;
-  const color = isWatched ? '#ff4e6a' : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
-  const isSmokeMode = inputMode === 'smoke';
+  const color = isWatched ? ART.palette.danger : (isThreatened ? THREAT_COLOR : (isOneAp ? MOVE_ONE_AP_COLOR : MOVE_TWO_AP_COLOR));
   const threatLabel = topKnownThreat?.coverState === 'protected'
-    ? 'COVER'
+    ? topKnownThreat.coverQuality === 'corner' ? 'CORNER' : 'COVER'
     : topKnownThreat?.coverState === 'flanked'
       ? 'FLANK'
       : 'OPEN';
-  const label = isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP')));
-  const smokeColor = '#b9c6d8';
-  const displayColor = isSmokeMode ? smokeColor : color;
+  const label = isFlashMode ? 'FLASH' : (isSmokeMode ? 'SMOKE' : (isWatched ? 'WATCH' : (isThreatened ? threatLabel : (isOneAp ? '1 AP' : '2 AP'))));
+  const smokeColor = ART.palette.smoke;
+  const flashColor = ART.palette.flash;
+  const displayColor = isFlashMode ? flashColor : (isSmokeMode ? smokeColor : color);
   const coverEdges = getCoverEdges(map, hoveredTile);
 
   return (
-    <group position={[wx, FLOOR_H + 0.16, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group
+      position={[wx, ART.overlayY.hoveredTile, wz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={ART.overlayOrder.hoveredTile}
+    >
       <mesh raycast={() => null}>
         <planeGeometry args={[ts - GRID_GAP, ts - GRID_GAP]} />
         <meshBasicMaterial
@@ -860,16 +1354,17 @@ function HoveredTileHighlight() {
       </mesh>
       <mesh position={[0, 0, 0.01]} raycast={() => null}>
         <ringGeometry args={[ts * 0.38, ts * 0.5, 4]} />
-        <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={displayColor} transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
         position={[0, 0, 0.035]}
         fontSize={0.28}
-        color="#101318"
+        color={ART.palette.textDark}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.035}
-        outlineColor={isSmokeMode ? '#3f4a58' : '#f8f3dc'}
+        outlineColor={isFlashMode ? ART.palette.tAccent : (isSmokeMode ? ART.props.outline : ART.palette.textLight)}
+        renderOrder={ART.overlayOrder.hoveredTile}
         font={undefined}
       >
         {label}
@@ -911,10 +1406,10 @@ function SmokeTargetPreview() {
   const valid = Boolean(tile?.walkable && inRange && unit.smokeGrenades > 0 && unit.ap > 0);
   const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
   const radius = SMOKE_RADIUS_TILES * ts;
-  const color = valid ? SMOKE_PREVIEW_COLOR : '#ff6b6b';
+  const color = valid ? SMOKE_PREVIEW_COLOR : ART.props.invalid;
 
   return (
-    <group position={[wx, FLOOR_H + 0.24, wz]} raycast={() => null}>
+    <group position={[wx, ART.overlayY.utilityPreview, wz]} renderOrder={ART.overlayOrder.utilityPreview} raycast={() => null}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 40]} />
         <meshBasicMaterial color={color} transparent opacity={valid ? 0.18 : 0.1} side={THREE.DoubleSide} depthWrite={false} />
@@ -927,14 +1422,71 @@ function SmokeTargetPreview() {
         position={[0, 0.02, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.26}
-        color={valid ? '#eef4fb' : '#ffd1d1'}
+        color={valid ? ART.palette.textLight : ART.props.invalid}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.035}
-        outlineColor="#18202a"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
         font={undefined}
       >
         {valid ? 'SMOKE' : 'NO THROW'}
+      </SafeText>
+    </group>
+  );
+}
+
+function FlashTargetPreview() {
+  const hoveredTile = useGameStore((s) => s.hoveredTile);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const units = useGameStore((s) => s.units);
+  const smokes = useGameStore((s) => s.smokes);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+
+  if (!hoveredTile || selectedUnitId === null || inputMode !== 'flash') return null;
+  const unit = units.find((candidate) => candidate.id === selectedUnitId);
+  if (!unit) return null;
+
+  const tile = map.grid[hoveredTile.y]?.[hoveredTile.x];
+  const inRange = gridDistance(unit.position, hoveredTile) <= FLASH_THROW_RANGE;
+  const valid = Boolean(tile?.walkable && inRange && unit.flashbangs > 0 && unit.ap > 0);
+  const affectedEnemies = valid
+    ? units.filter((candidate) => (
+      candidate.alive &&
+      candidate.team !== unit.team &&
+      gridDistance(candidate.position, hoveredTile) <= FLASH_RADIUS_TILES &&
+      hasLineOfSight(map, hoveredTile, candidate.position, smokes)
+    ))
+    : [];
+  const [wx, , wz] = tileWorld(hoveredTile.x, hoveredTile.y, ts);
+  const radius = FLASH_RADIUS_TILES * ts;
+  const color = valid ? FLASH_PREVIEW_COLOR : ART.props.invalid;
+
+  return (
+    <group position={[wx, ART.overlayY.flashPreview, wz]} renderOrder={ART.overlayOrder.utilityPreview} raycast={() => null}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius, 44]} />
+        <meshBasicMaterial color={color} transparent opacity={valid ? 0.14 : 0.08} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.9, radius, 44]} />
+        <meshBasicMaterial color={color} transparent opacity={0.84} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <SafeText
+        position={[0, 0.03, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.28}
+        color={valid ? ART.palette.textLight : ART.props.invalid}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.04}
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
+        font={undefined}
+      >
+        {valid ? `FLASH ${affectedEnemies.length}` : 'NO THROW'}
       </SafeText>
     </group>
   );
@@ -1018,6 +1570,7 @@ function MovementBoundary({
   y,
   lineWidth,
   opacity = 0.95,
+  renderOrder = ART.overlayOrder.movementBoundary,
 }: {
   tiles: Array<{ x: number; y: number }>;
   color: string;
@@ -1025,6 +1578,7 @@ function MovementBoundary({
   y: number;
   lineWidth: number;
   opacity?: number;
+  renderOrder?: number;
 }) {
   const segments = useMemo(
     () => getBoundarySegments(tiles, tileSize, y),
@@ -1043,6 +1597,7 @@ function MovementBoundary({
           lineWidth={lineWidth}
           transparent
           opacity={opacity}
+          renderOrder={renderOrder}
         />
       ))}
     </group>
@@ -1054,11 +1609,15 @@ function MovementBand({
   color,
   opacity,
   tileSize,
+  y = ART.overlayY.movementBand,
+  renderOrder = ART.overlayOrder.movementBand,
 }: {
   tiles: Array<{ x: number; y: number }>;
   color: string;
   opacity: number;
   tileSize: number;
+  y?: number;
+  renderOrder?: number;
 }) {
   const mesh = useMemo(() => {
     if (tiles.length === 0) return null;
@@ -1072,17 +1631,18 @@ function MovementBand({
       depthWrite: false,
     });
     const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
+    inst.renderOrder = renderOrder;
     const d = new THREE.Object3D();
     tiles.forEach((tile, i) => {
       const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
-      d.position.set(wx, FLOOR_H + 0.04, wz);
+      d.position.set(wx, y, wz);
       d.rotation.set(-Math.PI / 2, 0, 0);
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
     });
     inst.instanceMatrix.needsUpdate = true;
     return inst;
-  }, [tiles, color, opacity, tileSize]);
+  }, [tiles, color, opacity, tileSize, y, renderOrder]);
 
   if (!mesh) return null;
   return <primitive object={mesh} raycast={() => null} />;
@@ -1101,14 +1661,34 @@ function PathPreview() {
     const unit = units.find((u) => u.id === selectedUnitId);
     if (!unit) return null;
     const allTiles = [unit.position, ...pathPreview];
-    return allTiles.map((t): [number, number, number] => {
+    const rawPoints = allTiles.map((t): [number, number, number] => {
       const [wx, , wz] = tileWorld(t.x, t.y, ts);
-      return [wx, FLOOR_H + 0.12, wz];
+      return [wx, ART.overlayY.pathPreview, wz];
     });
+    return curvedLinePoints(rawPoints);
   }, [pathPreview, selectedUnitId, units, ts]);
 
   if (!points || points.length < 2) return null;
-  return <Line points={points} color="#44ff88" lineWidth={3} />;
+  return (
+    <>
+      <Line
+        points={points}
+        color={ART.palette.moveArrowBlue}
+        lineWidth={4.2}
+        transparent
+        opacity={0.95}
+        depthTest={false}
+        renderOrder={ART.overlayOrder.pathPreview}
+      />
+      <ArrowHeadLines
+        points={points}
+        color={ART.palette.moveArrowBlue}
+        size={ts * 0.42}
+        lineWidth={4.2}
+        renderOrder={ART.overlayOrder.pathPreview}
+      />
+    </>
+  );
 }
 
 function PlannedActionPreview() {
@@ -1119,44 +1699,83 @@ function PlannedActionPreview() {
   const smokes = useGameStore((s) => s.smokes);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const timelineActions = sortPlannedActionsByBeat(plannedActions);
 
   return (
     <>
-      {plannedActions.map((action, index) => {
+      {timelineActions.map((action, index) => {
         const unit = units.find((u) => u.id === action.unitId);
-        const isWatched = phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
-        const isDanger = Boolean(unit && phase !== 'setup' && units.some((enemy) => {
+        const isMove = action.kind === 'move';
+        const isWatched = isMove && phase !== 'setup' && getCrossingHeldAngles(heldAngles, action.path, action.team).length > 0;
+        const isDanger = Boolean(isMove && unit && phase !== 'setup' && units.some((enemy) => {
           if (!enemy.alive || enemy.team === action.team) return false;
           const preview = getShotPreview(map, enemy, unit, 0, action.target, smokes);
           return preview.hasLineOfSight && preview.inRange;
         }));
-        const color = isWatched ? '#ff4e6a' : (isDanger ? '#ff9d3d' : (unit?.team === 'CT' ? '#65b7ff' : '#ffd166'));
-        const label = isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`);
-        const points = [action.from, ...action.path].map((tile): [number, number, number] => {
+        const utilityColor = action.kind === 'flash' ? ART.palette.flash : ART.palette.smoke;
+        const color = !isMove
+          ? utilityColor
+          : (isWatched || isDanger ? ART.palette.fireLineRed : ART.palette.moveArrowBlue);
+        const label = !isMove ? action.kind.toUpperCase() : (isWatched ? 'WATCH' : (isDanger ? 'DANGER' : `${action.apCost}AP`));
+        const beat = getPlannedActionBeat(action);
+        const stackOffset = Math.min(index, 8);
+        const plannedPathY = ART.overlayY.plannedPath + stackOffset * 0.006;
+        const plannedMarkerY = ART.overlayY.plannedMarker + stackOffset * 0.004;
+        const rawPoints = [action.from, ...action.path].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-          return [wx, FLOOR_H + 0.24 + index * 0.012, wz];
+          return [wx, plannedPathY, wz];
         });
+        const points = isMove ? curvedLinePoints(rawPoints) : rawPoints;
         const [wx, , wz] = tileWorld(action.target.x, action.target.y, ts);
 
         return (
           <group key={action.id}>
-            {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
-            <group position={[wx, FLOOR_H + 0.21, wz]} rotation={[-Math.PI / 2, 0, 0]}>
+            {points.length >= 2 && (
+              <>
+                <Line
+                  points={points}
+                  color={color}
+                  lineWidth={isMove ? 3.8 : 2.4}
+                  transparent
+                  opacity={isMove ? 0.92 : 0.82}
+                  depthTest={false}
+                  dashed={isWatched || isDanger}
+                  dashSize={0.32}
+                  gapSize={0.18}
+                  renderOrder={ART.overlayOrder.plannedPath}
+                />
+                {isMove && (
+                  <ArrowHeadLines
+                    points={points}
+                    color={color}
+                    size={ts * 0.38}
+                    lineWidth={3.8}
+                    renderOrder={ART.overlayOrder.plannedPath}
+                  />
+                )}
+              </>
+            )}
+            <group
+              position={[wx, plannedMarkerY, wz]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={ART.overlayOrder.plannedMarker}
+            >
               <mesh raycast={() => null}>
                 <ringGeometry args={[ts * 0.24, ts * 0.42, 24]} />
-                <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
+                <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
               </mesh>
               <SafeText
                 position={[0, 0, 0.04]}
-                fontSize={0.24}
-                color="#101318"
+                fontSize={0.18}
+                color={ART.palette.textDark}
                 anchorX="center"
                 anchorY="middle"
                 outlineWidth={0.03}
                 outlineColor={color}
+                renderOrder={ART.overlayOrder.plannedMarker}
                 font={undefined}
               >
-                {label}
+                {`${beat.timeLabel}\n${label}`}
               </SafeText>
             </group>
           </group>
@@ -1176,16 +1795,35 @@ function HeldAngleOverlay() {
     <>
       {heldAngles.map((angle) => {
         const unit = units.find((u) => u.id === angle.unitId);
-        const color = unit?.team === 'CT' ? '#ff4e6a' : '#ff9d3d';
+        const color = unit?.team === 'CT' ? ART.palette.fireLineRed : ART.palette.moveArrowBlue;
         const points = [angle.origin, ...angle.laneTiles].map((tile): [number, number, number] => {
           const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-          return [wx, FLOOR_H + 0.31, wz];
+          return [wx, ART.overlayY.heldLaneLine, wz];
         });
 
         return (
           <group key={angle.id}>
-            {points.length >= 2 && <Line points={points} color={color} lineWidth={3} />}
-            <HeldLaneTiles tiles={angle.laneTiles} color={color} tileSize={ts} />
+            {points.length >= 2 && (
+              <Line
+                points={points}
+                color={color}
+                lineWidth={3.2}
+                transparent
+                opacity={0.92}
+                dashed={unit?.team === 'CT'}
+                dashSize={0.34}
+                gapSize={0.18}
+                depthTest={false}
+                renderOrder={ART.overlayOrder.heldLaneLine}
+              />
+            )}
+            <HeldLaneTiles
+              tiles={angle.laneTiles}
+              color={color}
+              tileSize={ts}
+              y={ART.overlayY.heldLaneTile}
+              renderOrder={ART.overlayOrder.heldLaneTile}
+            />
           </group>
         );
       })}
@@ -1215,27 +1853,48 @@ function HoldAngleHoverPreview() {
 
   if (!preview) return null;
 
-  const color = preview.unit.team === 'CT' ? '#ff87a0' : '#ffb86b';
+  const color = preview.unit.team === 'CT' ? ART.palette.fireLineRed : ART.palette.moveArrowBlue;
   const points = [preview.unit.position, ...preview.laneTiles].map((tile): [number, number, number] => {
     const [wx, , wz] = tileWorld(tile.x, tile.y, ts);
-    return [wx, FLOOR_H + 0.39, wz];
+    return [wx, ART.overlayY.holdPreview, wz];
   });
   const lastTile = preview.laneTiles[preview.laneTiles.length - 1];
   const [labelX, , labelZ] = tileWorld(lastTile.x, lastTile.y, ts);
 
   return (
     <group>
-      {points.length >= 2 && <Line points={points} color={color} lineWidth={2} />}
-      <HeldLaneTiles tiles={preview.laneTiles} color={color} tileSize={ts} opacity={0.18} />
+      {points.length >= 2 && (
+        <Line
+          points={points}
+          color={color}
+          lineWidth={2.8}
+          transparent
+          opacity={0.84}
+          dashed={preview.unit.team === 'CT'}
+          dashSize={0.3}
+          gapSize={0.18}
+          depthTest={false}
+          renderOrder={ART.overlayOrder.utilityPreview}
+        />
+      )}
+      <HeldLaneTiles
+        tiles={preview.laneTiles}
+        color={color}
+        tileSize={ts}
+        opacity={0.18}
+        y={ART.overlayY.holdPreview}
+        renderOrder={ART.overlayOrder.utilityPreview}
+      />
       <SafeText
-        position={[labelX, FLOOR_H + 0.42, labelZ]}
+        position={[labelX, ART.overlayY.holdLabel, labelZ]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.25}
-        color="#ffd7dd"
+        color={ART.palette.textLight}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.025}
-        outlineColor="#14080d"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.utilityPreview}
         font={undefined}
       >
         HOLD
@@ -1249,11 +1908,15 @@ function HeldLaneTiles({
   color,
   tileSize,
   opacity = 0.28,
+  y = ART.overlayY.heldLaneTile,
+  renderOrder = ART.overlayOrder.heldLaneTile,
 }: {
   tiles: TileCoord[];
   color: string;
   tileSize: number;
   opacity?: number;
+  y?: number;
+  renderOrder?: number;
 }) {
   const mesh = useMemo(() => {
     if (tiles.length === 0) return null;
@@ -1267,17 +1930,18 @@ function HeldLaneTiles({
       depthWrite: false,
     });
     const inst = new THREE.InstancedMesh(geo, mat, tiles.length);
+    inst.renderOrder = renderOrder;
     const d = new THREE.Object3D();
     tiles.forEach((tile, i) => {
       const [wx, , wz] = tileWorld(tile.x, tile.y, tileSize);
-      d.position.set(wx, FLOOR_H + 0.18, wz);
+      d.position.set(wx, y, wz);
       d.rotation.set(-Math.PI / 2, 0, 0);
       d.updateMatrix();
       inst.setMatrixAt(i, d.matrix);
     });
     inst.instanceMatrix.needsUpdate = true;
     return inst;
-  }, [tiles, color, opacity, tileSize]);
+  }, [tiles, color, opacity, tileSize, y, renderOrder]);
 
   if (!mesh) return null;
   return <primitive object={mesh} raycast={() => null} />;
@@ -1298,13 +1962,14 @@ function CombatEventMarker() {
       startedAtRef.current = { id: event.id, time: state.clock.elapsedTime };
     }
 
+    const shot = getShotPresentation(event.weaponCategory);
     const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
-    const progress = THREE.MathUtils.clamp(elapsed / 1.6, 0, 1);
-    const lift = event.hit ? progress * 0.62 : progress * 0.32;
-    const pulse = 1 + Math.sin(progress * Math.PI) * (event.hit ? 0.34 : 0.18);
+    const progress = THREE.MathUtils.clamp(elapsed / shot.markerDurationSeconds, 0, 1);
+    const lift = event.killed ? progress * 0.92 : event.hit ? progress * 0.68 : progress * 0.32;
+    const pulse = 1 + Math.sin(progress * Math.PI) * shot.impactScale * (event.killed ? 0.46 : event.hit ? 0.32 : 0.15);
     const opacity = Math.max(0, 0.92 * (1 - progress));
 
-    groupRef.current.position.y = FLOOR_H + 0.5 + lift;
+    groupRef.current.position.y = ART.overlayY.combatMarker + lift;
     groupRef.current.scale.setScalar(pulse);
     if (ringMaterialRef.current) {
       ringMaterialRef.current.opacity = opacity;
@@ -1314,24 +1979,27 @@ function CombatEventMarker() {
   if (!event) return null;
 
   const [wx, , wz] = tileWorld(event.tile.x, event.tile.y, ts);
-  const color = event.hit ? '#ff4e6a' : '#d8c170';
-  const label = event.hit ? `-${event.damage}` : 'MISS';
+  const shot = getShotPresentation(event.weaponCategory);
+  const color = getCombatEventColor(event);
+  const label = getCombatEventLabel(event);
+  const fontSize = event.killed ? 0.31 : event.critical ? 0.28 : event.hit ? 0.36 : 0.34;
 
   return (
-    <group ref={groupRef} position={[wx, FLOOR_H + 0.5, wz]}>
+    <group ref={groupRef} position={[wx, ART.overlayY.combatMarker, wz]} renderOrder={ART.overlayOrder.combat}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[ts * 0.32, ts * 0.55, 36]} />
-        <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} />
+        <ringGeometry args={[ts * 0.32, ts * (0.5 + shot.impactScale * 0.08), 36]} />
+        <meshBasicMaterial ref={ringMaterialRef} color={color} transparent opacity={0.88} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
         position={[0, 0.04, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.36}
-        color={event.hit ? '#ffd7dd' : '#fff1b5'}
+        fontSize={fontSize}
+        color={event.critical || event.killed ? ART.palette.textLight : event.hit ? shot.secondaryColor : ART.palette.flash}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.04}
-        outlineColor="#11080c"
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.combat}
         font={undefined}
       >
         {label}
@@ -1345,6 +2013,39 @@ function CombatTracerOverlay() {
   const units = useGameStore((s) => s.units);
   const map = useGameStore((s) => s.map);
   const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const muzzleRef = useRef<THREE.Group>(null);
+  const impactRef = useRef<THREE.Group>(null);
+  const damageRef = useRef<THREE.Group>(null);
+  const labelRef = useRef<THREE.Group>(null);
+
+  useFrame(() => {
+    if (!event || !groupRef.current) return;
+
+    const shot = getShotPresentation(event.weaponCategory);
+    const durationMs = shot.markerDurationSeconds * 1000;
+    const elapsedMs = Math.max(0, Date.now() - event.createdAt);
+    const progress = THREE.MathUtils.clamp(elapsedMs / durationMs, 0, 1);
+    const fade = 1 - THREE.MathUtils.smoothstep(progress, 0.16, 1);
+    const pulse = 1 + Math.sin(progress * Math.PI) * shot.impactScale * (event.killed ? 0.22 : event.hit ? 0.15 : 0.09);
+
+    groupRef.current.visible = progress < 1 && fade > 0.02;
+    setObjectOpacity(groupRef.current, 0.92 * fade);
+
+    if (muzzleRef.current) {
+      const muzzlePunch = 1 + Math.max(0, 1 - progress * 2.4) * shot.muzzleScale * (event.type === 'reaction_fire' ? 0.58 : 0.42);
+      muzzleRef.current.scale.setScalar(muzzlePunch);
+    }
+    if (impactRef.current) {
+      impactRef.current.scale.setScalar(pulse);
+    }
+    if (damageRef.current) {
+      damageRef.current.scale.setScalar(1 + Math.sin(progress * Math.PI) * (event.killed ? 0.28 : 0.18));
+    }
+    if (labelRef.current) {
+      labelRef.current.scale.setScalar(1 + Math.sin(progress * Math.PI) * 0.12);
+    }
+  });
 
   if (!event) return null;
 
@@ -1355,40 +2056,235 @@ function CombatTracerOverlay() {
   const [sx, , sz] = tileWorld(attacker.position.x, attacker.position.y, ts);
   const targetTile = target?.position ?? event.tile;
   const [tx, , tz] = tileWorld(targetTile.x, targetTile.y, ts);
-  const color = event.hit ? '#ff4e6a' : '#fff1b5';
-  const label = event.type === 'reaction_fire' ? 'REACTION' : 'SHOT';
-  const start: LinePoint = [sx, FLOOR_H + 1.08, sz];
-  const end: LinePoint = [tx, FLOOR_H + 0.68, tz];
-  const midpoint: LinePoint = [(sx + tx) / 2, FLOOR_H + 0.96, (sz + tz) / 2];
+  const shot = getShotPresentation(event.weaponCategory);
+  const color = getCombatEventColor(event);
+  const label = event.critical
+    ? `${shot.label} HEADSHOT`
+    : event.killed
+      ? `${shot.label} ELIM`
+      : event.type === 'reaction_fire'
+        ? `${shot.label} REACTION`
+        : shot.label;
+  const start: LinePoint = [sx, ART.overlayY.muzzle, sz];
+  const end: LinePoint = [tx, ART.overlayY.tracerTarget, tz];
+  const midpoint: LinePoint = [(sx + tx) / 2, ART.overlayY.damageText, (sz + tz) / 2];
+  const dx = tx - sx;
+  const dz = tz - sz;
+  const length = Math.sqrt(dx * dx + dz * dz) || 1;
+  const offsetX = -dz / length;
+  const offsetZ = dx / length;
+  const tracerCount = event.hit ? shot.tracerCount : 1;
 
   return (
-    <group raycast={() => null}>
-      <Line points={[start, end]} color={color} lineWidth={event.hit ? 4 : 2} />
-      <Line
-        points={[[sx, FLOOR_H + 1.12, sz], [tx, FLOOR_H + 0.72, tz]]}
-        color={event.hit ? '#ffd7dd' : '#d8c170'}
-        lineWidth={1}
-      />
-      <mesh position={start}>
-        <sphereGeometry args={[0.1, 12, 8]} />
-        <meshBasicMaterial color={color} transparent opacity={0.82} />
+    <group ref={groupRef} renderOrder={ART.overlayOrder.combat} raycast={() => null}>
+      {Array.from({ length: tracerCount }).map((_, index) => {
+        const offset = (index - (tracerCount - 1) / 2) * shot.tracerSpread;
+        const tracerStart: LinePoint = [
+          start[0] + offsetX * offset,
+          start[1] + index * 0.018,
+          start[2] + offsetZ * offset,
+        ];
+        const tracerEnd: LinePoint = [
+          end[0] + offsetX * offset * 0.55,
+          end[1] + index * 0.012,
+          end[2] + offsetZ * offset * 0.55,
+        ];
+
+        return (
+          <Line
+            key={`tracer-${event.id}-${index}`}
+            points={[tracerStart, tracerEnd]}
+            color={index === 0 ? color : shot.secondaryColor}
+            lineWidth={event.hit ? Math.max(2, shot.tracerWidth - index * 0.6) : 2}
+            transparent
+            opacity={0.92}
+            renderOrder={ART.overlayOrder.combat}
+          />
+        );
+      })}
+      <group ref={muzzleRef} position={start} renderOrder={ART.overlayOrder.combat}>
+        <mesh>
+          <sphereGeometry args={[0.07 + shot.muzzleScale * 0.06, 12, 8]} />
+          <meshBasicMaterial color={color} transparent opacity={0.82} depthWrite={false} />
+        </mesh>
+      </group>
+      <group ref={impactRef} position={end} rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.combat}>
+        <mesh>
+          <ringGeometry args={[0.18, event.hit ? 0.28 + shot.impactScale * 0.16 : 0.3, 28]} />
+          <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      </group>
+      {event.hit && (
+        <group ref={damageRef} position={[end[0], ART.overlayY.damageText, end[2]]} renderOrder={ART.overlayOrder.combat}>
+          <SafeText
+            position={[0, 0, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            fontSize={0.21}
+            color={event.killed || event.critical ? ART.palette.textLight : shot.secondaryColor}
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.025}
+            outlineColor={ART.props.outline}
+            renderOrder={ART.overlayOrder.combat}
+            font={undefined}
+          >
+            {`-${event.damage} HP`}
+          </SafeText>
+        </group>
+      )}
+      <group ref={labelRef} position={midpoint} renderOrder={ART.overlayOrder.combat}>
+        <SafeText
+          position={[0, 0, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.2}
+          color={color}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.03}
+          outlineColor={ART.props.outline}
+          renderOrder={ART.overlayOrder.combat}
+          font={undefined}
+        >
+          {label}
+        </SafeText>
+      </group>
+    </group>
+  );
+}
+
+function ContactBreakPulse() {
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const units = useGameStore((s) => s.units);
+  const map = useGameStore((s) => s.map);
+  const ts = map.tileSize;
+  const groupRef = useRef<THREE.Group>(null);
+  const outerRef = useRef<THREE.MeshBasicMaterial>(null);
+  const innerRef = useRef<THREE.MeshBasicMaterial>(null);
+  const startedAtRef = useRef({ id: '', time: 0 });
+  const sparkOffsets = useMemo(() => [
+    { x: -0.28, z: -0.12, rotation: -0.7, length: 0.46 },
+    { x: 0.24, z: -0.22, rotation: 0.5, length: 0.38 },
+    { x: -0.1, z: 0.28, rotation: 1.15, length: 0.32 },
+    { x: 0.34, z: 0.16, rotation: -1.1, length: 0.42 },
+  ], []);
+
+  useFrame((state) => {
+    if (!interrupt || !groupRef.current) return;
+    if (startedAtRef.current.id !== interrupt.id) {
+      startedAtRef.current = { id: interrupt.id, time: state.clock.elapsedTime };
+    }
+
+    const elapsed = state.clock.elapsedTime - startedAtRef.current.time;
+    const progress = THREE.MathUtils.clamp(elapsed / 2.2, 0, 1);
+    const pulse = 1 + Math.sin(progress * Math.PI * 2.2) * 0.1;
+    groupRef.current.scale.setScalar(pulse);
+
+    if (outerRef.current) {
+      outerRef.current.opacity = Math.max(0.08, 0.42 * (1 - progress * 0.55));
+    }
+    if (innerRef.current) {
+      innerRef.current.opacity = Math.max(0.16, 0.58 * (1 - progress * 0.35));
+    }
+  });
+
+  if (!interrupt) return null;
+
+  const [wx, , wz] = tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
+  const attacker = units.find((unit) => unit.id === interrupt.event.attackerId);
+  const target = units.find((unit) => unit.id === interrupt.event.targetId);
+  const attackerPoint = attacker
+    ? tileWorld(attacker.position.x, attacker.position.y, ts)
+    : null;
+  const targetPoint = target
+    ? tileWorld(target.position.x, target.position.y, ts)
+    : tileWorld(interrupt.contactTile.x, interrupt.contactTile.y, ts);
+  const shot = getShotPresentation(interrupt.event.weaponCategory);
+  const color = getCombatEventColor(interrupt.event);
+  const laneY = ART.overlayY.contactLane - ART.overlayY.contactPulse;
+  const sparkY = ART.overlayY.contactSpark - ART.overlayY.contactPulse;
+  const labelY = ART.overlayY.contactLabel - ART.overlayY.contactPulse;
+
+  return (
+    <group
+      ref={groupRef}
+      position={[wx, ART.overlayY.contactPulse, wz]}
+      renderOrder={ART.overlayOrder.contactPulse}
+      raycast={() => null}
+    >
+      {attackerPoint && (
+        <>
+          <Line
+            points={[
+              [attackerPoint[0] - wx, laneY, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, laneY, targetPoint[2] - wz],
+            ]}
+            color={color}
+            lineWidth={8}
+            transparent
+            opacity={0.34}
+            renderOrder={ART.overlayOrder.contactPulse}
+          />
+          <Line
+            points={[
+              [attackerPoint[0] - wx, laneY + 0.045, attackerPoint[2] - wz],
+              [targetPoint[0] - wx, laneY + 0.045, targetPoint[2] - wz],
+            ]}
+            color={ART.palette.textLight}
+            lineWidth={3}
+            transparent
+            opacity={0.88}
+            renderOrder={ART.overlayOrder.contactPulse}
+          />
+          <mesh position={[attackerPoint[0] - wx, sparkY, attackerPoint[2] - wz]} renderOrder={ART.overlayOrder.contactPulse}>
+            <sphereGeometry args={[0.18, 12, 8]} />
+            <meshBasicMaterial color={ART.palette.flash} transparent opacity={0.82} depthWrite={false} />
+          </mesh>
+        </>
+      )}
+      <mesh position={[targetPoint[0] - wx, sparkY, targetPoint[2] - wz]} renderOrder={ART.overlayOrder.contactPulse}>
+        <sphereGeometry args={[0.22, 14, 10]} />
+        <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.88} depthWrite={false} />
       </mesh>
-      <mesh position={end} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.18, event.hit ? 0.42 : 0.3, 28]} />
-        <meshBasicMaterial color={color} transparent opacity={0.72} side={THREE.DoubleSide} />
+      {sparkOffsets.map((spark, index) => (
+        <mesh
+          key={index}
+          position={[targetPoint[0] - wx + spark.x, sparkY - 0.03, targetPoint[2] - wz + spark.z]}
+          rotation={[0, spark.rotation, 0]}
+          renderOrder={ART.overlayOrder.contactPulse}
+        >
+          <boxGeometry args={[0.06, 0.06, spark.length]} />
+          <meshBasicMaterial color={index % 2 === 0 ? ART.palette.textLight : ART.palette.tAccent} transparent opacity={0.78} depthWrite={false} />
+        </mesh>
+      ))}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
+        <ringGeometry args={[ts * 0.86, ts * 1.02, 48]} />
+        <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
+        <ringGeometry args={[ts * 1.12, ts * 1.22, 64]} />
+        <meshBasicMaterial color={ART.palette.textLight} transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]} renderOrder={ART.overlayOrder.contactPulse}>
+        <ringGeometry args={[ts * 0.55, ts * 0.72, 4]} />
+        <meshBasicMaterial ref={outerRef} color={color} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={ART.overlayOrder.contactPulse}>
+        <ringGeometry args={[ts * 0.28, ts * 0.44, 36]} />
+        <meshBasicMaterial ref={innerRef} color={shot.secondaryColor} transparent opacity={0.56} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <SafeText
-        position={midpoint}
+        position={[0, labelY, -0.78]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.22}
-        color={color}
+        fontSize={0.28}
+        color={ART.palette.textLight}
         anchorX="center"
         anchorY="middle"
-        outlineWidth={0.03}
-        outlineColor="#09090f"
+        outlineWidth={0.045}
+        outlineColor={ART.props.outline}
+        renderOrder={ART.overlayOrder.contactPulse}
         font={undefined}
       >
-        {label}
+        {`CONTACT\n${interrupt.beatLabel}`}
       </SafeText>
     </group>
   );
@@ -1405,7 +2301,7 @@ function ShotPreviewOverlay() {
   const shots = useMemo(() => {
     if (selectedUnitId === null || inputMode !== 'shoot') return [];
     const shooter = units.find((unit) => unit.id === selectedUnitId);
-    if (!shooter || !shooter.alive || shooter.ap <= 0) return [];
+    if (!shooter || !shooter.alive || shooter.ap <= 0 || shooter.ammoInClip <= 0) return [];
 
     return units
       .filter((unit) => unit.alive && unit.team !== shooter.team)
@@ -1427,20 +2323,27 @@ function ShotPreviewOverlay() {
         const [tx, , tz] = tileWorld(target.position.x, target.position.y, ts);
         const midpoint: [number, number, number] = [
           (sx + tx) / 2,
-          FLOOR_H + 0.62,
+          ART.overlayY.shotLabel,
           (sz + tz) / 2,
         ];
-        const color = preview.hitChance >= 65 ? '#58ff9a' : preview.hitChance >= 35 ? '#ffd166' : '#ff6b82';
+        const color = ART.palette.fireLineRed;
         const coverLabel = preview.coverState === 'protected'
-          ? preview.coverLabel.toUpperCase()
+          ? preview.coverQuality === 'corner' ? 'CORNER' : preview.coverLabel.toUpperCase()
           : preview.coverState.toUpperCase();
 
         return (
           <group key={`shot-${target.id}`}>
             <Line
-              points={[[sx, FLOOR_H + 0.58, sz], [tx, FLOOR_H + 0.58, tz]]}
+              points={[[sx, ART.overlayY.shotLine, sz], [tx, ART.overlayY.shotLine, tz]]}
               color={color}
-              lineWidth={2}
+              lineWidth={3.2}
+              transparent
+              opacity={0.94}
+              dashed
+              dashSize={0.36}
+              gapSize={0.18}
+              depthTest={false}
+              renderOrder={ART.overlayOrder.shotPreview}
             />
             <SafeText
               position={midpoint}
@@ -1449,8 +2352,9 @@ function ShotPreviewOverlay() {
               color={color}
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.03}
-              outlineColor="#08090d"
+              outlineWidth={0.04}
+              outlineColor={ART.palette.labelHalo}
+              renderOrder={ART.overlayOrder.shotPreview}
               font={undefined}
             >
               {`${preview.hitChance}%\n${coverLabel}`}
@@ -1467,10 +2371,13 @@ function InteractiveFloor() {
   const map = useGameStore((s) => s.map);
   const moveUnit = useGameStore((s) => s.moveUnit);
   const queueMove = useGameStore((s) => s.queueMove);
+  const shootUnit = useGameStore((s) => s.shootUnit);
   const holdAngle = useGameStore((s) => s.holdAngle);
   const throwSmoke = useGameStore((s) => s.throwSmoke);
+  const throwFlash = useGameStore((s) => s.throwFlash);
   const selectUnit = useGameStore((s) => s.selectUnit);
   const hoverTile = useGameStore((s) => s.hoverTile);
+  const pushGuidance = useGameStore((s) => s.pushGuidance);
   const planningMode = useGameStore((s) => s.planningMode);
   const inputMode = useGameStore((s) => s.inputMode);
   const ts = map.tileSize;
@@ -1481,29 +2388,117 @@ function InteractiveFloor() {
       if (e.delta > CLICK_DRAG_THRESHOLD_PX) return;
       const tileX = map.width - 1 - Math.floor(e.point.x / ts);
       const tileY = Math.floor(e.point.z / ts);
-      if (tileX >= 0 && tileX < map.width && tileY >= 0 && tileY < map.height) {
-        // Check if a unit is on this tile — if so, select it
-        const { units, round } = useGameStore.getState();
-        const unitOnTile = units.find(
-          (u) => u.alive && u.position.x === tileX && u.position.y === tileY
-        );
-        if (inputMode === 'hold_angle') {
-          holdAngle({ x: tileX, y: tileY });
-        } else if (inputMode === 'smoke') {
-          throwSmoke({ x: tileX, y: tileY });
-        } else if (unitOnTile && unitOnTile.team === round.activeTeam) {
-          selectUnit(unitOnTile.id);
-        } else {
-          const target = { x: tileX, y: tileY };
-          if (planningMode) {
-            queueMove(target);
-          } else {
-            moveUnit(target);
-          }
+      if (tileX < 0 || tileX >= map.width || tileY < 0 || tileY >= map.height) {
+        pushGuidance('Off board', 'Drag or wheel-pan the map, then click a visible tile.', 'warning');
+        return;
+      }
+
+      // Check if a unit is on this tile — if so, select it
+      const target = { x: tileX, y: tileY };
+      const state = useGameStore.getState();
+      const { units, round } = state;
+      const selectedUnit = state.selectedUnitId === null
+        ? null
+        : units.find((unit) => unit.id === state.selectedUnitId) ?? null;
+      const tile = state.map.grid[tileY]?.[tileX];
+      const unitOnTile = units.find(
+        (u) => u.alive && u.position.x === tileX && u.position.y === tileY
+      );
+
+      if (inputMode === 'shoot') {
+        if (unitOnTile && selectedUnit && unitOnTile.team !== selectedUnit.team) {
+          shootUnit(unitOnTile.id);
+          return;
         }
+        pushGuidance('Pick an enemy', 'Shoot mode needs a visible target, not empty floor.', 'warning');
+        return;
+      }
+
+      if (unitOnTile && unitOnTile.team === round.activeTeam) {
+        selectUnit(unitOnTile.id);
+        return;
+      }
+
+      if (unitOnTile && selectedUnit && unitOnTile.team !== selectedUnit.team) {
+        pushGuidance('Enemy on tile', 'Use Shoot first, then click the enemy miniature or target card.', 'warning');
+        return;
+      }
+
+      if (state.selectedUnitId === null || !selectedUnit) {
+        pushGuidance('Select a unit first', 'Pick an active roster portrait or a friendly miniature before choosing a tile.', 'warning');
+        return;
+      }
+
+      if (!selectedUnit.alive || selectedUnit.team !== round.activeTeam) {
+        pushGuidance('Wrong side', `It is ${round.activeTeam} side's turn. Select an active ${round.activeTeam} player.`, 'warning');
+        return;
+      }
+
+      if (selectedUnit.ap <= 0) {
+        pushGuidance('Unit spent', 'Select another player with AP, or use End Turn when the side is done.', 'warning');
+        return;
+      }
+
+      if (inputMode === 'hold_angle') {
+        holdAngle(target);
+        return;
+      }
+
+      if (inputMode === 'smoke') {
+        throwSmoke(target);
+        return;
+      }
+
+      if (inputMode === 'flash') {
+        throwFlash(target);
+        return;
+      }
+
+      if (!tile?.walkable) {
+        pushGuidance('Blocked tile', 'Choose a lit movement tile or a visible corridor space.', 'warning');
+        return;
+      }
+
+      const isInRange = state.walkableTiles.some((tileInRange) => (
+        tileInRange.x === tileX && tileInRange.y === tileY
+      ));
+      if (!isInRange) {
+        pushGuidance('Out of range', 'Move to one of the highlighted AP tiles, or use Plan Execute for staged movement.', 'warning');
+        return;
+      }
+
+      const occupied = units.some(
+        (unit) => unit.alive &&
+          unit.id !== selectedUnit.id &&
+          unit.position.x === tileX &&
+          unit.position.y === tileY
+      );
+      if (occupied) {
+        pushGuidance('Tile occupied', 'Choose an open tile or select the friendly player already holding that spot.', 'warning');
+        return;
+      }
+
+      if (planningMode) {
+        queueMove(target);
+      } else {
+        moveUnit(target);
       }
     },
-    [ts, map.width, map.height, moveUnit, queueMove, holdAngle, throwSmoke, selectUnit, planningMode, inputMode]
+    [
+      ts,
+      map.width,
+      map.height,
+      moveUnit,
+      queueMove,
+      shootUnit,
+      holdAngle,
+      throwSmoke,
+      throwFlash,
+      selectUnit,
+      pushGuidance,
+      planningMode,
+      inputMode,
+    ]
   );
 
   const handlePointerMove = useCallback(
@@ -1533,38 +2528,34 @@ function InteractiveFloor() {
   );
 }
 
-// ---- Ground plane (beneath everything, dark) ----
-function GroundPlane() {
-  const map = useGameStore((s) => s.map);
-  const ts = map.tileSize;
-  return (
-    <mesh position={[(map.width * ts) / 2, -0.05, (map.height * ts) / 2]}
-      rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[map.width * ts + 20, map.height * ts + 20]} />
-      <meshStandardMaterial color="#121722" roughness={1} />
-    </mesh>
-  );
-}
-
 // ---- Compose ----
 export function MapRenderer() {
+  const map = useGameStore((s) => s.map);
+
   return (
     <group>
-      <GroundPlane />
       <FloorLayer />
+      <FloorSlabEdgeLayer />
       <WallLayer />
+      <InfernoSetDressingLayer map={map} />
       <CoverLayer />
       <BombsiteMarkers />
       <CalloutLabels />
+      <PlantedBombMarker />
       <SmokeLayer />
+      <FlashLayer />
+      <FogOfWarLayer />
+      <UnitTacticalOverlayLayer />
       <WalkableHighlight />
       <ThreatenedMovementOverlay />
       <HoveredTileHighlight />
       <SmokeTargetPreview />
+      <FlashTargetPreview />
       <PathPreview />
       <PlannedActionPreview />
       <HeldAngleOverlay />
       <HoldAngleHoverPreview />
+      <ContactBreakPulse />
       <CombatTracerOverlay />
       <CombatEventMarker />
       <ShotPreviewOverlay />

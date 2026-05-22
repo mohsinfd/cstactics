@@ -1,0 +1,101 @@
+{
+  "__guid": "5cc960a6-e1b6-43a4-8d3b-bb3a5bb6f0f1",
+  "GameObjects": [
+    {
+      "__guid": "66dfeb6c-a426-45a2-9997-98f5d97b0e32",
+      "Flags": 0,
+      "Name": "Sun",
+      "Rotation": "0.2495157,0.3989509,0.1013578,0.8764411",
+      "Tags": "light_directional,light",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Sandbox.DirectionalLight",
+          "__guid": "93456b91-0337-42ef-bc31-5fa4b46b9df9",
+          "FogMode": "Enabled",
+          "FogStrength": 0.15,
+          "LightColor": "0.96,0.92,0.84,1",
+          "Shadows": true,
+          "SkyColor": "0.72,0.74,0.72,1"
+        }
+      ]
+    },
+    {
+      "__guid": "bfb9238c-c751-4975-b25c-bf4d463aef77",
+      "Flags": 0,
+      "Name": "Camera",
+      "Position": "-560,-820,760",
+      "Rotation": "0.3647052,-0.2798481,0.1159169,0.8804762",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Sandbox.CameraComponent",
+          "__guid": "5e352ad0-6c7a-4fc4-9958-0ab3f3c68f85",
+          "BackgroundColor": "0.82,0.84,0.82,1",
+          "ClearFlags": "All",
+          "FieldOfView": 60,
+          "IsMainCamera": true,
+          "Orthographic": true,
+          "OrthographicHeight": 1500,
+          "Priority": 1,
+          "Viewport": "0,0,1,1",
+          "ZFar": 10000,
+          "ZNear": 10
+        },
+        {
+          "__type": "Sandbox.Tonemapping",
+          "__guid": "f257128c-6779-4097-ac8b-8d2251d31b3a",
+          "__version": 1,
+          "ExposureBias": 1.1,
+          "ExposureCompensation": 0,
+          "ExposureMethod": "RGB",
+          "MaximumExposure": 2,
+          "MinimumExposure": 1,
+          "Mode": "Legacy",
+          "Rate": 1
+        }
+      ]
+    },
+    {
+      "__guid": "5f6a3a57-4ed2-442f-9c60-afd7d1bced25",
+      "Flags": 0,
+      "Name": "Spike Runtime",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "SpikeMapGenerator",
+          "__guid": "48c488e6-4785-4398-8a39-7edc94eb8cc8",
+          "DataPath": "data/banana_b_site.json",
+          "TileSize": 48,
+          "LockCamera": true
+        }
+      ]
+    }
+  ],
+  "SceneProperties": {
+    "FixedUpdateFrequency": 50,
+    "MaxFixedUpdates": 5,
+    "NetworkFrequency": 60,
+    "NetworkInterpolation": true,
+    "ThreadedAnimation": true,
+    "TimeScale": 1,
+    "UseFixedUpdate": true,
+    "NavMesh": {
+      "Enabled": false,
+      "IncludeStaticBodies": true,
+      "IncludeKeyframedBodies": true,
+      "EditorAutoUpdate": true,
+      "AgentHeight": 64,
+      "AgentRadius": 16,
+      "AgentStepSize": 18,
+      "AgentMaxSlope": 40,
+      "ExcludedBodies": "",
+      "IncludedBodies": ""
+    }
+  },
+  "Title": "CS2 Tactics Sbox Spike",
+  "Description": "Generated Banana/B board slice for visual-client comparison.",
+  "ResourceVersion": 2,
+  "__references": [],
+  "__version": 2
+}

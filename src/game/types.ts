@@ -22,14 +22,15 @@ export interface MovementTile extends TileCoord {
   apCost: number;
 }
 
-export type PlannedActionKind = 'move';
-export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke';
+export type PlannedActionKind = 'move' | 'smoke' | 'flash';
+export type InputMode = 'move' | 'shoot' | 'hold_angle' | 'smoke' | 'flash';
 
 export interface PlannedAction {
   id: string;
   unitId: number;
   team: Team;
   kind: PlannedActionKind;
+  executeAtMs: number;
   from: TileCoord;
   target: TileCoord;
   path: TileCoord[];
@@ -50,6 +51,7 @@ export interface HeldAngle {
 
 export type CoverLabel = 'open' | 'half' | 'full';
 export type CoverState = 'protected' | 'flanked' | 'exposed';
+export type CoverQuality = 'none' | 'direct' | 'corner';
 
 export interface CombatEvent {
   id: string;
@@ -59,26 +61,133 @@ export interface CombatEvent {
   targetId: number;
   attackerName: string;
   targetName: string;
+  weaponId: string;
+  weaponName: string;
+  weaponCategory: WeaponCategory;
   hitChance: number;
   hit: boolean;
+  critical: boolean;
+  critChance: number;
   damage: number;
+  targetHpBefore: number;
+  targetHpAfter: number;
+  killed: boolean;
   distance: number;
   rangePenalty: number;
   coverPenalty: number;
+  flashPenalty: number;
   coverLabel: CoverLabel;
   coverState: CoverState;
+  coverQuality: CoverQuality;
   aimBonus: number;
   tile: TileCoord;
   summary: string;
 }
 
+export interface ExecuteInterruptTradeShot {
+  shooterId: number;
+  shooterName: string;
+  targetId: number;
+  targetName: string;
+  hitChance: number;
+  damage: number;
+  critChance: number;
+  critDamage: number;
+  coverLabel: CoverLabel;
+  coverState: CoverState;
+  coverQuality: CoverQuality;
+}
+
+export interface ExecuteInterruptBombPressure {
+  bombPlanted: boolean;
+  bombDropped: boolean;
+  bombTimer: number;
+  bombPosition: TileCoord | null;
+  bombCarrierId: number | null;
+}
+
+export type ExecuteTimelineSource = 'direct_move' | 'planned_execute';
+export type ExecuteTimelineStatus = 'running' | 'interrupted' | 'completed';
+export type ExecuteTimelineEventKind =
+  | 'utility_planned'
+  | 'utility_resolved'
+  | 'move_start'
+  | 'swing_start'
+  | 'movement_beat'
+  | 'contact'
+  | 'reaction_shot'
+  | 'shot_result'
+  | 'trade_decision'
+  | 'bomb_pressure';
+
+export interface ExecuteTimelineEvent {
+  id: string;
+  kind: ExecuteTimelineEventKind;
+  timeMs: number;
+  timeLabel: string;
+  phaseLabel: string;
+  title: string;
+  detail: string;
+  unitId?: number;
+  targetUnitId?: number;
+  actionId?: string;
+  tile?: TileCoord;
+  combatEventId?: string;
+}
+
+export interface ExecuteTimeline {
+  id: string;
+  source: ExecuteTimelineSource;
+  status: ExecuteTimelineStatus;
+  activeTeam: Team;
+  startedAt: number;
+  events: ExecuteTimelineEvent[];
+}
+
+export type ExecuteInterruptTimelineKind = 'move' | 'swing' | 'hold' | 'shot' | 'decision';
+
+export interface ExecuteInterruptTimelineItem {
+  id: string;
+  kind: ExecuteInterruptTimelineKind;
+  timeLabel: string;
+  phaseLabel: string;
+  title: string;
+  detail: string;
+}
+
+export interface ExecuteInterrupt {
+  id: string;
+  createdAt: number;
+  source: ExecuteTimelineSource;
+  beatTimeMs: number;
+  beatLabel: string;
+  phaseLabel: string;
+  contactTile: TileCoord;
+  event: CombatEvent;
+  shooterId: number;
+  stoppedUnitId: number;
+  timelineEvents: ExecuteTimelineEvent[];
+  timeline: ExecuteInterruptTimelineItem[];
+  tradeShot: ExecuteInterruptTradeShot | null;
+  bombPressure: ExecuteInterruptBombPressure;
+}
+
 export type FeedbackEventType =
   | 'select_unit'
+  | 'invalid_action'
   | 'plan_add'
   | 'move_step'
   | 'move_complete'
   | 'hold_angle'
+  | 'reload_weapon'
   | 'smoke_throw'
+  | 'smoke_bloom'
+  | 'flash_throw'
+  | 'flash_pop'
+  | 'bomb_pickup'
+  | 'bomb_plant'
+  | 'bomb_tick'
+  | 'bomb_defuse'
   | 'turn_change'
   | 'ai_start'
   | 'ai_end';
@@ -90,6 +199,38 @@ export interface FeedbackEvent {
   team?: Team;
   unitId?: number;
   intensity?: number;
+}
+
+export type GuidanceTone = 'hint' | 'warning';
+
+export interface GuidanceEvent {
+  id: string;
+  createdAt: number;
+  tone: GuidanceTone;
+  title: string;
+  detail: string;
+}
+
+export type MovementPresentationSource = 'direct_move' | 'planned_execute' | 'ct_ai';
+export type MovementPresentationAimMode = 'face_move' | 'lock_start_facing' | 'target_tile';
+export type MovementPresentationIntent =
+  | 'fast_reposition'
+  | 'cautious_hold_aim'
+  | 'move_to_hold_target';
+
+export interface MovementPresentationRoute {
+  id: string;
+  unitId: number;
+  source: MovementPresentationSource;
+  createdAt: number;
+  delayMs: number;
+  stepMs: number;
+  durationMs: number;
+  path: TileCoord[];
+  visualIntent: MovementPresentationIntent;
+  visualAimMode: MovementPresentationAimMode;
+  visualAimDirection?: TileCoord;
+  visualAimTarget?: TileCoord;
 }
 
 export interface AiStatus {
@@ -104,6 +245,16 @@ export interface SmokeCloud {
   position: TileCoord;
   radius: number;
   remainingTurns: number;
+}
+
+export interface FlashBurst {
+  id: string;
+  ownerId: number;
+  team: Team;
+  position: TileCoord;
+  radius: number;
+  affectedUnitIds: number[];
+  createdAt: number;
 }
 
 export type TileType = 'floor' | 'wall' | 'cover_half' | 'cover_full' | 'bombsite_a' | 'bombsite_b' | 'spawn_t' | 'spawn_ct' | 'out_of_bounds';
@@ -237,6 +388,10 @@ export interface Unit {
   hasBomb: boolean;
   hasDefuseKit: boolean;
   smokeGrenades: number;
+  flashbangs: number;
+  flashTurns: number;
+  ammoInClip: number;
+  reserveAmmo: number;
   // Visual state
   facing: TileCoord;        // direction unit is looking
 }
@@ -252,6 +407,8 @@ export interface RoundState {
   bombTimer: number;
   bombCarrierId: number | null;
   roundTimer: number;        // turns remaining
+  roundWinner: Team | null;
+  winReason: WinReason | null;
 }
 
 export interface MatchState {
@@ -287,7 +444,13 @@ export interface GameState {
   inputMode: InputMode;
   heldAngles: HeldAngle[];
   smokes: SmokeCloud[];
+  flashBursts: FlashBurst[];
   combatLog: CombatEvent[];
+  executeInterrupt: ExecuteInterrupt | null;
+  currentExecuteTimeline: ExecuteTimeline | null;
+  lastExecuteTimeline: ExecuteTimeline | null;
+  movementRoutes: MovementPresentationRoute[];
   feedbackEvents: FeedbackEvent[];
+  guidanceEvent: GuidanceEvent | null;
   aiStatus: AiStatus | null;
 }
