@@ -104,6 +104,14 @@ export function getAllUnitAnimationUrls(team: Team): string[] {
   );
 }
 
+function getFramesPerTile(pose: UnitAnimationPose): number {
+  if (pose === 'run_forward') return 3.0;
+  if (pose === 'diagonal_left' || pose === 'diagonal_right') return 2.7;
+  if (pose === 'strafe_left' || pose === 'strafe_right') return 2.6;
+  if (pose === 'backpedal') return 2.2;
+  return 1.0;
+}
+
 export function resolveUnitAnimationUrl(args: {
   team: Team;
   pose: UnitAnimationPose;
@@ -124,7 +132,7 @@ export function resolveUnitAnimationUrl(args: {
   if (clip.frames.length <= 1) return clip.frames[0];
 
   const index = clip.distanceFrames
-    ? Math.floor(Math.abs(args.strideDistance) * 2.2) % clip.frames.length
+    ? Math.floor(Math.abs(args.strideDistance) * getFramesPerTile(pose)) % clip.frames.length
     : Math.min(clip.frames.length - 1, Math.floor(args.elapsedSeconds * clip.fps));
 
   return clip.frames[index] ?? clip.frames[0];

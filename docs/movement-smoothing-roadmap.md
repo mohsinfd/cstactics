@@ -243,9 +243,9 @@ The helper is intentionally pure and small so it can be imported into
   For exported PNGs it also checks dimensions, alpha presence, transparent
   background pixels, and coarse per-clip bounding-box center jitter.
 - Store handoff after non-contact direct moves, planned execute movement, and CT
-  AI movement now waits for the shared `MOVEMENT_STOP_BRACE_MS` presentation beat
-  before AP/selection/AI progression continues. Contact breaks still own their
-  own shot/decision beat and do not wait behind this settle.
+  AI movement now waits for the active movement intent's stop-brace beat before
+  AP/selection/AI progression continues. Contact breaks still own their own
+  shot/decision beat and do not wait behind this settle.
 - Correctness follow-up: `face_move` now classifies against the sampled route
   movement direction instead of stale stored unit facing, so `fast_reposition`
   mostly reads as `run_forward`. Completed routes are guarded from stale
@@ -253,3 +253,10 @@ The helper is intentionally pure and small so it can be imported into
   proof logging now records route, pose, and frame URL transitions, and
   `window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__()` returns pose coverage and
   unique frame counts by pose after a proof run.
+- Briskness follow-up: `src/game/movementTimingProfile.ts` now defines
+  intent-specific timing profiles instead of one careful-walk profile.
+  `fast_reposition` uses a faster 11 tiles/sec route with a 120ms stop-brace for
+  normal left-click movement, `cautious_hold_aim` keeps aim-locked proof/planned
+  movement slower and more readable, and `move_to_hold_target` sits between them
+  for CT AI holds. Store arrival timing, renderer clip sampling, stop-brace
+  handoff, and proof summaries all consume the same intent profile.

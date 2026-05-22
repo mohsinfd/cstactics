@@ -24,6 +24,9 @@ export interface MovementClip {
   maxSpeedTilesPerSecond: number;
   accelTilesPerSecond2: number;
   decelTilesPerSecond2: number;
+  lookaheadTiles: number;
+  stopDistanceTiles: number;
+  endpointSnapTiles: number;
   endpoint: THREE.Vector3;
 }
 
@@ -69,10 +72,15 @@ function pushPoint(points: THREE.Vector3[], point: THREE.Vector3, minDistance = 
   if (!last || last.distanceTo(point) > minDistance) points.push(point);
 }
 
-function getSmoothedRoutePoints(points: THREE.Vector3[], tileSize: number): THREE.Vector3[] {
+function getSmoothedRoutePoints(
+  points: THREE.Vector3[],
+  tileSize: number,
+  cornerRadiusTiles = ROUTE_LOCOMOTION.cornerRadiusTiles,
+  cornerSamples = ROUTE_LOCOMOTION.cornerSamples
+): THREE.Vector3[] {
   if (points.length < 3 || tileSize <= 0) return points.map((point) => point.clone());
 
-  const radius = ROUTE_LOCOMOTION.cornerRadiusTiles * tileSize;
+  const radius = cornerRadiusTiles * tileSize;
   const smoothed: THREE.Vector3[] = [points[0].clone()];
 
   for (let i = 1; i < points.length - 1; i += 1) {
@@ -102,8 +110,8 @@ function getSmoothedRoutePoints(points: THREE.Vector3[], tileSize: number): THRE
     const after = current.clone().addScaledVector(outgoing, cornerRadius);
     pushPoint(smoothed, before);
 
-    for (let sample = 1; sample <= ROUTE_LOCOMOTION.cornerSamples; sample += 1) {
-      const t = sample / (ROUTE_LOCOMOTION.cornerSamples + 1);
+    for (let sample = 1; sample <= cornerSamples; sample += 1) {
+      const t = sample / (cornerSamples + 1);
       const a = before.clone().lerp(current, t);
       const b = current.clone().lerp(after, t);
       pushPoint(smoothed, a.lerp(b, t));
@@ -192,6 +200,11 @@ export function createMovementClip({
   maxSpeedTilesPerSecond = ROUTE_LOCOMOTION.maxSpeedTilesPerSecond,
   accelTilesPerSecond2 = ROUTE_LOCOMOTION.accelTilesPerSecond2,
   decelTilesPerSecond2 = ROUTE_LOCOMOTION.decelTilesPerSecond2,
+  lookaheadTiles = ROUTE_LOCOMOTION.lookaheadTiles,
+  stopDistanceTiles = ROUTE_LOCOMOTION.stopDistanceTiles,
+  endpointSnapTiles = ROUTE_LOCOMOTION.endpointSnapTiles,
+  cornerRadiusTiles = ROUTE_LOCOMOTION.cornerRadiusTiles,
+  cornerSamples = ROUTE_LOCOMOTION.cornerSamples,
   durationSeconds: requestedDurationSeconds,
 }: {
   id: string;
@@ -201,9 +214,14 @@ export function createMovementClip({
   maxSpeedTilesPerSecond?: number;
   accelTilesPerSecond2?: number;
   decelTilesPerSecond2?: number;
+  lookaheadTiles?: number;
+  stopDistanceTiles?: number;
+  endpointSnapTiles?: number;
+  cornerRadiusTiles?: number;
+  cornerSamples?: number;
   durationSeconds?: number;
 }): MovementClip {
-  const smoothedPoints = getSmoothedRoutePoints(points, tileSize);
+  const smoothedPoints = getSmoothedRoutePoints(points, tileSize, cornerRadiusTiles, cornerSamples);
   const cumulativeWorld = getCumulativeWorldDistances(smoothedPoints);
   const totalWorldDistance = cumulativeWorld.at(-1) ?? 0;
   const totalTileDistance = tileSize > 0 ? totalWorldDistance / tileSize : totalWorldDistance;
@@ -228,6 +246,9 @@ export function createMovementClip({
     maxSpeedTilesPerSecond,
     accelTilesPerSecond2,
     decelTilesPerSecond2,
+    lookaheadTiles,
+    stopDistanceTiles,
+    endpointSnapTiles,
     endpoint: points.at(-1)?.clone() ?? new THREE.Vector3(),
   };
 }
@@ -284,7 +305,7 @@ export function advanceMovementClip(
   const lookahead = sampleRouteAtWorldDistance(
     clip.points,
     clip.cumulativeWorld,
-    distanceWorld + ROUTE_LOCOMOTION.lookaheadTiles * tileSize
+    distanceWorld + clip.lookaheadTiles * tileSize
   );
   const moveDirection = lookahead.position.clone().sub(sample.position);
   if (moveDirection.lengthSq() > 0.000001) {
@@ -299,7 +320,7 @@ export function advanceMovementClip(
   const progress = clip.totalTileDistance > 0 ? clamp01(distance / clip.totalTileDistance) : 1;
   const isDone = clip.elapsedSeconds >= clip.durationSeconds ||
     progress >= 0.999 ||
-    endpointErrorTiles <= ROUTE_LOCOMOTION.endpointSnapTiles;
+    endpointErrorTiles <= clip.endpointSnapTiles;
   const position = isDone ? clip.endpoint.clone() : sample.position;
 
   return {
@@ -309,7 +330,7 @@ export function advanceMovementClip(
     speedTilesPerSecond: speed / durationScale,
     progress: isDone ? 1 : progress,
     endpointErrorTiles: isDone ? 0 : endpointErrorTiles,
-    phase: isDone ? 'done' : endpointErrorTiles <= ROUTE_LOCOMOTION.stopDistanceTiles ? 'stop' : 'move',
+    phase: isDone ? 'done' : endpointErrorTiles <= clip.stopDistanceTiles ? 'stop' : 'move',
   };
 }
 
@@ -326,10 +347,11 @@ export function classifyLocomotionPose(
   moveDir: THREE.Vector3,
   aimDir: THREE.Vector3,
   phase: MovementClipSample['phase'],
-  speedTilesPerSecond: number
+  speedTilesPerSecond: number,
+  maxSpeedTilesPerSecond = ROUTE_LOCOMOTION.maxSpeedTilesPerSecond
 ): LocomotionPose {
   if (phase === 'done' || speedTilesPerSecond < 0.18) return 'idle';
-  if (phase === 'stop' && speedTilesPerSecond < ROUTE_LOCOMOTION.maxSpeedTilesPerSecond * 0.55) {
+  if (phase === 'stop' && speedTilesPerSecond < maxSpeedTilesPerSecond * 0.55) {
     return 'stop_brace';
   }
 

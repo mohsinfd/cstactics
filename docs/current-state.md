@@ -523,7 +523,7 @@ Movement routes now include presentation-only visual aim and movement intent
 metadata. Normal direct movement uses `fast_reposition`, planned execute uses
 `cautious_hold_aim`, and CT AI can use `move_to_hold_target`, so strafe/backpedal
 presentation is intentional rather than forced onto every left-click move.
-Non-contact movement handoff now waits through the shared stop-brace beat before
+Non-contact movement handoff now waits through the active intent's stop-brace beat before
 AP/selection/AI progression continues. A dev-only proof command and button,
 `window.__CS_TACTICS_START_MOVEMENT_PROOF__()` / `Move Proof`, creates a one-CT
 forward/strafe route for isolating locomotion. `npm run sprites:validate` guards
@@ -533,3 +533,10 @@ classification instead of stored unit facing, stale completed routes cannot
 cancel stop-brace while the store waits to clear `movementRoutes`, and
 `window.__CS_TACTICS_GET_MOVEMENT_PROOF_SUMMARY__()` reports proof pose coverage
 plus unique frame counts by pose.
+Movement timing is now profile-driven by intent: normal `fast_reposition`
+left-click moves use an 11 tiles/sec brisk route profile with a 120ms
+stop-brace, `cautious_hold_aim` keeps aim-locked/planned proof movement slower
+for readable strafe/backpedal silhouettes, and `move_to_hold_target` gives CT AI
+hold repositioning a middle speed. The game-side arrival waits, renderer
+locomotion clip sampler, stop-brace handoff, and movement proof summary all read
+from those same profiles.

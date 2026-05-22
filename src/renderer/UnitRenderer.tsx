@@ -26,12 +26,19 @@ import * as THREE from 'three';
 import { Line, Text } from '@react-three/drei';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { useGameStore } from '../game/store';
-import type { MovementPresentationRoute, TileCoord, Unit, RoleId, WeaponCategory } from '../game/types';
+import type {
+  MovementPresentationIntent,
+  MovementPresentationRoute,
+  TileCoord,
+  Unit,
+  RoleId,
+  WeaponCategory,
+} from '../game/types';
 import { getShotPreview } from '../game/combat';
 import { getShotPresentation } from '../game/shotPresentation';
 import { isUnitVisibleToTeam } from '../game/visibility';
 import { DEFAULT_MOVEMENT_TIMING } from './movementEasing';
-import { MOVEMENT_STOP_BRACE_MS } from '../game/movementTimingProfile';
+import { getMovementTimingProfile } from '../game/movementTimingProfile';
 import {
   ROUTE_LOCOMOTION,
   advanceMovementClip,
@@ -161,6 +168,7 @@ type ContinuousMovementState = {
   strideDistance: number;
   stopPoseUntil: number;
   lastCompletedRouteId: string;
+  activeIntent: MovementPresentationIntent;
 };
 
 type UnitSpriteAnimationState = {
@@ -173,6 +181,7 @@ type UnitSpriteAnimationState = {
 
 type MovementProofTraceState = {
   routeId: string;
+  intent: MovementPresentationIntent;
   pose: LocomotionPose | null;
   frameUrl: string;
 };
@@ -1367,6 +1376,7 @@ function MovementDebugOverlay({ unitId, angle }: { unitId: number; angle: number
       __CS_TACTICS_SHOW_MOVEMENT_DEBUG__?: boolean;
       __CS_TACTICS_MOVEMENT_DEBUG__?: Record<number, {
         activeRouteId: string;
+        intent: MovementPresentationIntent;
         progress: number;
         speedTilesPerSecond: number;
         pose: LocomotionPose;
@@ -1390,7 +1400,7 @@ function MovementDebugOverlay({ unitId, angle }: { unitId: number; angle: number
     const frameName = debug.currentFrameUrl.split('/').at(-1) ?? 'none';
     setLabel([
       `route ${debug.activeRouteId || 'idle'}`,
-      `${debug.pose} ${frameName}`,
+      `${debug.intent} ${debug.pose} ${frameName}`,
       `p ${debug.progress.toFixed(2)} spd ${debug.speedTilesPerSecond.toFixed(2)}`,
       `err ${debug.endpointErrorTiles.toFixed(3)}`,
       `stop ${Math.round(debug.stopPoseRemainingMs)}ms last ${debug.lastCompletedRouteId || '-'}`,
@@ -1484,9 +1494,11 @@ function SoldierFigure({ unit }: { unit: Unit }) {
     strideDistance: 0,
     stopPoseUntil: 0,
     lastCompletedRouteId: '',
+    activeIntent: 'fast_reposition',
   });
   const lastProofTraceRef = useRef<MovementProofTraceState>({
     routeId: '',
+    intent: 'fast_reposition',
     pose: null,
     frameUrl: '',
   });
@@ -1611,7 +1623,9 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         );
 
         if (routePoints.length >= 2) {
+          const profile = getMovementTimingProfile(movementRoute.visualIntent);
           movement.routeId = movementRoute.id;
+          movement.activeIntent = movementRoute.visualIntent;
           movement.queue = [];
           movement.isRunning = false;
           movement.stopPoseUntil = 0;
@@ -1620,7 +1634,15 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             unitId: unit.id,
             points: routePoints,
             tileSize: ts,
-            durationSeconds: Math.max(ROUTE_LOCOMOTION.minMoveSeconds, movementRoute.durationMs / 1000),
+            durationSeconds: Math.max(profile.minMoveMs / 1000, movementRoute.durationMs / 1000),
+            maxSpeedTilesPerSecond: profile.maxSpeedTilesPerSecond,
+            accelTilesPerSecond2: profile.accelTilesPerSecond2,
+            decelTilesPerSecond2: profile.decelTilesPerSecond2,
+            lookaheadTiles: profile.lookaheadTiles,
+            stopDistanceTiles: profile.stopDistanceTiles,
+            endpointSnapTiles: profile.endpointSnapTiles,
+            cornerRadiusTiles: profile.cornerRadiusTiles,
+            cornerSamples: profile.cornerSamples,
           });
         }
       }
@@ -1648,14 +1670,25 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           movement.lastPosition.copy(targetPosition);
           movement.stopPoseUntil = 0;
           movement.lastCompletedRouteId = '';
+          movement.activeIntent = 'fast_reposition';
         } else if (!isFollowingSeededRoute && tileDistance > ROUTE_LOCOMOTION.endpointSnapTiles) {
+          const profile = getMovementTimingProfile('fast_reposition');
           movement.clip = createMovementClip({
             id: `fallback:${unit.id}:${targetKey}:${state.clock.elapsedTime.toFixed(3)}`,
             unitId: unit.id,
             points: [groupRef.current.position.clone(), targetPosition.clone()],
             tileSize: ts,
+            maxSpeedTilesPerSecond: profile.maxSpeedTilesPerSecond,
+            accelTilesPerSecond2: profile.accelTilesPerSecond2,
+            decelTilesPerSecond2: profile.decelTilesPerSecond2,
+            lookaheadTiles: profile.lookaheadTiles,
+            stopDistanceTiles: profile.stopDistanceTiles,
+            endpointSnapTiles: profile.endpointSnapTiles,
+            cornerRadiusTiles: profile.cornerRadiusTiles,
+            cornerSamples: profile.cornerSamples,
           });
           movement.routeId = '';
+          movement.activeIntent = 'fast_reposition';
           movement.queue = [];
           movement.isRunning = false;
         }
@@ -1680,12 +1713,14 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           sample.moveDirection,
           aimDir,
           sample.phase,
-          sample.speedTilesPerSecond
+          sample.speedTilesPerSecond,
+          getMovementTimingProfile(movement.activeIntent).maxSpeedTilesPerSecond
         );
 
         if (sample.phase === 'done') {
           const completedRouteId = movement.routeId || movement.clip.id;
-          movement.stopPoseUntil = state.clock.elapsedTime + MOVEMENT_STOP_BRACE_MS / 1000;
+          const profile = getMovementTimingProfile(movement.activeIntent);
+          movement.stopPoseUntil = state.clock.elapsedTime + profile.stopBraceMs / 1000;
           movement.lastCompletedRouteId = completedRouteId;
           movement.pose = 'stop_brace';
           movement.clip = null;
@@ -1700,7 +1735,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         if (state.clock.elapsedTime < movement.stopPoseUntil) {
           movement.pose = 'stop_brace';
         } else {
-          movement.pose = movement.endpointErrorTiles < ROUTE_LOCOMOTION.endpointSnapTiles ? 'idle' : movement.pose;
+          movement.pose = movement.endpointErrorTiles < getMovementTimingProfile(movement.activeIntent).endpointSnapTiles ? 'idle' : movement.pose;
         }
       }
 
@@ -1711,7 +1746,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
       if (movedDistance > 0.0001 || movement.clip) {
         movement.lastMovedAt = state.clock.elapsedTime;
         const speedBlend = THREE.MathUtils.clamp(
-          movement.speedTilesPerSecond / ROUTE_LOCOMOTION.maxSpeedTilesPerSecond,
+          movement.speedTilesPerSecond / getMovementTimingProfile(movement.activeIntent).maxSpeedTilesPerSecond,
           0,
           1
         );
@@ -1738,6 +1773,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         const debugWindow = window as unknown as {
           __CS_TACTICS_MOVEMENT_DEBUG__?: Record<number, {
             activeRouteId: string;
+            intent: MovementPresentationIntent;
             progress: number;
             speedTilesPerSecond: number;
             pose: LocomotionPose;
@@ -1750,16 +1786,20 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           __CS_TACTICS_MOVEMENT_PROOF_EVENTS__?: Array<{
             time: number;
             routeId: string;
+            intent: MovementPresentationIntent;
             pose: LocomotionPose;
             frameUrl: string;
             progress: number;
+            speedTilesPerSecond: number;
           }>;
         };
         const stopPoseRemainingMs = Math.max(0, (movement.stopPoseUntil - state.clock.elapsedTime) * 1000);
         const proofRouteId = movement.routeId || movement.lastCompletedRouteId || 'idle';
+        const proofIntent = movement.activeIntent;
         const proofFrameUrl = animationStateRef.current.currentFrameUrl;
         const proofTraceChanged =
           lastProofTraceRef.current.routeId !== proofRouteId ||
+          lastProofTraceRef.current.intent !== proofIntent ||
           lastProofTraceRef.current.pose !== movement.pose ||
           lastProofTraceRef.current.frameUrl !== proofFrameUrl;
         if (
@@ -1768,6 +1808,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
         ) {
           lastProofTraceRef.current = {
             routeId: proofRouteId,
+            intent: proofIntent,
             pose: movement.pose,
             frameUrl: proofFrameUrl,
           };
@@ -1776,9 +1817,11 @@ function SoldierFigure({ unit }: { unit: Unit }) {
             {
               time: Math.round(state.clock.elapsedTime * 1000),
               routeId: proofRouteId,
+              intent: proofIntent,
               pose: movement.pose,
               frameUrl: proofFrameUrl,
               progress: movement.routeProgress,
+              speedTilesPerSecond: movement.speedTilesPerSecond,
             },
           ];
         }
@@ -1786,6 +1829,7 @@ function SoldierFigure({ unit }: { unit: Unit }) {
           ...(debugWindow.__CS_TACTICS_MOVEMENT_DEBUG__ ?? {}),
           [unit.id]: {
             activeRouteId: movement.routeId,
+            intent: movement.activeIntent,
             progress: movement.routeProgress,
             speedTilesPerSecond: movement.speedTilesPerSecond,
             pose: movement.pose,

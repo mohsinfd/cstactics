@@ -48,7 +48,7 @@ import { getDefaultWeaponForRole, getWeaponShotApCost } from './config/weapons';
 import { RULES } from './config/rules';
 import { applyMetaDefault, applyRandomSpawnPositions } from './metaDefaults';
 import { getRouteVisualTiming } from './movementPresentationTiming';
-import { MOVEMENT_STOP_BRACE_MS } from './movementTimingProfile';
+import { getMovementTimingProfile } from './movementTimingProfile';
 import { findPath, getMovementTiles } from './pathfinding';
 import { getWatchedLane, hasLineOfSight } from './los';
 import { getCrossingHeldAngles, getFirstCrossingTile } from './threats';
@@ -94,14 +94,19 @@ const MOVEMENT_PROOF_POSES = [
 type MovementProofEvent = {
   time: number;
   routeId: string;
+  intent: MovementPresentationIntent;
   pose: string;
   frameUrl: string;
   progress: number;
+  speedTilesPerSecond: number;
 };
 
 type MovementProofSummary = {
   posesSeen: Record<string, boolean>;
   uniqueFramesByPose: Record<string, number>;
+  routeDurations: Record<string, number>;
+  intentsSeen: Record<MovementPresentationIntent, boolean>;
+  maxSpeedByIntent: Record<MovementPresentationIntent, number>;
   events: MovementProofEvent[];
 };
 
@@ -158,10 +163,43 @@ function createMovementProofSummary(events: MovementProofEvent[] = []): Movement
     summary[pose] = frameSetsByPose[pose]?.size ?? 0;
     return summary;
   }, {});
+  const routeRanges = events.reduce<Record<string, { first: number; last: number }>>((summary, event) => {
+    if (!event.routeId || event.routeId === 'idle') return summary;
+    const existing = summary[event.routeId];
+    summary[event.routeId] = existing
+      ? { first: Math.min(existing.first, event.time), last: Math.max(existing.last, event.time) }
+      : { first: event.time, last: event.time };
+    return summary;
+  }, {});
+  const routeDurations = Object.fromEntries(
+    Object.entries(routeRanges).map(([routeId, range]) => [routeId, range.last - range.first])
+  );
+  const intents = ['fast_reposition', 'cautious_hold_aim', 'move_to_hold_target'] as const;
+  const intentsSeen = intents.reduce<Record<MovementPresentationIntent, boolean>>((summary, intent) => {
+    summary[intent] = events.some((event) => event.intent === intent);
+    return summary;
+  }, {
+    fast_reposition: false,
+    cautious_hold_aim: false,
+    move_to_hold_target: false,
+  });
+  const maxSpeedByIntent = intents.reduce<Record<MovementPresentationIntent, number>>((summary, intent) => {
+    summary[intent] = events
+      .filter((event) => event.intent === intent)
+      .reduce((maxSpeed, event) => Math.max(maxSpeed, event.speedTilesPerSecond), 0);
+    return summary;
+  }, {
+    fast_reposition: 0,
+    cautious_hold_aim: 0,
+    move_to_hold_target: 0,
+  });
 
   return {
     posesSeen,
     uniqueFramesByPose,
+    routeDurations,
+    intentsSeen,
+    maxSpeedByIntent,
     events,
   };
 }
@@ -189,14 +227,14 @@ function createMovementPresentationRoute(
 ): MovementPresentationRoute {
   movementRouteSequence += 1;
   const createdAt = Date.now();
-  const routeTiming = options.timingPath ? getRouteVisualTiming(options.timingPath) : null;
+  const visualIntent = options.visualIntent ?? 'fast_reposition';
+  const routeTiming = options.timingPath ? getRouteVisualTiming(options.timingPath, visualIntent) : null;
   const normalizedStepMs = path.length > 0
     ? Math.max(1, options.stepMs ?? EXECUTION_STEP_MS)
     : (options.stepMs ?? EXECUTION_STEP_MS);
   const durationMs = options.syncToVisualTiming && routeTiming
     ? routeTiming.durationMs
     : Math.max(normalizedStepMs, path.length * normalizedStepMs);
-  const visualIntent = options.visualIntent ?? 'fast_reposition';
   return {
     id: `${createdAt}:${movementRouteSequence}:${source}:${unitId}`,
     unitId,
@@ -1111,11 +1149,12 @@ export const useGameStore = create<GameStore>((set, get) => {
         : -1;
       const pathToTravel = contactIndex >= 0 ? path.slice(0, contactIndex + 1) : path;
       const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
-      const routeTiming = getRouteVisualTiming(visualRoutePath);
+      const visualIntent: MovementPresentationIntent = 'fast_reposition';
+      const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
       const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'direct_move', 0, {
         timingPath: visualRoutePath,
         syncToVisualTiming: true,
-        visualIntent: 'fast_reposition',
+        visualIntent,
         visualAimDirection: unit.facing,
       });
 
@@ -1266,7 +1305,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       }
 
       if (!contactEvent) {
-        await wait(MOVEMENT_STOP_BRACE_MS);
+        await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
       }
 
       const spentAp = Math.max(1, Math.min(apCost, Math.ceil(tilesMoved / rangePerAP)));
@@ -2137,6 +2176,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       const runtimes: Array<{
         action: PlannedAction;
         startAtMs: number;
+        visualIntent: MovementPresentationIntent;
         pathToTravel: TileCoord[];
         routeTiming: ReturnType<typeof getRouteVisualTiming>;
         crossedAngle: HeldAngle | null;
@@ -2356,12 +2396,14 @@ export const useGameStore = create<GameStore>((set, get) => {
           ? action.path.slice(0, contactIndex + 1)
           : action.path;
         const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
+        const visualIntent: MovementPresentationIntent = 'cautious_hold_aim';
 
         runtimes.push({
           action,
           startAtMs: getPlannedActionExecuteAtMs(action),
+          visualIntent,
           pathToTravel,
-          routeTiming: getRouteVisualTiming(visualRoutePath),
+          routeTiming: getRouteVisualTiming(visualRoutePath, visualIntent),
           crossedAngle,
           contactTile,
           rangePerAP,
@@ -2426,7 +2468,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           {
             timingPath,
             syncToVisualTiming: true,
-            visualIntent: 'cautious_hold_aim',
+            visualIntent: runtime.visualIntent,
             visualAimDirection: routeUnit?.facing,
           }
         );
@@ -2621,7 +2663,12 @@ export const useGameStore = create<GameStore>((set, get) => {
       }
 
       if (!contactEvent && runtimes.some((runtime) => runtime.tilesMoved > 0)) {
-        await wait(MOVEMENT_STOP_BRACE_MS);
+        const stopBraceMs = Math.max(
+          ...runtimes
+            .filter((runtime) => runtime.tilesMoved > 0)
+            .map((runtime) => getMovementTimingProfile(runtime.visualIntent).stopBraceMs)
+        );
+        await wait(stopBraceMs);
       }
 
       for (const runtime of runtimes) {
@@ -2992,12 +3039,15 @@ export const useGameStore = create<GameStore>((set, get) => {
           const path = findPath(mapData, unit.position, destination);
           const pathToTravel = path.slice(0, moveBudget);
           const visualRoutePath = [{ ...unit.position }, ...pathToTravel.map((tile) => ({ ...tile }))];
-          const routeTiming = getRouteVisualTiming(visualRoutePath);
+          const visualIntent: MovementPresentationIntent = round.phase === 'setup'
+            ? 'fast_reposition'
+            : 'move_to_hold_target';
+          const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
           const aiHoldTarget = getCtAiHoldTarget(unit, nextUnits, mapData);
           const movementRoute = createMovementPresentationRoute(unit.id, pathToTravel, 'ct_ai', 0, {
             timingPath: visualRoutePath,
             syncToVisualTiming: true,
-            visualIntent: round.phase === 'setup' ? 'fast_reposition' : 'move_to_hold_target',
+            visualIntent,
             visualAimTarget: aiHoldTarget,
           });
           set({ movementRoutes: [movementRoute] });
@@ -3042,7 +3092,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           }
 
           if (pathToTravel.length > 0) {
-            await wait(MOVEMENT_STOP_BRACE_MS);
+            await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
           }
 
           unitIdx = nextUnits.findIndex((candidate) => candidate.id === unit.id);
@@ -3503,7 +3553,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           unit.id === proofUnit.id ? { ...unit, facing: { ...proof.facing } } : unit
         ));
         const visualRoutePath = [{ ...currentUnit.position }, ...path.map((tile) => ({ ...tile }))];
-        const routeTiming = getRouteVisualTiming(visualRoutePath);
+        const routeTiming = getRouteVisualTiming(visualRoutePath, visualIntent);
         const movementRoute = createMovementPresentationRoute(proofUnit.id, path, 'direct_move', 0, {
           timingPath: visualRoutePath,
           syncToVisualTiming: true,
@@ -3551,7 +3601,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           });
         }
 
-        await wait(MOVEMENT_STOP_BRACE_MS);
+        await wait(getMovementTimingProfile(visualIntent).stopBraceMs);
         set({ movementRoutes: [] });
       };
 
@@ -3589,6 +3639,14 @@ export const useGameStore = create<GameStore>((set, get) => {
         const frameSummary = MOVEMENT_PROOF_POSES
           .map((pose) => `${pose}: ${proofSummary.uniqueFramesByPose[pose] ?? 0}`)
           .join(', ');
+        const durationSummary = Object.entries(proofSummary.routeDurations)
+          .map(([routeId, duration]) => `${routeId}: ${duration}ms`)
+          .join(', ');
+        const speedSummary = Object.entries(proofSummary.maxSpeedByIntent)
+          .map(([intent, speed]) => `${intent}: ${speed.toFixed(2)} tiles/s`)
+          .join(', ');
+        console.info(`[CS2 Tactics] Movement proof route durations: ${durationSummary || 'none'}`);
+        console.info(`[CS2 Tactics] Movement proof max speed by intent: ${speedSummary}`);
         console.info(`[CS2 Tactics] Movement proof poses seen: ${poseSummary}`);
         console.info(`[CS2 Tactics] Movement proof unique frames: ${frameSummary}`);
       }
