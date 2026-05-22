@@ -547,3 +547,10 @@ after load, and movement proof QA has a frame-lock flag plus perf summary helper
 to distinguish route jitter from placeholder flipbook art. Per-tile move-step
 feedback events were removed from visible movement loops so the HUD is not
 reprocessing feedback on every brisk route step.
+- The product focus has shifted from broad prototype breadth to a flagship
+  vertical slice. `/scenario/banana-execute` now loads a dedicated 3v3 Banana
+  -> B mission with T entry/IGL/support against three CT defenders, pre-authored
+  CT held angles, bomb/utility in play, planning mode enabled, a compact mission
+  objective panel, and lab/debug controls hidden unless `?debug=1` is present.
+  This route is the new container for judging the Plan -> Execute -> Contact ->
+  Debrief loop before expanding full-map content.

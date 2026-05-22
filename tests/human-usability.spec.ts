@@ -120,7 +120,7 @@ test('fresh load and refresh start T side at authored spawn before optional meta
 
   await page.getByTestId('hud-command-meta-setup').click();
   await expect(page.getByTestId('hud-next-action-panel')).toContainText('Applied');
-  await expect(page.getByTestId('hud-next-action-panel')).toContainText('Spawn slots weighted');
+  await expect(page.getByTestId('hud-next-action-panel')).toContainText('Spawn quality');
 
   const afterMeta = await page.evaluate(() => {
     const state = window.__CS_TACTICS_STORE__?.getState();
@@ -130,14 +130,18 @@ test('fresh load and refresh start T side at authored spawn before optional meta
         .filter((unit) => unit.team === 'T')
         .map((unit) => ({ x: unit.position.x, y: unit.position.y })),
       tSpawns: state.map.spawns.T,
+      walkable: state.units
+        .filter((unit) => unit.team === 'T')
+        .every((unit) => state.map.grid[unit.position.y]?.[unit.position.x]?.walkable),
     };
   });
 
   expect(afterMeta).not.toBeNull();
   const spawnKeys = new Set(afterMeta?.tSpawns.map((tile) => `${tile.x},${tile.y}`));
   const metaPositionKeys = afterMeta?.tUnits.map((tile) => `${tile.x},${tile.y}`) ?? [];
-  expect(metaPositionKeys.every((key) => spawnKeys.has(key))).toBe(true);
+  expect(metaPositionKeys.some((key) => !spawnKeys.has(key))).toBe(true);
   expect(new Set(metaPositionKeys).size).toBe(metaPositionKeys.length);
+  expect(afterMeta?.walkable).toBe(true);
 
   await page.reload();
   await expect(page.getByTestId('hud-next-action-panel')).toContainText('T side starts in spawn');
@@ -151,6 +155,47 @@ test('fresh load and refresh start T side at authored spawn before optional meta
   });
 
   expect(afterRefresh).toEqual(initial?.tSpawns);
+});
+
+test('Banana Execute route loads as a focused 3v3 mission instead of a lab surface', async ({ page }) => {
+  await page.goto('/scenario/banana-execute');
+
+  await expect(page.getByTestId('hud-scenario-mission-panel')).toContainText('Banana Execute');
+  await expect(page.getByTestId('hud-scenario-mission-panel')).toContainText('Plant B');
+  await expect(page.getByTestId('hud-command-contact-drill')).toContainText('Retry');
+  await expect(page.getByTestId('hud-command-duel-lab')).toHaveCount(0);
+  await expect(page.getByTestId('hud-command-movement-proof')).toHaveCount(0);
+  await expect(page.getByTestId('hud-meta-setup-guide')).toHaveCount(0);
+
+  const scenarioState = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    if (!state) return null;
+    return {
+      phase: state.round.phase,
+      activeTeam: state.round.activeTeam,
+      selectedUnitId: state.selectedUnitId,
+      planningMode: state.planningMode,
+      tCount: state.units.filter((unit) => unit.team === 'T').length,
+      ctCount: state.units.filter((unit) => unit.team === 'CT').length,
+      heldAngles: state.heldAngles.length,
+      bombCarrierId: state.round.bombCarrierId,
+      tHasUtility: state.units
+        .filter((unit) => unit.team === 'T')
+        .some((unit) => unit.smokeGrenades > 0 || unit.flashbangs > 0),
+    };
+  });
+
+  expect(scenarioState).toEqual({
+    phase: 'combat',
+    activeTeam: 'T',
+    selectedUnitId: 0,
+    planningMode: true,
+    tCount: 3,
+    ctCount: 3,
+    heldAngles: 3,
+    bombCarrierId: 0,
+    tHasUtility: true,
+  });
 });
 
 async function expectHudReachable(page: Page, ids: readonly string[]) {

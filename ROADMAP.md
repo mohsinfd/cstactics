@@ -408,6 +408,11 @@ Acceptance:
 Goal: move from prototype to polished indie.
 
 Work:
+- Flagship scenario shell: `/scenario/banana-execute` is now the focused
+  presentation container for the next polish loop. It starts a 3v3 Banana -> B
+  execute with bomb, utility, CT held angles, planning mode, a mission objective
+  panel, and lab/debug controls hidden by default so the player sees a mission
+  instead of a toolbox.
 - Better map materials and landmark props. Landmark prop silhouettes are started.
 - Quieter always-on cover labels and a first-pass tactical cockpit HUD reskin
   are implemented so screenshots read less like debug scaffolding and more like

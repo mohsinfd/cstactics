@@ -930,6 +930,7 @@ interface GameStore extends GameState {
   initGame: () => void;
   startNextRound: () => void;
   startContactDrill: () => void;
+  startBananaExecuteScenario: () => void;
   startDuelLab: () => void;
   startMovementProof: () => Promise<void>;
 }
@@ -3354,6 +3355,144 @@ export const useGameStore = create<GameStore>((set, get) => {
         movementRoutes: [],
         feedbackEvents: [],
         guidanceEvent: null,
+        aiStatus: null,
+      });
+    },
+
+    startBananaExecuteScenario: () => {
+      if (get().isExecuting) return;
+      const mapData = createInfernoMap();
+      const baseUnits = createUnits(mapData);
+      const scenarioUnitIds = [0, 2, 3, 5, 6, 7];
+      const scenarioUnits = scenarioUnitIds
+        .map((id) => baseUnits.find((unit) => unit.id === id))
+        .filter((unit): unit is Unit => Boolean(unit));
+      if (scenarioUnits.length !== scenarioUnitIds.length) return;
+
+      const positions = new Map<number, TileCoord>([
+        [0, findNearestWalkable(mapData, { x: 42, y: 57 })],
+        [2, findNearestWalkable(mapData, { x: 39, y: 58 })],
+        [3, findNearestWalkable(mapData, { x: 45, y: 55 })],
+        [5, findNearestWalkable(mapData, { x: 50, y: 77 })],
+        [6, findNearestWalkable(mapData, { x: 43, y: 67 })],
+        [7, findNearestWalkable(mapData, { x: 45, y: 74 })],
+      ]);
+      const facings = new Map<number, TileCoord>([
+        [0, { x: 1, y: 1 }],
+        [2, { x: 1, y: 1 }],
+        [3, { x: 1, y: 1 }],
+        [5, { x: -1, y: -1 }],
+        [6, { x: -1, y: -1 }],
+        [7, { x: -1, y: -1 }],
+      ]);
+
+      const nextUnits = scenarioUnits.map((unit) => ({
+        ...unit,
+        hp: unit.maxHp,
+        position: { ...(positions.get(unit.id) ?? unit.position) },
+        ap: unit.maxAp,
+        alive: true,
+        shotsFiredThisTurn: 0,
+        hasMoved: false,
+        hasBomb: unit.id === 0,
+        smokeGrenades: unit.team === 'T' && (unit.id === 2 || unit.id === 3) ? 1 : 0,
+        flashbangs: unit.team === 'T' ? (unit.id === 0 ? 1 : 2) : 0,
+        flashTurns: 0,
+        ammoInClip: unit.weapon.clipSize,
+        reserveAmmo: unit.weapon.clipSize * 3,
+        facing: { ...(facings.get(unit.id) ?? unit.facing) },
+      }));
+
+      const ctEntry = nextUnits.find((unit) => unit.id === 6);
+      const ctSupport = nextUnits.find((unit) => unit.id === 7);
+      const ctAwper = nextUnits.find((unit) => unit.id === 5);
+      const heldAngles: HeldAngle[] = [];
+      if (ctEntry) {
+        const target = findNearestWalkable(mapData, { x: 42, y: 57 });
+        heldAngles.push({
+          id: `${ctEntry.id}:banana-anchor`,
+          unitId: ctEntry.id,
+          team: 'CT',
+          origin: { ...ctEntry.position },
+          target,
+          laneTiles: getWatchedLane(mapData, ctEntry.position, target, Math.max(4, Math.min(ctEntry.weapon.rangeMax, 24))),
+          remainingShots: 1,
+          aimBonus: 5,
+        });
+      }
+      if (ctSupport) {
+        const target = findNearestWalkable(mapData, { x: 43, y: 67 });
+        heldAngles.push({
+          id: `${ctSupport.id}:coffins-support`,
+          unitId: ctSupport.id,
+          team: 'CT',
+          origin: { ...ctSupport.position },
+          target,
+          laneTiles: getWatchedLane(mapData, ctSupport.position, target, Math.max(4, Math.min(ctSupport.weapon.rangeMax, 22))),
+          remainingShots: 1,
+          aimBonus: 3,
+        });
+      }
+      if (ctAwper) {
+        const target = findNearestWalkable(mapData, { x: 45, y: 70 });
+        heldAngles.push({
+          id: `${ctAwper.id}:site-cross`,
+          unitId: ctAwper.id,
+          team: 'CT',
+          origin: { ...ctAwper.position },
+          target,
+          laneTiles: getWatchedLane(mapData, ctAwper.position, target, Math.max(4, Math.min(ctAwper.weapon.rangeMax, 26))),
+          remainingShots: 1,
+          aimBonus: 4,
+        });
+      }
+
+      const round: RoundState = {
+        phase: 'combat',
+        turn: RULES.setupPhaseTurns + 1,
+        activeTeam: 'T',
+        bombPlanted: false,
+        bombDefused: false,
+        bombPosition: null,
+        bombTimer: RULES.bombTimerTurns,
+        bombCarrierId: 0,
+        roundTimer: RULES.roundTimeLimitTurns,
+        roundWinner: null,
+        winReason: null,
+      };
+      const movement = getMovementForSelection(nextUnits, 0, mapData, round);
+
+      set({
+        map: mapData,
+        units: nextUnits,
+        round,
+        selectedUnitId: 0,
+        hoveredTile: null,
+        walkableTiles: movement.walkableTiles,
+        movementTiles: movement.movementTiles,
+        pathPreview: [],
+        planningMode: true,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles,
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: appendFeedback([], 'plan_add', {
+          team: 'T',
+          unitId: 0,
+          intensity: 0.75,
+        }),
+        guidanceEvent: createGuidanceEvent(
+          'Banana Execute loaded',
+          'Queue entry pressure, smoke or flash support, then Run Execute into the first contact.',
+          'hint'
+        ),
         aiStatus: null,
       });
     },

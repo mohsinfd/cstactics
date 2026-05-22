@@ -111,6 +111,10 @@ For each sequence, assert:
   contract: click `Shoot 70%`, click empty floor and receive invalid feedback,
   click the T target and receive shot/kill feedback, then `Reset` returns to a
   standing target. It intentionally has no main HUD root.
+- The flagship route `/scenario/banana-execute` should read as a mission, not a
+  lab. It must auto-load a 3v3 Banana -> B execute, show the mission objective,
+  keep Plan/Run/Retry/End Turn reachable, and hide Random Meta, Duel Lab, and
+  Move Proof unless `?debug=1` is present.
 - The board-camera proof at `/duel-2-5d` must preserve the same contract in a
   tactical view: click `Move Peek`, click the highlighted peek tile, click
   `Shoot 70%`, click empty floor for invalid feedback, click the T target for

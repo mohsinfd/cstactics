@@ -2,6 +2,8 @@ import { IsometricScene } from './renderer/IsometricScene';
 import { CinematicBoardDuelSlice } from './renderer/CinematicBoardDuelSlice';
 import { CinematicDuelSlice } from './renderer/CinematicDuelSlice';
 import { HUD } from './ui/HUD';
+import { useGameStore } from './game/store';
+import { useEffect, useRef } from 'react';
 
 export default function App() {
   const cinematicSlice = typeof window !== 'undefined' &&
@@ -12,6 +14,15 @@ export default function App() {
       window.location.pathname === '/cinematic-1v1-25d' ||
       window.location.search.includes('slice=duel-board')
     );
+  const bananaExecuteScenario = typeof window !== 'undefined' &&
+    window.location.pathname === '/scenario/banana-execute';
+  const scenarioLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!bananaExecuteScenario || scenarioLoadedRef.current) return;
+    scenarioLoadedRef.current = true;
+    useGameStore.getState().startBananaExecuteScenario();
+  }, [bananaExecuteScenario]);
 
   if (cinematicSlice) {
     return <CinematicDuelSlice />;

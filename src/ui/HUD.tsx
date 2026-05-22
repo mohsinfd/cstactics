@@ -110,6 +110,14 @@ function shouldUseEdgeCommandDeck(): boolean {
   return true;
 }
 
+function isBananaExecuteScenarioRoute(): boolean {
+  return typeof window !== 'undefined' && window.location.pathname === '/scenario/banana-execute';
+}
+
+function isScenarioDebugEnabled(): boolean {
+  return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
+}
+
 function useViewportBelow(width: number): boolean {
   const [isCompact, setIsCompact] = useState(() => (
     typeof window !== 'undefined' ? window.innerWidth < width : false
@@ -211,6 +219,7 @@ function tileDistance(a: TileCoord, b: TileCoord): number {
 }
 
 export function HUD() {
+  const bananaExecuteScenario = isBananaExecuteScenarioRoute();
   return (
     <div data-testid="hud-root" className="hud-root" style={{
       position: 'fixed', inset: 0, pointerEvents: 'none',
@@ -221,21 +230,114 @@ export function HUD() {
       <TopBar />
       <SelectedUnitPanel />
       <TeamRoster />
-      <CombatLogPanel />
+      {!bananaExecuteScenario && <CombatLogPanel />}
       <ContactBreakPanel />
       <ExecuteTimelinePanel />
       <BombObjectivePanel />
       <ExecutePlanner />
+      <ScenarioMissionPanel />
       <NextActionPanel />
-      <MetaSetupGuide />
+      {!bananaExecuteScenario && <MetaSetupGuide />}
       <CommandBar />
-      <AiStatusPanel />
+      {!bananaExecuteScenario && <AiStatusPanel />}
       <ViewControlPanel />
-      <MovementLegend />
-      <PhaseAnnouncement />
+      {!bananaExecuteScenario && <MovementLegend />}
+      {!bananaExecuteScenario && <PhaseAnnouncement />}
       <TileInfo />
-      <MapLabel />
+      {!bananaExecuteScenario && <MapLabel />}
     </div>
+  );
+}
+
+function ScenarioMissionPanel() {
+  const bananaExecuteScenario = isBananaExecuteScenarioRoute();
+  const round = useGameStore((s) => s.round);
+  const units = useGameStore((s) => s.units);
+  const plannedActions = useGameStore((s) => s.plannedActions);
+  const executeInterrupt = useGameStore((s) => s.executeInterrupt);
+  const isExecuting = useGameStore((s) => s.isExecuting);
+  const compact = useIsCompactViewport();
+  const dense = useIsDenseHudViewport();
+
+  if (!bananaExecuteScenario) return null;
+
+  const tAlive = units.filter((unit) => unit.team === 'T' && unit.alive).length;
+  const ctAlive = units.filter((unit) => unit.team === 'CT' && unit.alive).length;
+  const status = executeInterrupt
+    ? 'Contact frozen: trade the holder or preserve the bomb.'
+    : round.phase === 'roundend'
+      ? 'Debrief: retry the execute and make the opening cleaner.'
+      : round.bombPlanted
+        ? 'Post-plant: hold the retake path and protect the defuse.'
+        : isExecuting
+          ? 'Execute live: watch utility, movement, and first contact.'
+          : plannedActions.length > 0
+            ? `${plannedActions.length} order${plannedActions.length === 1 ? '' : 's'} queued. Run Execute when ready.`
+            : 'Plan the hit: move entry, smoke CT, flash Coffins, then Run Execute.';
+
+  return (
+    <aside data-testid="hud-scenario-mission-panel" style={{
+      position: 'absolute',
+      top: dense ? 92 : compact ? 118 : 118,
+      left: compact ? 8 : 20,
+      width: dense
+        ? 'min(286px, calc(100vw - 18px))'
+        : compact ? 'min(310px, calc(100vw - 16px))' : 302,
+      padding: dense ? '7px 9px' : compact ? '8px 9px' : '10px 12px',
+      pointerEvents: 'none',
+      border: '1px solid rgba(216,193,112,0.38)',
+      borderLeft: '3px solid #d8c170',
+      borderRadius: 8,
+      background: 'rgba(7, 9, 13, 0.76)',
+      boxShadow: '0 10px 28px rgba(0,0,0,0.3)',
+      backdropFilter: 'blur(14px) saturate(1.12)',
+      WebkitBackdropFilter: 'blur(14px) saturate(1.12)',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{
+        color: '#d8c170',
+        fontSize: 9,
+        fontWeight: 950,
+        letterSpacing: 1.1,
+        textTransform: 'uppercase',
+      }}>
+        Banana Execute
+      </div>
+      <div style={{
+        color: '#f2f5fb',
+        fontSize: dense ? 10 : compact ? 12 : 13,
+        fontWeight: 950,
+        lineHeight: 1.2,
+        marginTop: 3,
+      }}>
+        Plant B or eliminate the defenders
+      </div>
+      <div style={{
+        color: '#9aa4b5',
+        fontSize: dense ? 8 : compact ? 9 : 10,
+        fontWeight: 760,
+        lineHeight: 1.3,
+        marginTop: 4,
+      }}>
+        {status}
+      </div>
+      <div style={{
+        display: 'flex',
+        gap: 6,
+        marginTop: 8,
+        color: '#cfd6e3',
+        fontSize: dense ? 8 : 9,
+        fontWeight: 900,
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+      }}>
+        <span style={{ color: '#d8c170' }}>T {tAlive}</span>
+        <span style={{ color: '#5f84c7' }}>CT {ctAlive}</span>
+        <span style={{ color: round.bombPlanted ? '#58ff9a' : '#7f8796' }}>
+          {round.bombPlanted ? 'Bomb live' : 'Bomb with entry'}
+        </span>
+      </div>
+    </aside>
   );
 }
 
@@ -255,6 +357,7 @@ function NextActionPanel() {
   const guidanceEvent = useGameStore((s) => s.guidanceEvent);
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
+  const bananaExecuteScenario = isBananaExecuteScenarioRoute();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -263,7 +366,12 @@ function NextActionPanel() {
     return () => window.clearInterval(timer);
   }, [guidanceEvent]);
 
+  const recentGuidance = guidanceEvent && now - guidanceEvent.createdAt < 3800
+    ? guidanceEvent
+    : null;
+
   if (dense && executeInterrupt) return null;
+  if (bananaExecuteScenario && !recentGuidance && !executeInterrupt && !isExecuting) return null;
 
   const selectedUnit = selectedUnitId === null
     ? null
@@ -283,9 +391,6 @@ function NextActionPanel() {
     })
     : [];
 
-  const recentGuidance = guidanceEvent && now - guidanceEvent.createdAt < 3800
-    ? guidanceEvent
-    : null;
   const teamLabel = round.activeTeam === 'T' ? 'T side' : 'CT side';
   const nextPlayer = activeUnitsWithAp.find((unit) => unit.id !== selectedUnitId) ?? activeUnitsWithAp[0] ?? null;
   const copy = recentGuidance
@@ -325,9 +430,13 @@ function NextActionPanel() {
             }
             : !selectedUnit
               ? {
-                kicker: `${teamLabel} command`,
-                title: round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
-                detail: round.phase === 'setup'
+                kicker: bananaExecuteScenario ? 'Banana Execute' : `${teamLabel} command`,
+                title: bananaExecuteScenario
+                  ? 'Call the opening'
+                  : round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
+                detail: bananaExecuteScenario
+                  ? 'Pick the entry or support player, queue the hit, then resolve first contact.'
+                  : round.phase === 'setup'
                   ? `No meta applied. ${teamLabel} starts in spawn; Random Meta can jump to opening defaults.`
                   : 'Pick a friendly miniature or roster portrait with AP.',
                 accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
@@ -366,11 +475,13 @@ function NextActionPanel() {
                       }
                       : planningMode
                         ? {
-                          kicker: 'Plan execute',
-                          title: plannedActions.length > 0 ? 'Queue more or run it' : 'Pick an execute tile',
+                          kicker: bananaExecuteScenario ? 'Plan the B hit' : 'Plan execute',
+                          title: plannedActions.length > 0 ? 'Queue more or run it' : 'Pick the first swing',
                           detail: plannedActions.length > 0
-                            ? `${plannedActions.length} order${plannedActions.length === 1 ? '' : 's'} queued. Run Execute when the timing is ready.`
-                            : 'Click a highlighted destination to queue this player, then build the hit.',
+                            ? `${plannedActions.length} order${plannedActions.length === 1 ? '' : 's'} queued. Add utility or Run Execute.`
+                            : bananaExecuteScenario
+                              ? 'Queue entry through Banana; support can smoke or flash before contact.'
+                              : 'Click a highlighted destination to queue this player, then build the hit.',
                           accent: '#68e6a1',
                         }
                         : plannedActions.length > 0
@@ -2595,9 +2706,12 @@ function CommandBar() {
   const setPlanningMode = useGameStore((s) => s.setPlanningMode);
   const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
   const startContactDrill = useGameStore((s) => s.startContactDrill);
+  const startBananaExecuteScenario = useGameStore((s) => s.startBananaExecuteScenario);
   const startDuelLab = useGameStore((s) => s.startDuelLab);
   const startMovementProof = useGameStore((s) => s.startMovementProof);
   const applyMetaDefaultSetup = useGameStore((s) => s.applyMetaDefaultSetup);
+  const bananaExecuteScenario = isBananaExecuteScenarioRoute();
+  const scenarioDebug = isScenarioDebugEnabled();
   const teamColor = activeTeam === 'T' ? '#b8860b' : '#2255aa';
   const compact = useIsCompactViewport();
   const dense = useIsDenseHudViewport();
@@ -2650,7 +2764,7 @@ function CommandBar() {
           letterSpacing: 1.2,
           textTransform: 'uppercase',
         }}>
-          {activeTeam === 'T' ? 'T Side' : 'CT Side'} Command
+          {bananaExecuteScenario ? 'Banana Execute' : `${activeTeam === 'T' ? 'T Side' : 'CT Side'} Command`}
         </div>
         <div style={{
           color: '#777',
@@ -2662,7 +2776,9 @@ function CommandBar() {
         }}>
           {isExecuting
             ? 'EXECUTING ORDERS'
-            : `${PHASE_LABELS[phase]} · ${plannedActions.length} queued action${plannedActions.length === 1 ? '' : 's'}`}
+            : bananaExecuteScenario
+              ? `Plan -> Execute -> Contact · ${plannedActions.length} queued`
+              : `${PHASE_LABELS[phase]} · ${plannedActions.length} queued action${plannedActions.length === 1 ? '' : 's'}`}
         </div>
       </div>
 
@@ -2690,7 +2806,7 @@ function CommandBar() {
         {planningMode ? 'Planning' : 'Plan Execute'}
       </button>
 
-      {phase === 'setup' && (
+      {phase === 'setup' && !bananaExecuteScenario && (
         <button
           data-testid="hud-command-meta-setup"
           onClick={() => !isExecuting && applyMetaDefaultSetup()}
@@ -2718,10 +2834,10 @@ function CommandBar() {
 
       <button
         data-testid="hud-command-contact-drill"
-        onClick={() => !isExecuting && startContactDrill()}
+        onClick={() => !isExecuting && (bananaExecuteScenario ? startBananaExecuteScenario() : startContactDrill())}
         disabled={isExecuting}
-        title="Load a prepared first-contact scenario for testing movement, danger, and held angles."
-        aria-label="Start Banana contact drill"
+        title={bananaExecuteScenario ? 'Restart the Banana Execute mission.' : 'Load a prepared first-contact scenario for testing movement, danger, and held angles.'}
+        aria-label={bananaExecuteScenario ? 'Restart Banana Execute' : 'Start Banana contact drill'}
         style={{
           border: '1px solid #3a2f35',
           background: 'rgba(255,78,106,0.16)',
@@ -2737,34 +2853,36 @@ function CommandBar() {
           ...commandButtonStyle,
         }}
       >
-        Banana Drill
+        {bananaExecuteScenario ? 'Retry' : 'Banana Drill'}
       </button>
 
-      <button
-        data-testid="hud-command-duel-lab"
-        onClick={() => !isExecuting && startDuelLab()}
-        disabled={isExecuting}
-        title="Load a compact 1v1 lab for testing movement, shooting, cover, utility, and weapon feel."
-        aria-label="Start Duel Lab"
-        style={{
-          border: '1px solid #29403a',
-          background: 'rgba(91, 214, 158, 0.14)',
-          color: isExecuting ? '#4d6b5f' : '#9fe6c8',
-          borderRadius: 5,
-          padding: '9px 10px',
-          cursor: isExecuting ? 'default' : 'pointer',
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: 0.8,
-          textTransform: 'uppercase',
-          minWidth: 96,
-          ...commandButtonStyle,
-        }}
-      >
-        Duel Lab
-      </button>
+      {(!bananaExecuteScenario || scenarioDebug) && (
+        <button
+          data-testid="hud-command-duel-lab"
+          onClick={() => !isExecuting && startDuelLab()}
+          disabled={isExecuting}
+          title="Load a compact 1v1 lab for testing movement, shooting, cover, utility, and weapon feel."
+          aria-label="Start Duel Lab"
+          style={{
+            border: '1px solid #29403a',
+            background: 'rgba(91, 214, 158, 0.14)',
+            color: isExecuting ? '#4d6b5f' : '#9fe6c8',
+            borderRadius: 5,
+            padding: '9px 10px',
+            cursor: isExecuting ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+            minWidth: 96,
+            ...commandButtonStyle,
+          }}
+        >
+          Duel Lab
+        </button>
+      )}
 
-      {import.meta.env.DEV && (
+      {import.meta.env.DEV && (!bananaExecuteScenario || scenarioDebug) && (
         <button
           data-testid="hud-command-movement-proof"
           onClick={() => !isExecuting && void startMovementProof()}
