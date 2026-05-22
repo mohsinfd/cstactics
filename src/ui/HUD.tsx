@@ -328,7 +328,7 @@ function NextActionPanel() {
                 kicker: `${teamLabel} command`,
                 title: round.phase === 'setup' ? 'Set the opening shape' : 'Select a player',
                 detail: round.phase === 'setup'
-                  ? `No meta applied. ${teamLabel} starts in spawn; Random Meta is optional.`
+                  ? `No meta applied. ${teamLabel} starts in spawn; Random Meta can jump to opening defaults.`
                   : 'Pick a friendly miniature or roster portrait with AP.',
                 accent: round.activeTeam === 'T' ? '#d8c170' : '#65b7ff',
               }
@@ -502,7 +502,7 @@ function MetaSetupGuide() {
         lineHeight: 1.25,
         marginTop: 2,
       }}>
-        Random Meta assigns spawn slots by:
+        Random Meta places opening defaults by:
       </div>
       <div style={{
         display: 'grid',
@@ -2695,7 +2695,7 @@ function CommandBar() {
           data-testid="hud-command-meta-setup"
           onClick={() => !isExecuting && applyMetaDefaultSetup()}
           disabled={isExecuting}
-          title={`Optional. Default is spawn. Randomly applies one ${activeTeam} preset as spawn-slot weighting, not a lane teleport: ${getMetaPresetTitle(activeTeam)}.`}
+          title={`Optional. Default is spawn. Randomly applies one ${activeTeam} preset as advanced opening positions, weighted by the rolled spawn quality: ${getMetaPresetTitle(activeTeam)}.`}
           aria-label={`Apply random ${activeTeam} meta setup`}
           style={{
             border: '1px solid #374252',

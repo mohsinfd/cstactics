@@ -55,9 +55,10 @@ verbs that make those nouns matter.
 - New full rounds start both sides at their widened authored T/CT spawn
   positions by default. During setup, the command bar exposes an optional
   `Random Meta` button and a visible preset guide for `2-1-2`, `2-2-1`,
-  `3-2`, and `1-3-1`. Those presets now weight spawn-slot assignments by
-  lane intent instead of teleporting units down the map; the AWPer has a small
-  best-peek spawn roll so opening shape still depends on spawn quality.
+  `3-2`, and `1-3-1`. Those presets now roll spawn quality, then place units
+  into advanced opening defaults for Banana/Mid/Apps/A/B/rotator lanes; the
+  best lane spawns receive the more advanced positions, and the AWPer has a
+  small best-peek spawn roll so opening shape still depends on spawn quality.
 - Line-of-sight helper for grid-based visibility.
 - Hold Angle action foundation.
 - Watched-lane overlay for held angles.

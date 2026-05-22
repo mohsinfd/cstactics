@@ -1,4 +1,5 @@
 import type { MapData, Team, TileCoord, Unit } from './types';
+import { findPath } from './pathfinding';
 
 type MetaLane = 'banana' | 'mid' | 'apps' | 'a' | 'b' | 'rotator';
 
@@ -33,9 +34,9 @@ export interface AppliedMetaDefault {
 
 const AWP_BEST_PEEK_CHANCE = 0.2;
 
-// Meta defaults are spawn assignments, not lane teleports. These preference
-// lists keep opening shape tied to the actual spawn roll: fast Banana/A players
-// get the spawn slots nearest their lane, but everyone still starts in spawn.
+// Meta defaults first roll spawn quality, then place units into the chosen
+// opening shape. Better lane spawns receive the more advanced/default lane
+// positions, so the setup is still spawn-sensitive instead of a fixed teleport.
 const SPAWN_SLOT_PREFERENCES: Record<Team, Record<MetaLane, TileCoord[]>> = {
   T: {
     banana: [
@@ -100,6 +101,61 @@ const AWP_BEST_PEEK_SPAWNS: Record<Team, TileCoord[]> = {
     { x: 80, y: 72 },
     { x: 78, y: 65 },
   ],
+};
+
+const META_POSITION_PREFERENCES: Record<Team, Record<MetaLane, TileCoord[]>> = {
+  T: {
+    banana: [
+      { x: 43, y: 64 },
+      { x: 40, y: 58 },
+      { x: 38, y: 50 },
+      { x: 31, y: 40 },
+      { x: 28, y: 38 },
+    ],
+    mid: [
+      { x: 52, y: 34 },
+      { x: 45, y: 34 },
+      { x: 40, y: 40 },
+      { x: 37, y: 33 },
+      { x: 29, y: 36 },
+    ],
+    apps: [
+      { x: 66, y: 20 },
+      { x: 62, y: 20 },
+      { x: 58, y: 21 },
+      { x: 54, y: 24 },
+      { x: 52, y: 25 },
+    ],
+    a: [],
+    b: [],
+    rotator: [],
+  },
+  CT: {
+    a: [
+      { x: 76, y: 39 },
+      { x: 74, y: 44 },
+      { x: 72, y: 34 },
+      { x: 68, y: 55 },
+      { x: 67, y: 43 },
+    ],
+    b: [
+      { x: 43, y: 72 },
+      { x: 40, y: 74 },
+      { x: 48, y: 73 },
+      { x: 51, y: 76 },
+      { x: 40, y: 82 },
+    ],
+    rotator: [
+      { x: 68, y: 55 },
+      { x: 69, y: 50 },
+      { x: 76, y: 44 },
+      { x: 54, y: 76 },
+      { x: 65, y: 58 },
+    ],
+    banana: [],
+    mid: [],
+    apps: [],
+  },
 };
 
 const DEFAULT_FACING: Record<Team, Record<MetaLane, TileCoord>> = {
@@ -185,6 +241,41 @@ function findAvailableSpawnSlot(
   return null;
 }
 
+function laneAnchor(team: Team, slot: MetaLane): TileCoord {
+  return META_POSITION_PREFERENCES[team][slot][0] ??
+    SPAWN_SLOT_PREFERENCES[team][slot][0] ??
+    { x: 0, y: 0 };
+}
+
+function pathDistanceOrManhattan(map: MapData, from: TileCoord, to: TileCoord): number {
+  const path = findPath(map, from, to);
+  if (path.length > 0) return path.length;
+  return Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
+}
+
+function chooseMetaPosition(
+  map: MapData,
+  team: Team,
+  slot: MetaLane,
+  laneIndex: number,
+  occupied: Set<string>,
+): TileCoord {
+  const preferences = META_POSITION_PREFERENCES[team][slot];
+  const orderedPreferences = [
+    ...preferences.slice(laneIndex),
+    ...preferences.slice(0, laneIndex),
+    ...SPAWN_SLOT_PREFERENCES[team][slot],
+    ...map.spawns[team],
+  ];
+
+  for (const preferred of orderedPreferences) {
+    const position = findAvailableWalkableNear(map, preferred, occupied);
+    if (!occupied.has(positionKey(position))) return position;
+  }
+
+  return findAvailableWalkableNear(map, map.spawns[team][0] ?? { x: 0, y: 0 }, occupied);
+}
+
 function chooseSpawnSlot(
   map: MapData,
   team: Team,
@@ -241,6 +332,7 @@ export function applyMetaDefault(
       .filter((unit) => unit.alive && unit.team !== team)
       .map((unit) => positionKey(unit.position))
   );
+  const spawnOccupied = new Set<string>();
   let nextUnits = units.map((unit) => ({ ...unit, position: { ...unit.position }, facing: { ...unit.facing } }));
   const teamUnits = nextUnits.filter((unit) => unit.team === team && unit.alive);
   const assignments = teamUnits.map((unit, index) => ({
@@ -248,28 +340,46 @@ export function applyMetaDefault(
     slot: metaDefault.slots[index % metaDefault.slots.length],
     preferAwperPeek: unit.role.id === 'awper' && Math.random() < AWP_BEST_PEEK_CHANCE,
   })).sort((a, b) => Number(b.preferAwperPeek) - Number(a.preferAwperPeek));
+  const spawnedAssignments = assignments.map((assignment) => {
+    const spawn = chooseSpawnSlot(map, team, assignment.slot, spawnOccupied, assignment.preferAwperPeek);
+    spawnOccupied.add(positionKey(spawn));
+    return {
+      ...assignment,
+      spawn,
+      laneDistance: pathDistanceOrManhattan(map, spawn, laneAnchor(team, assignment.slot)),
+    };
+  });
+  const laneCounts = new Map<MetaLane, number>();
   let awperBestPeek = false;
 
-  assignments.forEach(({ unit, slot, preferAwperPeek }) => {
-    const position = chooseSpawnSlot(map, team, slot, occupied, preferAwperPeek);
-    occupied.add(positionKey(position));
-    awperBestPeek = awperBestPeek || preferAwperPeek;
+  spawnedAssignments
+    .sort((a, b) => (
+      a.slot === b.slot
+        ? a.laneDistance - b.laneDistance
+        : metaDefault.slots.indexOf(a.slot) - metaDefault.slots.indexOf(b.slot)
+    ))
+    .forEach(({ unit, slot, preferAwperPeek }) => {
+      const laneIndex = laneCounts.get(slot) ?? 0;
+      laneCounts.set(slot, laneIndex + 1);
+      const position = chooseMetaPosition(map, team, slot, laneIndex, occupied);
+      occupied.add(positionKey(position));
+      awperBestPeek = awperBestPeek || preferAwperPeek;
 
-    nextUnits = nextUnits.map((candidate) => (
-      candidate.id === unit.id
-        ? {
-          ...candidate,
-          position,
-          facing: { ...DEFAULT_FACING[team][slot] },
-        }
-        : candidate
+      nextUnits = nextUnits.map((candidate) => (
+        candidate.id === unit.id
+          ? {
+            ...candidate,
+            position,
+            facing: { ...DEFAULT_FACING[team][slot] },
+          }
+          : candidate
       ));
-  });
+    });
 
   return {
     units: nextUnits,
     metaDefault,
-    spawnSummary: `${metaDefault.label}. Spawn slots weighted by lane; no free lane teleport.${awperBestPeek ? ' AWPer got the best-peek spawn roll.' : ''}`,
+    spawnSummary: `${metaDefault.label}. Spawn quality now assigns advanced opening positions.${awperBestPeek ? ' AWPer got the best-peek spawn roll.' : ''}`,
     awperBestPeek,
   };
 }
