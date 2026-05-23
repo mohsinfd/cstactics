@@ -117,6 +117,11 @@ For each sequence, assert:
 - The `/duel-2-5d` proof must keep its isometric tile graph measurable: the
   browser regression checks that eight floor tiles exist and that the CT
   gameplay marker visibly moves after clicking a tile.
+- The `/scenario/banana-execute` flagship route must open with compact guidance,
+  hide the lab/debug cockpit by default, expose the scenario action rail, keep
+  smoke/flash available for the right T roles, trigger a held-angle Contact
+  Break through the authored Banana lane, keep the contact panel reachable on
+  laptop/compact viewports, and reset through Retry Banana Execute.
 - The automated pass covers desktop, narrow laptop, and real compact HUD
   viewports, including `540x700`.
 
@@ -183,3 +188,16 @@ gate.
   and map branding; keep the command bar to one compact row; shrink selected
   unit and tile panels; and prioritize visible board area over explanatory
   copy.
+
+## May 23 Banana Execute Flagship Regression
+
+- `/scenario/banana-execute` is now the first player-facing scenario route and
+  should not inherit the root route's lab controls unless loaded with
+  `?debug=1`.
+- The route is tested across desktop, narrow laptop, and compact HUD projects:
+  intro guidance, scenario objective, action rail, hidden debug cockpit,
+  3v3 setup, authored CT role names, smoke/flash availability, contact staging,
+  contact panel reachability, and retry reset are all covered.
+- Future flagship scenario edits should keep the board as the hero. Add route
+  controls only if they serve the `plan -> contact -> trade/plant -> debrief`
+  loop directly.

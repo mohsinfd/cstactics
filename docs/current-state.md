@@ -131,6 +131,11 @@ verbs that make those nouns matter.
   the immediate trade decision, while the Contact Break panel keeps showing the
   trade/bomb context.
 - Banana Drill prototype scenario for testing the Banana hold/crossing loop.
+- `/scenario/banana-execute` is now the first flagship player-facing slice: a
+  curated 3v3 Banana-to-B execute with T Entry/Support/IGL, CT B
+  Anchor/Coffins Hold/Rotator, one pre-authored held angle, one smoke, one
+  flash, combat-phase start, a compact intro, a scenario-only action rail,
+  contact staging, debrief/retry, and hidden lab/debug HUD by default.
 - Duel Lab debug scenario for quickly testing a one-T versus one-CT combat
   state with immediate movement, shooting, utility, cover, and weapon feedback.
 - Pointer hover updates are gated by tile to reduce redundant path recalculation
@@ -211,6 +216,10 @@ verbs that make those nouns matter.
   side pistols.
 - Procedural feedback audio for selection, planning, movement, turn transitions,
   AI response, utility, and combat.
+- Banana Execute has an authored audio-slot manifest under
+  `src/ui/bananaExecuteAudioManifest.ts` for UI confirm/deny, movement, rifle,
+  AWP, hit, kill, flash, smoke, plant, contact, and round-result samples while
+  preserving the procedural fallback layer.
 - First-pass next-action guidance: the HUD now gives a compact "what to do
   next" read for setup, selected units, planning, aiming, utility, execution,
   contact breaks, AI turns, and round end.
@@ -458,7 +467,22 @@ verbs that make those nouns matter.
 
 ## Immediate Focus
 
-Finish hardening the first contact vertical slice before broadening the game:
+Movement architecture is parked for now. The current product priority is making
+`/scenario/banana-execute` feel like one finished mini-game rather than adding
+another lab, visual-client spike, or broad mechanic.
+
+Banana Execute should preserve the existing AP, LOS, cover, utility, held-angle,
+contact-break, bomb, CT AI, audio, and visual systems while improving the
+player-facing composition:
+
+1. Read the situation.
+2. Plan smoke/flash/entry timing.
+3. Hit a held Banana contact.
+4. Decide whether and how to trade.
+5. Plant, fail, or clear the site.
+6. Debrief and retry quickly.
+
+The underlying first-contact contract remains:
 
 1. CT holds Banana.
 2. T queues movement through Banana.

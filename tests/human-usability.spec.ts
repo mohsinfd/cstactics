@@ -153,6 +153,128 @@ test('fresh load and refresh start T side at authored spawn before optional meta
   expect(afterRefresh).toEqual(initial?.tSpawns);
 });
 
+test('Banana Execute route loads a focused 3v3 scenario with guidance, rail, contact, and retry', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+
+  await page.goto('/scenario/banana-execute');
+  await expect(page.getByTestId('banana-execute-intro')).toBeVisible();
+  await expect(page.getByTestId('banana-execute-intro')).toContainText('Break the B hold');
+  await page.getByTestId('banana-execute-start').click();
+
+  await expect(page.getByTestId('banana-execute-objective')).toBeVisible();
+  await expect(page.getByTestId('banana-execute-action-rail')).toBeVisible();
+  await expect(page.getByTestId('hud-command-bar')).toHaveCount(0);
+  await expect(page.getByTestId('hud-team-roster')).toHaveCount(0);
+  await expect(page.getByTestId('hud-selected-unit-panel')).toHaveCount(0);
+
+  const scenarioState = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    if (!state) return null;
+    return {
+      phase: state.round.phase,
+      activeTeam: state.round.activeTeam,
+      unitNames: state.units.map((unit) => unit.name),
+      tCount: state.units.filter((unit) => unit.team === 'T').length,
+      ctCount: state.units.filter((unit) => unit.team === 'CT').length,
+      planningMode: state.planningMode,
+      heldAngles: state.heldAngles.length,
+      selectedName: state.units.find((unit) => unit.id === state.selectedUnitId)?.name ?? null,
+      movementTiles: state.movementTiles.length,
+    };
+  });
+
+  expect(scenarioState).not.toBeNull();
+  expect(scenarioState?.phase).toBe('combat');
+  expect(scenarioState?.activeTeam).toBe('T');
+  expect(scenarioState?.tCount).toBe(3);
+  expect(scenarioState?.ctCount).toBe(3);
+  expect(scenarioState?.planningMode).toBe(true);
+  expect(scenarioState?.heldAngles).toBeGreaterThanOrEqual(1);
+  expect(scenarioState?.unitNames).toEqual(expect.arrayContaining([
+    'Entry',
+    'Support',
+    'IGL',
+    'B Anchor',
+    'Coffins Hold',
+    'Rotator',
+  ]));
+  expect(scenarioState?.selectedName).toBe('Support');
+  expect(scenarioState?.movementTiles).toBeGreaterThan(0);
+
+  await expect(page.getByTestId('banana-execute-action-smoke')).toBeEnabled();
+  await page.evaluate(() => window.__CS_TACTICS_STORE__?.getState().selectUnit(2));
+  await expect(page.getByTestId('banana-execute-action-flash')).toBeEnabled();
+
+  const contactResult = await page.evaluate(async () => {
+    const store = window.__CS_TACTICS_STORE__;
+    if (!store) return { ok: false, reason: 'debug store unavailable' };
+    store.getState().startBananaExecute();
+    store.getState().selectUnit(0);
+
+    const targets = [
+      { x: 43, y: 66 },
+      { x: 43, y: 65 },
+      { x: 43, y: 64 },
+      { x: 43, y: 63 },
+      { x: 43, y: 62 },
+    ];
+
+    for (const target of targets) {
+      store.getState().queueMove(target);
+      if (store.getState().plannedActions.length > 0) break;
+    }
+
+    if (store.getState().plannedActions.length === 0) {
+      return { ok: false, reason: 'no planned movement queued' };
+    }
+
+    await store.getState().commitPlannedActions();
+    return {
+      ok: Boolean(store.getState().executeInterrupt),
+      reason: store.getState().executeInterrupt ? '' : 'execute completed without contact interrupt',
+    };
+  });
+
+  expect(contactResult.ok, contactResult.reason).toBe(true);
+  await expect(page.getByTestId('hud-contact-break-panel')).toBeVisible();
+  await expect(page.getByTestId('banana-execute-contact-stage')).toBeVisible();
+  await expect(page.getByTestId('hud-contact-responder')).toBeVisible();
+
+  await page.evaluate(() => {
+    const store = window.__CS_TACTICS_STORE__;
+    store?.setState((state) => ({
+      round: {
+        ...state.round,
+        phase: 'roundend',
+        roundWinner: 'CT',
+        winReason: 'elimination',
+      },
+    }));
+  });
+  await expect(page.getByTestId('banana-execute-debrief')).toBeVisible();
+  await page.getByTestId('banana-execute-retry').click();
+  await expect(page.getByTestId('banana-execute-debrief')).toHaveCount(0);
+
+  const retryState = await page.evaluate(() => {
+    const state = window.__CS_TACTICS_STORE__?.getState();
+    return {
+      phase: state?.round.phase,
+      units: state?.units.length,
+      selectedName: state?.units.find((unit) => unit.id === state.selectedUnitId)?.name ?? null,
+    };
+  });
+  expect(retryState).toEqual({
+    phase: 'combat',
+    units: 6,
+    selectedName: 'Support',
+  });
+  expect(consoleErrors).toEqual([]);
+});
+
 async function expectHudReachable(page: Page, ids: readonly string[]) {
   await page.waitForSelector(`[data-testid="${ids[0]}"]`, { timeout: 10_000 });
   const results = await page.evaluate(({ ids, clickTargetIds }) => {

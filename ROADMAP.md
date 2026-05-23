@@ -142,6 +142,11 @@ move, trigger contact, and freeze into a trade decision. See
   Break panel. Implemented as a first pass.
 - Browser regression now exercises Banana Drill -> queued crossing -> Run
   Execute -> Contact Break across desktop, narrow laptop, and compact HUD.
+- A flagship `/scenario/banana-execute` route now composes the existing systems
+  into a curated 3v3 Banana-to-B slice with compact guidance, hidden lab/debug
+  controls, scenario action rail, CT intent labels, held-angle contact staging,
+  debrief/retry, and browser regression coverage across the supported human
+  viewport projects.
 - Compact/zoom HUD viewport-budget regression is implemented for Banana Drill
   contact, and dense HUD mode now reduces secondary panels so the playfield
   remains readable under browser zoom stress.

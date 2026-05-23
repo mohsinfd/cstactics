@@ -55,6 +55,29 @@ const ROLE_ICONS: Record<string, string> = {
   lurker: 'LRK',
 };
 
+type ScenarioHudMode = 'banana-execute';
+
+const BANANA_EXECUTE_SMOKE_TARGETS: TileCoord[] = [
+  { x: 43, y: 69 },
+  { x: 42, y: 69 },
+  { x: 46, y: 69 },
+  { x: 43, y: 70 },
+];
+
+const BANANA_EXECUTE_FLASH_TARGETS: TileCoord[] = [
+  { x: 43, y: 69 },
+  { x: 42, y: 70 },
+  { x: 46, y: 69 },
+  { x: 43, y: 68 },
+];
+
+const BANANA_EXECUTE_HOLD_TARGETS: TileCoord[] = [
+  { x: 43, y: 69 },
+  { x: 43, y: 67 },
+  { x: 42, y: 69 },
+  { x: 46, y: 69 },
+];
+
 function getCoverStateLabel(preview: Pick<ShotPreview, 'coverState' | 'coverLabel' | 'coverQuality'>): string {
   if (preview.coverState === 'protected') {
     return preview.coverQuality === 'corner'
@@ -210,7 +233,44 @@ function tileDistance(a: TileCoord, b: TileCoord): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function HUD() {
+export function HUD({ scenario }: { scenario?: ScenarioHudMode } = {}) {
+  const debugScenario = scenario === 'banana-execute' &&
+    typeof window !== 'undefined' &&
+    window.location.search.includes('debug=1');
+
+  if (scenario === 'banana-execute') {
+    return (
+      <div data-testid="hud-root" className="hud-root hud-root-scenario" style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none',
+        fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
+        zIndex: 10,
+      }}>
+        <AudioFeedback />
+        <TopBar />
+        <BananaExecuteIntro />
+        <BananaExecuteObjectivePanel />
+        <BananaExecuteContactStage />
+        <ContactBreakPanel />
+        <ExecuteTimelinePanel />
+        <ExecutePlanner />
+        <BananaExecuteMiniLog />
+        <BananaExecuteActionRail />
+        <BananaExecuteDebrief />
+        {debugScenario && (
+          <>
+            <CommandBar />
+            <TeamRoster />
+            <NextActionPanel />
+            <AiStatusPanel />
+          </>
+        )}
+        <ViewControlPanel />
+        <MovementLegend />
+        <TileInfo />
+      </div>
+    );
+  }
+
   return (
     <div data-testid="hud-root" className="hud-root" style={{
       position: 'fixed', inset: 0, pointerEvents: 'none',
@@ -235,6 +295,849 @@ export function HUD() {
       <PhaseAnnouncement />
       <TileInfo />
       <MapLabel />
+    </div>
+  );
+}
+
+function getFirstWalkableScenarioTarget(map: MapData, targets: TileCoord[]): TileCoord | null {
+  return targets.find((tile) => map.grid[tile.y]?.[tile.x]?.walkable) ?? null;
+}
+
+function BananaExecuteIntro() {
+  const [visible, setVisible] = useState(true);
+  const units = useGameStore((s) => s.units);
+  const selectUnit = useGameStore((s) => s.selectUnit);
+  const setPlanningMode = useGameStore((s) => s.setPlanningMode);
+
+  useEffect(() => {
+    const showIntro = () => setVisible(true);
+    window.addEventListener('banana-execute-show-intro', showIntro);
+    return () => window.removeEventListener('banana-execute-show-intro', showIntro);
+  }, []);
+
+  if (!visible) return null;
+
+  const begin = () => {
+    const support = units.find((unit) => unit.team === 'T' && unit.role.id === 'support' && unit.alive);
+    setPlanningMode(true);
+    if (support) selectUnit(support.id);
+    setVisible(false);
+  };
+
+  const skip = () => {
+    setPlanningMode(true);
+    setVisible(false);
+  };
+
+  return (
+    <div data-testid="banana-execute-intro" style={{
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: 'min(440px, calc(100vw - 28px))',
+      background: 'rgba(8, 8, 12, 0.95)',
+      border: '1px solid rgba(216,193,112,0.48)',
+      borderTop: '3px solid #d8c170',
+      borderRadius: 7,
+      padding: 18,
+      pointerEvents: 'auto',
+      boxShadow: '0 22px 70px rgba(0,0,0,0.48)',
+    }}>
+      <div style={{
+        color: '#f5e6b2',
+        fontSize: 24,
+        fontWeight: 950,
+        letterSpacing: 0.4,
+        lineHeight: 1,
+      }}>
+        Banana Execute
+      </div>
+      <div style={{
+        color: '#d7dbe4',
+        fontSize: 13,
+        fontWeight: 800,
+        marginTop: 10,
+      }}>
+        Break the B hold, trade first contact, and plant.
+      </div>
+      <ol style={{
+        margin: '12px 0 0',
+        paddingLeft: 20,
+        color: '#9ea6b5',
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1.55,
+      }}>
+        <li>Smoke CT or Coffins.</li>
+        <li>Flash the hold.</li>
+        <li>Move Entry through Banana.</li>
+        <li>Trade contact.</li>
+        <li>Plant if site is clear.</li>
+      </ol>
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button
+          type="button"
+          data-testid="banana-execute-start"
+          onClick={begin}
+          style={{
+            flex: 1,
+            border: 'none',
+            background: '#d8c170',
+            color: '#17120a',
+            borderRadius: 5,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 950,
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+          }}
+        >
+          Start Execute
+        </button>
+        <button
+          type="button"
+          data-testid="banana-execute-skip"
+          onClick={skip}
+          style={{
+            border: '1px solid #303744',
+            background: 'rgba(255,255,255,0.045)',
+            color: '#bfc6d4',
+            borderRadius: 5,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 850,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+          }}
+        >
+          Skip Guidance
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BananaExecuteObjectivePanel() {
+  const units = useGameStore((s) => s.units);
+  const round = useGameStore((s) => s.round);
+  const plannedActions = useGameStore((s) => s.plannedActions);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const compact = useIsCompactViewport();
+  const tAlive = units.filter((unit) => unit.team === 'T' && unit.alive).length;
+  const ctAlive = units.filter((unit) => unit.team === 'CT' && unit.alive).length;
+  const smokeQueued = plannedActions.some((action) => action.kind === 'smoke');
+  const flashQueued = plannedActions.some((action) => action.kind === 'flash');
+  const moveQueued = plannedActions.some((action) => action.kind === 'move');
+  const focus = interrupt
+    ? 'Contact break'
+    : round.bombPlanted
+      ? `Bomb live: ${round.bombTimer}`
+      : moveQueued
+        ? 'Entry swing queued'
+        : smokeQueued || flashQueued
+          ? 'Utility queued'
+          : 'Plan the execute';
+
+  return (
+    <div data-testid="banana-execute-objective" style={{
+      position: 'absolute',
+      top: compact ? 82 : 86,
+      right: compact ? 8 : 18,
+      width: compact ? 'min(220px, calc(100vw - 16px))' : 270,
+      boxSizing: 'border-box',
+      background: 'rgba(8, 8, 12, 0.9)',
+      border: '1px solid rgba(216,193,112,0.28)',
+      borderLeft: '3px solid #d8c170',
+      borderRadius: 6,
+      padding: compact ? '8px 9px' : '10px 12px',
+      pointerEvents: 'none',
+      boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+    }}>
+      <div style={{
+        color: '#d8c170',
+        fontSize: 10,
+        fontWeight: 950,
+        letterSpacing: 1.1,
+        textTransform: 'uppercase',
+      }}>
+        Banana Execute
+      </div>
+      <div style={{ color: '#f3f5f8', fontSize: compact ? 11 : 13, fontWeight: 900, marginTop: 5 }}>
+        Break B and plant
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 5,
+        marginTop: 9,
+      }}>
+        <ScenarioStat label="T" value={tAlive} color="#d8c170" />
+        <ScenarioStat label="CT" value={ctAlive} color="#75b9ff" />
+        <ScenarioStat label="Focus" value={focus} color={interrupt ? '#ff6b82' : '#d7dbe4'} />
+      </div>
+      <div style={{
+        display: 'flex',
+        gap: 5,
+        flexWrap: 'wrap',
+        marginTop: 9,
+        color: '#8992a2',
+        fontSize: 9,
+        fontWeight: 850,
+        textTransform: 'uppercase',
+      }}>
+        <span style={{ color: smokeQueued ? '#c5d1df' : '#566070' }}>Smoke</span>
+        <span style={{ color: flashQueued ? '#fff1a8' : '#566070' }}>Flash</span>
+        <span style={{ color: moveQueued ? '#58ff9a' : '#566070' }}>Swing</span>
+        <span style={{ color: round.bombPlanted ? '#ff6b82' : '#566070' }}>Plant</span>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioStat({ label, value, color }: { label: string; value: string | number; color: string }) {
+  return (
+    <div style={{
+      minWidth: 0,
+      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(255,255,255,0.035)',
+      borderRadius: 4,
+      padding: '5px 6px',
+    }}>
+      <div style={{ color: '#656d7a', fontSize: 8, fontWeight: 900, textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{
+        color,
+        fontSize: 11,
+        fontWeight: 950,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BananaExecuteContactStage() {
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  if (!interrupt) return null;
+
+  const event = interrupt.event;
+  const result = event.killed
+    ? 'Eliminated'
+    : event.hit
+      ? `Hit ${event.damage}`
+      : 'Missed';
+  const trade = interrupt.tradeShot;
+
+  return (
+    <div data-testid="banana-execute-contact-stage" style={{
+      position: 'absolute',
+      top: 76,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: 'min(460px, calc(100vw - 32px))',
+      background: 'rgba(18, 8, 12, 0.92)',
+      border: '1px solid rgba(255,107,130,0.5)',
+      borderRadius: 6,
+      padding: '8px 12px',
+      pointerEvents: 'none',
+      boxShadow: '0 0 24px rgba(255,78,106,0.18), 0 14px 34px rgba(0,0,0,0.34)',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        minWidth: 0,
+      }}>
+        <span style={{
+          color: '#ff6b82',
+          fontSize: 10,
+          fontWeight: 950,
+          letterSpacing: 1.5,
+          textTransform: 'uppercase',
+          flex: '0 0 auto',
+        }}>
+          Contact
+        </span>
+        <span style={{
+          color: '#f5f1e4',
+          fontSize: 13,
+          fontWeight: 950,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {event.attackerName} stopped {event.targetName}
+        </span>
+        <span style={{
+          marginLeft: 'auto',
+          color: event.hit ? '#ffffff' : '#d8c170',
+          fontSize: 12,
+          fontWeight: 950,
+          fontFamily: "'Courier New', monospace",
+          whiteSpace: 'nowrap',
+        }}>
+          {result}
+        </span>
+      </div>
+      <div style={{
+        color: trade ? '#f4e7b4' : '#8f7880',
+        fontSize: 10,
+        fontWeight: 850,
+        marginTop: 4,
+      }}>
+        {trade
+          ? `Best trade: ${trade.shooterName} on ${trade.targetName} at ${trade.hitChance}%`
+          : 'No clean trade is available from current AP and line of sight.'}
+      </div>
+    </div>
+  );
+}
+
+function BananaExecuteActionRail() {
+  const selectedId = useGameStore((s) => s.selectedUnitId);
+  const units = useGameStore((s) => s.units);
+  const round = useGameStore((s) => s.round);
+  const map = useGameStore((s) => s.map);
+  const smokes = useGameStore((s) => s.smokes);
+  const inputMode = useGameStore((s) => s.inputMode);
+  const plannedActions = useGameStore((s) => s.plannedActions);
+  const isExecuting = useGameStore((s) => s.isExecuting);
+  const setInputMode = useGameStore((s) => s.setInputMode);
+  const throwSmoke = useGameStore((s) => s.throwSmoke);
+  const throwFlash = useGameStore((s) => s.throwFlash);
+  const holdAngle = useGameStore((s) => s.holdAngle);
+  const shootUnit = useGameStore((s) => s.shootUnit);
+  const plantBomb = useGameStore((s) => s.plantBomb);
+  const defuseBomb = useGameStore((s) => s.defuseBomb);
+  const finishUnit = useGameStore((s) => s.finishUnit);
+  const commitPlannedActions = useGameStore((s) => s.commitPlannedActions);
+  const compact = useIsCompactViewport();
+
+  if (selectedId === null) return null;
+  const unit = units.find((candidate) => candidate.id === selectedId);
+  if (!unit) return null;
+
+  const teamColor = unit.team === 'T' ? '#d8c170' : '#75b9ff';
+  const shotApCost = getWeaponShotApCost(unit.weapon);
+  const shotOptions = units
+    .filter((candidate) => candidate.alive && candidate.team !== unit.team)
+    .map((target) => ({
+      target,
+      preview: getShotPreview(map, unit, target, 0, target.position, smokes),
+    }))
+    .filter(({ preview }) => preview.hasLineOfSight && preview.inRange)
+    .sort((a, b) => b.preview.hitChance - a.preview.hitChance)
+    .slice(0, 2);
+  const smokeTarget = getFirstWalkableScenarioTarget(map, BANANA_EXECUTE_SMOKE_TARGETS);
+  const flashTarget = getFirstWalkableScenarioTarget(map, BANANA_EXECUTE_FLASH_TARGETS);
+  const holdTarget = getFirstWalkableScenarioTarget(map, BANANA_EXECUTE_HOLD_TARGETS);
+  const plantSite = getPlantSite(map, unit.position);
+  const defuseCost = unit.hasDefuseKit ? RULES.defuseWithKit : RULES.defuseWithoutKit;
+  const smokeDisabled = unit.ap <= 0
+    ? 'No AP remaining.'
+    : unit.smokeGrenades <= 0
+      ? 'No smoke remaining.'
+      : !smokeTarget
+        ? 'No valid smoke target.'
+        : tileDistance(unit.position, smokeTarget) > 12
+          ? 'Smoke target out of range.'
+          : null;
+  const flashDisabled = unit.ap <= 0
+    ? 'No AP remaining.'
+    : unit.flashbangs <= 0
+      ? 'No flash remaining.'
+      : !flashTarget
+        ? 'No valid flash target.'
+        : tileDistance(unit.position, flashTarget) > 12
+          ? 'Flash target out of range.'
+          : null;
+  const shootDisabled = unit.ap <= 0
+    ? 'No AP remaining.'
+    : unit.ap < shotApCost
+      ? `${shotApCost} AP required.`
+      : unit.ammoInClip <= 0
+        ? 'Magazine empty.'
+        : shotOptions.length === 0
+          ? 'No visible target.'
+          : null;
+  const plantDisabled = unit.team !== 'T'
+    ? 'Only T side can plant.'
+    : !unit.hasBomb
+      ? 'This unit does not have the bomb.'
+      : round.bombPlanted
+        ? 'Bomb already planted.'
+        : !plantSite
+          ? 'Move into the B plant zone.'
+          : unit.ap < RULES.plantActionCost
+            ? `${RULES.plantActionCost} AP required.`
+            : null;
+  const defuseDisabled = unit.team !== 'CT'
+    ? 'Only CT side can defuse.'
+    : !round.bombPlanted || !round.bombPosition
+      ? 'No planted bomb.'
+      : tileDistance(unit.position, round.bombPosition) > 1.5
+        ? 'Move onto the bomb.'
+        : unit.ap < defuseCost
+          ? `${defuseCost} AP required.`
+          : null;
+
+  const railGrid = compact
+    ? 'repeat(4, minmax(0, 1fr))'
+    : 'repeat(8, minmax(78px, 1fr))';
+
+  return (
+    <div data-testid="banana-execute-action-rail" style={{
+      position: 'absolute',
+      left: compact ? 8 : '50%',
+      right: compact ? 8 : undefined,
+      bottom: compact ? 8 : 14,
+      transform: compact ? 'none' : 'translateX(-50%)',
+      width: compact ? undefined : 'min(980px, calc(100vw - 36px))',
+      boxSizing: 'border-box',
+      background: 'rgba(8, 8, 12, 0.94)',
+      border: `1px solid ${teamColor}44`,
+      borderTop: `3px solid ${teamColor}`,
+      borderRadius: 7,
+      padding: compact ? '7px 8px' : '9px 10px',
+      pointerEvents: 'auto',
+      boxShadow: '0 14px 38px rgba(0,0,0,0.42)',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: compact ? 6 : 8,
+        minWidth: 0,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            color: teamColor,
+            fontSize: compact ? 9 : 10,
+            fontWeight: 950,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+          }}>
+            {unit.name}
+          </div>
+          <div style={{
+            color: '#8a93a2',
+            fontSize: compact ? 9 : 10,
+            fontWeight: 750,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {unit.role.displayName} / AP {unit.ap}/{unit.maxAp} / {unit.weapon.name}
+          </div>
+        </div>
+        <div style={{
+          marginLeft: 'auto',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          minWidth: 0,
+        }}>
+          {plannedActions.length > 0 && (
+            <button
+              type="button"
+              data-testid="banana-execute-run"
+              disabled={isExecuting || round.phase === 'roundend'}
+              onClick={() => void commitPlannedActions()}
+              style={{
+                border: 'none',
+                background: isExecuting ? '#5b665f' : '#58ff9a',
+                color: '#07130b',
+                borderRadius: 5,
+                padding: compact ? '7px 8px' : '9px 12px',
+                cursor: isExecuting ? 'default' : 'pointer',
+                fontSize: compact ? 9 : 11,
+                fontWeight: 950,
+                letterSpacing: 0.9,
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Run Execute
+            </button>
+          )}
+          <span style={{
+            color: '#687282',
+            fontSize: 9,
+            fontWeight: 850,
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+          }}>
+            {plannedActions.length} queued
+          </span>
+        </div>
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: railGrid,
+        gap: compact ? 4 : 6,
+      }}>
+        <ScenarioActionButton
+          testId="banana-execute-action-move"
+          label="Move"
+          detail="Route tile"
+          cost="1-2 AP"
+          active={inputMode === 'move'}
+          disabledReason={unit.ap <= 0 ? 'No AP remaining.' : null}
+          accent={teamColor}
+          onClick={() => setInputMode('move')}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-hold"
+          label="Hold Banana"
+          detail="Watch lane"
+          cost="1 AP"
+          active={inputMode === 'hold_angle'}
+          disabledReason={unit.ap <= 0 ? 'No AP remaining.' : unit.ammoInClip <= 0 ? 'Magazine empty.' : !holdTarget ? 'No hold target.' : null}
+          accent="#ff6b82"
+          onClick={() => holdTarget && holdAngle(holdTarget)}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-smoke"
+          label="Smoke CT"
+          detail="Block cross"
+          cost="1 AP"
+          disabledReason={smokeDisabled}
+          accent="#c5d1df"
+          onClick={() => smokeTarget && throwSmoke(smokeTarget)}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-flash"
+          label="Flash Coffins"
+          detail="Break hold"
+          cost="1 AP"
+          disabledReason={flashDisabled}
+          accent="#fff1a8"
+          onClick={() => flashTarget && throwFlash(flashTarget)}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-shoot"
+          label="Shoot"
+          detail={shotOptions[0] ? `${shotOptions[0].target.name} ${shotOptions[0].preview.hitChance}%` : 'No target'}
+          cost={`${shotApCost} AP`}
+          active={inputMode === 'shoot'}
+          disabledReason={shootDisabled}
+          accent="#d8c170"
+          onClick={() => setInputMode(inputMode === 'shoot' ? 'move' : 'shoot')}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-plant"
+          label={unit.team === 'CT' ? 'Defuse' : 'Plant B'}
+          detail={unit.team === 'CT' ? 'Bomb' : plantSite ? `${plantSite} site` : 'Reach site'}
+          cost={unit.team === 'CT' ? `${defuseCost} AP` : `${RULES.plantActionCost} AP`}
+          disabledReason={unit.team === 'CT' ? defuseDisabled : plantDisabled}
+          accent="#ff6b82"
+          onClick={() => unit.team === 'CT' ? defuseBomb() : plantBomb()}
+        />
+        <ScenarioActionButton
+          testId="banana-execute-action-end-unit"
+          label="End Unit"
+          detail="Keep tempo"
+          cost="0 AP"
+          disabledReason={unit.ap <= 0 ? 'Already spent.' : null}
+          accent={teamColor}
+          onClick={finishUnit}
+        />
+      </div>
+      {shotOptions.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: compact ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+          gap: 6,
+          marginTop: 7,
+        }}>
+          {shotOptions.map(({ target, preview }) => (
+            <button
+              type="button"
+              key={target.id}
+              data-testid={`banana-execute-target-${target.id}`}
+              onClick={() => shootUnit(target.id)}
+              disabled={Boolean(shootDisabled)}
+              style={{
+                border: '1px solid rgba(255,107,130,0.5)',
+                background: 'rgba(255,78,106,0.13)',
+                color: shootDisabled ? '#6f5960' : '#ffd7dd',
+                borderRadius: 4,
+                padding: '6px 8px',
+                cursor: shootDisabled ? 'default' : 'pointer',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                gap: 6,
+                alignItems: 'center',
+                textAlign: 'left',
+                fontSize: 10,
+                fontWeight: 850,
+              }}
+              title={`${target.name}: ${preview.hitChance}% hit, ${preview.damage} damage`}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Target {target.name}
+              </span>
+              <span style={{ color: '#ffffff', fontFamily: "'Courier New', monospace" }}>
+                {preview.hitChance}% / {preview.damage}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScenarioActionButton({
+  active = false,
+  accent,
+  cost,
+  detail,
+  disabledReason,
+  label,
+  onClick,
+  testId,
+}: {
+  active?: boolean;
+  accent: string;
+  cost: string;
+  detail: string;
+  disabledReason: string | null;
+  label: string;
+  onClick: () => void;
+  testId: string;
+}) {
+  const disabled = Boolean(disabledReason);
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      disabled={disabled}
+      title={disabledReason ?? `${label} - ${cost}`}
+      style={{
+        minWidth: 0,
+        minHeight: 47,
+        border: `1px solid ${active ? accent : disabled ? '#30313a' : `${accent}66`}`,
+        background: active ? `${accent}28` : disabled ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.045)',
+        color: disabled ? '#626773' : '#f4f6fb',
+        borderRadius: 5,
+        padding: '6px 7px',
+        cursor: disabled ? 'default' : 'pointer',
+        textAlign: 'left',
+        display: 'grid',
+        gap: 3,
+      }}
+    >
+      <span style={{
+        color: disabled ? '#626773' : accent,
+        fontSize: 10,
+        fontWeight: 950,
+        textTransform: 'uppercase',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </span>
+      <span style={{
+        color: disabled ? '#505662' : '#c7cedb',
+        fontSize: 9,
+        fontWeight: 750,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {disabledReason ?? detail}
+      </span>
+      <span style={{
+        color: disabled ? '#4b515c' : '#eef2fb',
+        fontSize: 9,
+        fontWeight: 950,
+        fontFamily: "'Courier New', monospace",
+      }}>
+        {cost}
+      </span>
+    </button>
+  );
+}
+
+function BananaExecuteMiniLog() {
+  const combatLog = useGameStore((s) => s.combatLog);
+  const lastTimeline = useGameStore((s) => s.lastExecuteTimeline);
+  const dense = useIsDenseHudViewport();
+  if (dense || (combatLog.length === 0 && !lastTimeline)) return null;
+
+  return (
+    <div data-testid="banana-execute-mini-log" style={{
+      position: 'absolute',
+      right: 18,
+      bottom: 112,
+      width: 280,
+      background: 'rgba(8, 8, 12, 0.82)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 6,
+      padding: '8px 10px',
+      pointerEvents: 'none',
+    }}>
+      <div style={{
+        color: '#8f96a5',
+        fontSize: 9,
+        fontWeight: 950,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        marginBottom: 5,
+      }}>
+        Round Log
+      </div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        {combatLog.slice(0, 3).map((event) => (
+          <div key={event.id} style={{
+            color: event.killed ? '#ffb3c0' : event.hit ? '#dce3ee' : '#d8c170',
+            fontSize: 10,
+            fontWeight: 800,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {event.attackerName} {event.hit ? 'hit' : 'missed'} {event.targetName}{event.killed ? ' (down)' : ''}
+          </div>
+        ))}
+        {combatLog.length === 0 && lastTimeline && (
+          <div style={{ color: '#8f96a5', fontSize: 10, fontWeight: 800 }}>
+            Execute {lastTimeline.status}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BananaExecuteDebrief() {
+  const round = useGameStore((s) => s.round);
+  const interrupt = useGameStore((s) => s.executeInterrupt);
+  const combatLog = useGameStore((s) => s.combatLog);
+  const startBananaExecute = useGameStore((s) => s.startBananaExecute);
+  if (round.phase !== 'roundend') return null;
+
+  const latest = combatLog[0] ?? interrupt?.event ?? null;
+  const result = round.roundWinner === 'T'
+    ? round.winReason === 'detonation'
+      ? 'Planted and detonated'
+      : round.winReason === 'elimination'
+        ? 'B site cleared'
+        : 'Execute won'
+    : round.winReason === 'defuse'
+      ? 'Defused'
+      : round.winReason === 'timeexpiry'
+        ? 'Plant denied'
+        : 'CT hold survived';
+  const keyMoment = latest
+    ? `${latest.attackerName} ${latest.hit ? 'hit' : 'missed'} ${latest.targetName}${latest.killed ? ' for the kill' : ''}.`
+    : 'No decisive shot recorded.';
+  const retry = () => startBananaExecute();
+  const newSetup = () => {
+    startBananaExecute();
+    window.dispatchEvent(new Event('banana-execute-show-intro'));
+  };
+
+  return (
+    <div data-testid="banana-execute-debrief" style={{
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: 'min(430px, calc(100vw - 28px))',
+      background: 'rgba(8, 8, 12, 0.96)',
+      border: `1px solid ${round.roundWinner === 'T' ? '#58ff9a66' : '#ff6b8266'}`,
+      borderTop: `3px solid ${round.roundWinner === 'T' ? '#58ff9a' : '#ff6b82'}`,
+      borderRadius: 7,
+      padding: 18,
+      pointerEvents: 'auto',
+      boxShadow: '0 22px 70px rgba(0,0,0,0.5)',
+    }}>
+      <div style={{
+        color: round.roundWinner === 'T' ? '#58ff9a' : '#ff6b82',
+        fontSize: 10,
+        fontWeight: 950,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+      }}>
+        Scenario Debrief
+      </div>
+      <div style={{
+        color: '#f3f5f8',
+        fontSize: 22,
+        fontWeight: 950,
+        marginTop: 7,
+      }}>
+        {result}
+      </div>
+      <div style={{
+        color: '#a4adbd',
+        fontSize: 12,
+        fontWeight: 760,
+        lineHeight: 1.45,
+        marginTop: 10,
+      }}>
+        Key moment: {keyMoment}
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 6,
+        marginTop: 14,
+      }}>
+        <ScenarioStat label="Survivors T" value={round.roundWinner === 'T' ? 'Held' : 'Lost'} color="#d8c170" />
+        <ScenarioStat label="Plant" value={round.winReason === 'detonation' ? 'Yes' : round.winReason === 'defuse' ? 'Defused' : round.bombPlanted ? 'Live' : 'No'} color="#ff6b82" />
+        <ScenarioStat label="Outcome" value={round.roundWinner ?? 'Draw'} color={round.roundWinner === 'T' ? '#58ff9a' : '#75b9ff'} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button
+          type="button"
+          data-testid="banana-execute-retry"
+          onClick={retry}
+          style={{
+            flex: 1,
+            border: 'none',
+            background: '#d8c170',
+            color: '#17120a',
+            borderRadius: 5,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 950,
+            textTransform: 'uppercase',
+          }}
+        >
+          Retry Banana Execute
+        </button>
+        <button
+          type="button"
+          data-testid="banana-execute-new-setup"
+          onClick={newSetup}
+          style={{
+            border: '1px solid #303744',
+            background: 'rgba(255,255,255,0.045)',
+            color: '#bfc6d4',
+            borderRadius: 5,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 850,
+            textTransform: 'uppercase',
+          }}
+        >
+          New Setup
+        </button>
+      </div>
     </div>
   );
 }
@@ -2613,7 +3516,9 @@ function CommandBar() {
     }
     : {};
   const commandGridColumns = compact
-    ? 'repeat(2, minmax(0, 1fr))'
+    ? dense
+      ? 'repeat(5, minmax(0, 1fr))'
+      : 'repeat(2, minmax(0, 1fr))'
     : dense
       ? 'repeat(5, minmax(0, 1fr))'
       : undefined;

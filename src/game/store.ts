@@ -904,6 +904,136 @@ function createRoundUnits(map: GameState['map']): Unit[] {
   return createUnits(map);
 }
 
+function createBananaExecuteScenario(map: GameState['map']): {
+  units: Unit[];
+  round: RoundState;
+  heldAngles: HeldAngle[];
+  selectedUnitId: number;
+  movementTiles: MovementTile[];
+  walkableTiles: TileCoord[];
+} | null {
+  const baseUnits = createUnits(map);
+  const getBaseUnit = (id: number) => baseUnits.find((unit) => unit.id === id) ?? null;
+
+  const entry = getBaseUnit(0);
+  const igl = getBaseUnit(2);
+  const support = getBaseUnit(3);
+  const rotator = getBaseUnit(6);
+  const coffins = getBaseUnit(7);
+  const anchor = getBaseUnit(8);
+  if (!entry || !igl || !support || !rotator || !coffins || !anchor) return null;
+
+  const entryStart = findNearestWalkable(map, { x: 43, y: 61 });
+  const supportStart = findNearestWalkable(map, { x: 41, y: 59 });
+  const iglStart = findNearestWalkable(map, { x: 45, y: 59 });
+  const anchorHold = findNearestWalkable(map, { x: 43, y: 67 });
+  const coffinsHold = findNearestWalkable(map, { x: 41, y: 78 });
+  const rotatorStart = findNearestWalkable(map, { x: 49, y: 76 });
+  const holdTarget = findNearestWalkable(map, { x: 43, y: 61 });
+
+  const resetScenarioUnit = (
+    unit: Unit,
+    position: TileCoord,
+    name: string,
+    options: Partial<Pick<Unit, 'hasBomb' | 'hasDefuseKit' | 'smokeGrenades' | 'flashbangs' | 'ap' | 'maxAp' | 'facing'>> = {}
+  ): Unit => {
+    const maxAp = options.maxAp ?? unit.maxAp;
+    return {
+      ...unit,
+      name,
+      hp: unit.maxHp,
+      position: { ...position },
+      ap: options.ap ?? maxAp,
+      maxAp,
+      alive: true,
+      shotsFiredThisTurn: 0,
+      hasMoved: false,
+      hasBomb: options.hasBomb ?? false,
+      hasDefuseKit: options.hasDefuseKit ?? unit.hasDefuseKit,
+      smokeGrenades: options.smokeGrenades ?? 0,
+      flashbangs: options.flashbangs ?? 0,
+      flashTurns: 0,
+      ammoInClip: unit.weapon.clipSize,
+      reserveAmmo: unit.weapon.clipSize * 3,
+      facing: options.facing ?? { x: 0, y: unit.team === 'T' ? 1 : -1 },
+    };
+  };
+
+  const nextUnits: Unit[] = [
+    resetScenarioUnit(entry, entryStart, 'Entry', {
+      hasBomb: true,
+      facing: { x: 0, y: 1 },
+    }),
+    resetScenarioUnit(support, supportStart, 'Support', {
+      maxAp: 3,
+      smokeGrenades: 1,
+      facing: { x: 1, y: 1 },
+    }),
+    resetScenarioUnit(igl, iglStart, 'IGL', {
+      maxAp: 3,
+      flashbangs: 1,
+      facing: { x: -1, y: 1 },
+    }),
+    resetScenarioUnit(anchor, anchorHold, 'B Anchor', {
+      smokeGrenades: 0,
+      flashbangs: 0,
+      facing: { x: 0, y: -1 },
+    }),
+    resetScenarioUnit(coffins, coffinsHold, 'Coffins Hold', {
+      smokeGrenades: 0,
+      flashbangs: 0,
+      facing: { x: 1, y: -1 },
+    }),
+    resetScenarioUnit(rotator, rotatorStart, 'Rotator', {
+      smokeGrenades: 0,
+      flashbangs: 0,
+      facing: { x: -1, y: -1 },
+    }),
+  ];
+
+  const anchorUnit = nextUnits.find((unit) => unit.id === anchor.id) ?? nextUnits[3];
+  const heldAngle: HeldAngle = {
+    id: `${anchorUnit.id}:banana-execute-hold`,
+    unitId: anchorUnit.id,
+    team: 'CT',
+    origin: { ...anchorHold },
+    target: { ...holdTarget },
+    laneTiles: getWatchedLane(
+      map,
+      anchorHold,
+      holdTarget,
+      Math.max(4, Math.min(anchorUnit.weapon.rangeMax, 24))
+    ),
+    remainingShots: 1,
+    aimBonus: 8,
+  };
+
+  const round: RoundState = {
+    phase: 'combat',
+    turn: RULES.setupPhaseTurns + 1,
+    activeTeam: 'T',
+    bombPlanted: false,
+    bombDefused: false,
+    bombPosition: null,
+    bombTimer: RULES.bombTimerTurns,
+    bombCarrierId: entry.id,
+    roundTimer: 6,
+    roundWinner: null,
+    winReason: null,
+  };
+  const selectedUnitId = support.id;
+  const movement = getMovementForSelection(nextUnits, selectedUnitId, map, round);
+
+  return {
+    units: nextUnits,
+    round,
+    heldAngles: [heldAngle],
+    selectedUnitId,
+    movementTiles: movement.movementTiles,
+    walkableTiles: movement.walkableTiles,
+  };
+}
+
 interface GameStore extends GameState {
   selectUnit: (id: number | null) => void;
   hoverTile: (tile: TileCoord | null) => void;
@@ -930,6 +1060,7 @@ interface GameStore extends GameState {
   initGame: () => void;
   startNextRound: () => void;
   startContactDrill: () => void;
+  startBananaExecute: () => void;
   startDuelLab: () => void;
   startMovementProof: () => Promise<void>;
 }
@@ -3368,6 +3499,47 @@ export const useGameStore = create<GameStore>((set, get) => {
         movementRoutes: [],
         feedbackEvents: [],
         guidanceEvent: null,
+        aiStatus: null,
+      });
+    },
+
+    startBananaExecute: () => {
+      if (get().isExecuting) return;
+      const mapData = createInfernoMap();
+      const scenario = createBananaExecuteScenario(mapData);
+      if (!scenario) return;
+
+      set({
+        map: mapData,
+        units: scenario.units,
+        round: scenario.round,
+        selectedUnitId: scenario.selectedUnitId,
+        hoveredTile: null,
+        walkableTiles: scenario.walkableTiles,
+        movementTiles: scenario.movementTiles,
+        pathPreview: [],
+        planningMode: true,
+        plannedActions: [],
+        isExecuting: false,
+        inputMode: 'move',
+        heldAngles: scenario.heldAngles,
+        smokes: [],
+        flashBursts: [],
+        combatLog: [],
+        executeInterrupt: null,
+        currentExecuteTimeline: null,
+        lastExecuteTimeline: null,
+        movementRoutes: [],
+        feedbackEvents: appendFeedback([], 'select_unit', {
+          team: 'T',
+          unitId: scenario.selectedUnitId,
+          intensity: 0.85,
+        }),
+        guidanceEvent: createGuidanceEvent(
+          'Banana Execute',
+          'Smoke CT, flash the hold, swing Entry, then trade or plant.',
+          'hint'
+        ),
         aiStatus: null,
       });
     },
